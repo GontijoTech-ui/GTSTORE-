@@ -165,7 +165,7 @@
         .modal h2 { margin-top: 0; font-size: 20px; }
         .modal p { color: #aaa; font-size: 13px; line-height: 1.4; margin: 8px 0; }
 
-        /* MODAL DE DLCS / PACOTES EM GRADE */
+        /* GRADE DE DLCS */
         .modal-grid-container {
             max-width: 1100px;
             max-height: 88vh;
@@ -184,13 +184,8 @@
             padding-right: 6px;
         }
 
-        .dlc-grid::-webkit-scrollbar {
-            width: 8px;
-        }
-        .dlc-grid::-webkit-scrollbar-thumb {
-            background: #2a2a2a;
-            border-radius: 4px;
-        }
+        .dlc-grid::-webkit-scrollbar { width: 8px; }
+        .dlc-grid::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 4px; }
 
         .qr-image {
             width: 145px; height: 145px; object-fit: contain;
@@ -309,7 +304,6 @@
     </div>
 </div>
 
-<!-- MODAL DE DLCs / UPDATES EM GRADE -->
 <div id="dlc-overlay" class="overlay">
     <div class="modal modal-grid-container">
         <h2 id="dlc-modal-title" style="margin-bottom: 4px;">Pacotes</h2>
@@ -320,6 +314,8 @@
 
 <script>
 "use strict";
+
+const isPS4Browser = /PlayStation 4/i.test(navigator.userAgent);
 
 let allPackages = [];
 let games = [];
@@ -334,6 +330,13 @@ function formatSize(bytes) {
     if (value < 1024 * 1024) return (value / 1024).toFixed(2) + " KB";
     if (value < 1024 * 1024 * 1024) return (value / (1024 * 1024)).toFixed(2) + " MB";
     return (value / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+}
+
+function applyDeviceAdaptations() {
+    const ipBar = document.querySelector(".ps4-ip-bar");
+    if (!isPS4Browser && ipBar) {
+        ipBar.style.display = "none";
+    }
 }
 
 function initPs4Ip() {
@@ -378,7 +381,7 @@ async function checkStatus() {
         text.textContent = "Servidor Online — " + (ip ? ip + ":" + data.port : "Porta " + data.port);
 
         const ipInput = document.getElementById("ps4-ip");
-        if (!localStorage.getItem("ps4_ip") && !ipInput.value && ps4ClientIp && ps4ClientIp.startsWith("192.168.")) {
+        if (isPS4Browser && !localStorage.getItem("ps4_ip") && !ipInput.value && ps4ClientIp && ps4ClientIp.startsWith("192.168.")) {
             ipInput.value = ps4ClientIp;
             localStorage.setItem("ps4_ip", ps4ClientIp);
         }
@@ -562,6 +565,11 @@ async function verifyPin() {
     }
 }
 
+function triggerBrowserDownload(pkg) {
+    window.open(`/download?id=${pkg.id}`, "_blank");
+    showNotice(`Iniciando download de: ${pkg.title || "PKG"}`, "success");
+}
+
 function showGameDetails(game) {
     document.getElementById("view-catalog").style.display = "none";
     const detailsView = document.getElementById("view-details");
@@ -574,21 +582,32 @@ function showGameDetails(game) {
     const actions = document.getElementById("detail-actions");
     actions.innerHTML = "";
 
+    const actionText = isPS4Browser ? "INSTALAR" : "BAIXAR";
+
     if (game.game) {
         const btn = document.createElement("button");
         btn.className = "btn-install btn-install-game";
-        btn.textContent = "INSTALAR JOGO BASE (" + formatSize(game.game.size) + ")";
-        btn.onclick = () => triggerInstall(game.game, btn);
+        btn.textContent = `${actionText} JOGO BASE (${formatSize(game.game.size)})`;
+        btn.onclick = () => {
+            if (isPS4Browser) triggerInstall(game.game, btn);
+            else triggerBrowserDownload(game.game);
+        };
         actions.appendChild(btn);
     }
 
     if (game.updates.length) {
         const btn = document.createElement("button");
         btn.className = "btn-install btn-install-upd";
-        btn.textContent = game.updates.length > 1 ? "ATUALIZAÇÕES (" + game.updates.length + ")" : "INSTALAR UPDATE (" + formatSize(game.updates[0].size) + ")";
+        btn.textContent = game.updates.length > 1 
+            ? `ATUALIZAÇÕES (${game.updates.length})` 
+            : `${actionText} UPDATE (${formatSize(game.updates[0].size)})`;
         btn.onclick = () => {
-            if (game.updates.length === 1) triggerInstall(game.updates[0], btn);
-            else openPackageModal("Atualizações — " + game.title, game.updates);
+            if (game.updates.length === 1) {
+                if (isPS4Browser) triggerInstall(game.updates[0], btn);
+                else triggerBrowserDownload(game.updates[0]);
+            } else {
+                openPackageModal("Atualizações — " + game.title, game.updates);
+            }
         };
         actions.appendChild(btn);
     }
@@ -596,7 +615,7 @@ function showGameDetails(game) {
     if (game.dlcs.length) {
         const btn = document.createElement("button");
         btn.className = "btn-install btn-install-dlc";
-        btn.textContent = "DLCs DISPONÍVEIS (" + game.dlcs.length + ")";
+        btn.textContent = `DLCs DISPONÍVEIS (${game.dlcs.length})`;
         btn.onclick = () => openPackageModal("DLCs — " + game.title, game.dlcs);
         actions.appendChild(btn);
     }
@@ -651,7 +670,6 @@ async function triggerInstall(pkg, button) {
     }
 }
 
-// RENDERIZAÇÃO DAS DLCS / UPDATES EM GRADE IDÊNTICA À PÁGINA INICIAL
 function openPackageModal(title, list) {
     document.getElementById("dlc-modal-title").textContent = title;
     const container = document.getElementById("dlc-list");
@@ -696,8 +714,11 @@ function openPackageModal(title, list) {
         const btn = document.createElement("button");
         btn.className = "btn-access";
         btn.type = "button";
-        btn.textContent = "INSTALAR";
-        btn.onclick = () => triggerInstall(item, btn);
+        btn.textContent = isPS4Browser ? "INSTALAR" : "BAIXAR";
+        btn.onclick = () => {
+            if (isPS4Browser) triggerInstall(item, btn);
+            else triggerBrowserDownload(item);
+        };
 
         content.appendChild(itemTitle);
         content.appendChild(sizeLabel);
@@ -738,7 +759,8 @@ document.getElementById("btn-save-ip").addEventListener("click", savePs4Ip);
 document.getElementById("ps4-ip").addEventListener("change", savePs4Ip);
 
 document.addEventListener("DOMContentLoaded", async () => {
-    initPs4Ip();
+    applyDeviceAdaptations();
+    if (isPS4Browser) initPs4Ip();
     await checkStatus();
     await loadPackages();
     setInterval(checkStatus, 4000);
