@@ -114,12 +114,9 @@ object RemotePkgReader {
             val dataSize =
                 t.getInt(base + 20).toLong() and 0xFFFFFFFFL
 
-            if (dataSize <= 0L) continue
-            if (dataSize > MAX_ENTRY_DATA) continue
+            if (dataSize <= 0L || dataSize > MAX_ENTRY_DATA) continue
 
-            if (dataOffset < 0L ||
-                dataOffset + dataSize > size
-            ) {
+            if (dataOffset < 0L || dataOffset + dataSize > size) {
                 continue
             }
 
@@ -144,11 +141,6 @@ object RemotePkgReader {
 
         val fields = parseSfo(sfo ?: return null)
 
-        val title = fields["TITLE"]
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?: return null
-
         val contentId = fields["CONTENT_ID"]
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
@@ -157,7 +149,16 @@ object RemotePkgReader {
         val category = fields["CATEGORY"]
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
-            ?: return null
+            ?: "gd"
+
+        val title = fields["TITLE"]
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: fields["TITLE_00"]
+            ?.trim()
+            ?: fields["ATTRIBUTE_TITLE"]
+            ?.trim()
+            ?: contentId
 
         val version = fields["APP_VER"]
             ?.trim()
@@ -218,33 +219,22 @@ object RemotePkgReader {
         val connection = openConnection(url, "GET")
 
         try {
-            connection.setRequestProperty(
-                "Range",
-                "bytes=0-0"
-            )
-
+            connection.setRequestProperty("Range", "bytes=0-0")
             connection.connect()
 
-            val contentRange =
-                connection.getHeaderField("Content-Range")
-
-            val totalFromRange =
-                parseContentRangeTotal(contentRange)
+            val contentRange = connection.getHeaderField("Content-Range")
+            val totalFromRange = parseContentRangeTotal(contentRange)
 
             if (totalFromRange > 0L) {
                 return totalFromRange
             }
 
-            val length =
-                connection.contentLengthLong
-
+            val length = connection.contentLengthLong
             if (length > 0L) {
                 return length
             }
 
-            throw IOException(
-                "Servidor não informou o tamanho do arquivo."
-            )
+            throw IOException("Servidor não informou o tamanho do arquivo.")
         } finally {
             connection.disconnect()
         }
@@ -262,66 +252,35 @@ object RemotePkgReader {
         val connection = openConnection(url, "GET")
 
         try {
-            connection.setRequestProperty(
-                "Range",
-                "bytes=$start-$end"
-            )
-
-            connection.setRequestProperty(
-                "Accept-Encoding",
-                "identity"
-            )
-
+            connection.setRequestProperty("Range", "bytes=$start-$end")
+            connection.setRequestProperty("Accept-Encoding", "identity")
             connection.connect()
 
-            val responseCode =
-                connection.responseCode
+            val responseCode = connection.responseCode
 
             if (responseCode != HttpURLConnection.HTTP_PARTIAL &&
                 responseCode != HttpURLConnection.HTTP_OK
             ) {
-                throw IOException(
-                    "HTTP $responseCode"
-                )
+                throw IOException("HTTP $responseCode")
             }
 
-            val expected =
-                end - start + 1L
+            val expected = end - start + 1L
 
             val output = ByteArrayOutputStream(
-                minOf(
-                    expected,
-                    1024L * 1024L
-                ).toInt()
+                minOf(expected, 1024L * 1024L).toInt()
             )
 
             connection.inputStream.use { input ->
                 val buffer = ByteArray(64 * 1024)
-
                 var remaining = expected
 
                 while (remaining > 0L) {
-                    val requested =
-                        minOf(
-                            buffer.size.toLong(),
-                            remaining
-                        ).toInt()
-
-                    val read =
-                        input.read(
-                            buffer,
-                            0,
-                            requested
-                        )
+                    val requested = minOf(buffer.size.toLong(), remaining).toInt()
+                    val read = input.read(buffer, 0, requested)
 
                     if (read <= 0) break
 
-                    output.write(
-                        buffer,
-                        0,
-                        read
-                    )
-
+                    output.write(buffer, 0, read)
                     remaining -= read
                 }
             }
@@ -330,23 +289,11 @@ object RemotePkgReader {
 
             if (responseCode == HttpURLConnection.HTTP_PARTIAL) {
                 if (result.size.toLong() != expected) {
-                    throw IOException(
-                        "Range incompleto: esperado=$expected recebido=${result.size}"
-                    )
+                    throw IOException("Range incompleto: esperado=$expected recebido=${result.size}")
                 }
             } else {
-                /*
-                 * Se o servidor ignorar Range e responder 200,
-                 * não podemos aceitar uma resposta parcial
-                 * como se fosse o intervalo solicitado.
-                 *
-                 * Para segurança, só aceitamos 200 quando o
-                 * conteúdo recebido cobre exatamente o intervalo.
-                 */
                 if (result.size.toLong() < expected) {
-                    throw IOException(
-                        "Servidor não suporta Range."
-                    )
+                    throw IOException("Servidor não suporta Range.")
                 }
             }
 
@@ -364,12 +311,11 @@ object RemotePkgReader {
             return emptyMap()
         }
 
-        val bb =
-            ByteBuffer
-                .wrap(data)
-                .order(ByteOrder.LITTLE_ENDIAN)
+        val bb = ByteBuffer
+            .wrap(data)
+            .order(ByteOrder.LITTLE_ENDIAN)
 
-        if (bb.getInt(0) != 0x46535000) {
+        if (bb.getInt(0) != 0x46535000) { // "\0PSF"
             return emptyMap()
         }
 
@@ -386,78 +332,37 @@ object RemotePkgReader {
         for (i in 0 until count) {
             val e = 20 + i * 16
 
-            if (e + 16 > data.size) {
-                break
-            }
+            if (e + 16 > data.size) break
 
-            val keyOffset =
-                bb.getShort(e)
-                    .toInt() and 0xFFFF
+            val keyOffset = bb.getShort(e).toInt() and 0xFFFF
+            val format = bb.getShort(e + 2).toInt() and 0xFFFF
+            val length = bb.getInt(e + 4)
+            val dataOffset = bb.getInt(e + 12)
 
-            val format =
-                bb.getShort(e + 2)
-                    .toInt() and 0xFFFF
-
-            val length =
-                bb.getInt(e + 4)
-
-            val dataOffset =
-                bb.getInt(e + 12)
-
-            if (format != 0x0204) {
+            // Aceita UTF-8 special (0x0004) e UTF-8 null-terminated (0x0204)
+            if (format != 0x0204 && format != 0x0004) {
                 continue
             }
 
-            if (length < 0) {
-                continue
-            }
+            if (length < 0) continue
 
-            val keyStart =
-                keyTable + keyOffset
-
-            if (keyStart < 0 ||
-                keyStart >= data.size
-            ) {
-                continue
-            }
+            val keyStart = keyTable + keyOffset
+            if (keyStart < 0 || keyStart >= data.size) continue
 
             var keyEnd = keyStart
-
-            while (
-                keyEnd < data.size &&
-                data[keyEnd] != 0.toByte()
-            ) {
+            while (keyEnd < data.size && data[keyEnd] != 0.toByte()) {
                 keyEnd++
             }
 
-            val valueStart =
-                dataTable + dataOffset
+            val valueStart = dataTable + dataOffset
+            val valueEnd = valueStart + length
 
-            val valueEnd =
-                valueStart + length
-
-            if (valueStart < 0 ||
-                valueEnd < valueStart ||
-                valueEnd > data.size
-            ) {
+            if (valueStart < 0 || valueEnd < valueStart || valueEnd > data.size) {
                 continue
             }
 
-            val key =
-                String(
-                    data,
-                    keyStart,
-                    keyEnd - keyStart,
-                    Charsets.UTF_8
-                )
-
-            val value =
-                String(
-                    data,
-                    valueStart,
-                    length,
-                    Charsets.UTF_8
-                ).trimEnd('\u0000')
+            val key = String(data, keyStart, keyEnd - keyStart, Charsets.UTF_8)
+            val value = String(data, valueStart, length, Charsets.UTF_8).trimEnd('\u0000')
 
             out[key] = value
         }
@@ -471,22 +376,13 @@ object RemotePkgReader {
     ): HttpURLConnection {
 
         val uri = URI(rawUrl)
+        val scheme = uri.scheme?.lowercase()
 
-        val scheme =
-            uri.scheme?.lowercase()
-
-        if (scheme != "http" &&
-            scheme != "https"
-        ) {
-            throw IOException(
-                "Somente HTTP e HTTPS são suportados."
-            )
+        if (scheme != "http" && scheme != "https") {
+            throw IOException("Somente HTTP e HTTPS são suportados.")
         }
 
-        val connection =
-            URL(rawUrl)
-                .openConnection() as HttpURLConnection
-
+        val connection = URL(rawUrl).openConnection() as HttpURLConnection
         connection.requestMethod = method
         connection.connectTimeout = CONNECT_TIMEOUT
         connection.readTimeout = READ_TIMEOUT
@@ -496,47 +392,20 @@ object RemotePkgReader {
         return connection
     }
 
-    private fun parseContentRangeTotal(
-        value: String?
-    ): Long {
+    private fun parseContentRangeTotal(value: String?): Long {
+        if (value.isNullOrBlank()) return -1L
 
-        if (value.isNullOrBlank()) {
-            return -1L
-        }
+        val slash = value.lastIndexOf('/')
+        if (slash < 0 || slash + 1 >= value.length) return -1L
 
-        /*
-         * Formato:
-         * bytes 0-0/123456
-         */
-        val slash =
-            value.lastIndexOf('/')
-
-        if (slash < 0 ||
-            slash + 1 >= value.length
-        ) {
-            return -1L
-        }
-
-        return value
-            .substring(slash + 1)
-            .trim()
-            .toLongOrNull()
-            ?: -1L
+        return value.substring(slash + 1).trim().toLongOrNull() ?: -1L
     }
 
-    private fun isValidUrl(
-        rawUrl: String
-    ): Boolean {
-
+    private fun isValidUrl(rawUrl: String): Boolean {
         return try {
             val uri = URI(rawUrl)
-
-            val scheme =
-                uri.scheme?.lowercase()
-
-            (scheme == "http" ||
-                    scheme == "https") &&
-                    !uri.host.isNullOrBlank()
+            val scheme = uri.scheme?.lowercase()
+            (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
         } catch (_: Exception) {
             false
         }
