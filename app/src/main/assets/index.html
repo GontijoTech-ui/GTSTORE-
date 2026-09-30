@@ -165,6 +165,33 @@
         .modal h2 { margin-top: 0; font-size: 20px; }
         .modal p { color: #aaa; font-size: 13px; line-height: 1.4; margin: 8px 0; }
 
+        /* MODAL DE DLCS / PACOTES EM GRADE */
+        .modal-grid-container {
+            max-width: 1100px;
+            max-height: 88vh;
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+        }
+
+        .dlc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+            gap: 16px;
+            margin: 18px 0;
+            overflow-y: auto;
+            max-height: 60vh;
+            padding-right: 6px;
+        }
+
+        .dlc-grid::-webkit-scrollbar {
+            width: 8px;
+        }
+        .dlc-grid::-webkit-scrollbar-thumb {
+            background: #2a2a2a;
+            border-radius: 4px;
+        }
+
         .qr-image {
             width: 145px; height: 145px; object-fit: contain;
             margin: 6px auto; display: block; border-radius: 8px;
@@ -282,11 +309,12 @@
     </div>
 </div>
 
+<!-- MODAL DE DLCs / UPDATES EM GRADE -->
 <div id="dlc-overlay" class="overlay">
-    <div class="modal" style="max-width: 600px; text-align: left;">
-        <h2 id="dlc-modal-title">Pacotes</h2>
-        <div id="dlc-list" style="display: flex; flex-direction: column; gap: 8px; margin: 15px 0;"></div>
-        <button id="dlc-close" class="btn-sec" type="button" style="width: 100%;">FECHAR</button>
+    <div class="modal modal-grid-container">
+        <h2 id="dlc-modal-title" style="margin-bottom: 4px;">Pacotes</h2>
+        <div id="dlc-list" class="dlc-grid"></div>
+        <button id="dlc-close" class="btn-sec" type="button" style="width: 100%; margin-top: auto;">FECHAR</button>
     </div>
 </div>
 
@@ -349,7 +377,6 @@ async function checkStatus() {
         ps4ClientIp = data.clientIp || "";
         text.textContent = "Servidor Online — " + (ip ? ip + ":" + data.port : "Porta " + data.port);
 
-        // Se o usuário ainda não tiver configurado IP e o clientIp parecer da rede local, preenche automaticamente
         const ipInput = document.getElementById("ps4-ip");
         if (!localStorage.getItem("ps4_ip") && !ipInput.value && ps4ClientIp && ps4ClientIp.startsWith("192.168.")) {
             ipInput.value = ps4ClientIp;
@@ -596,7 +623,7 @@ async function triggerInstall(pkg, button) {
 
     button.disabled = true;
     const original = button.textContent;
-    button.textContent = "ENVIANDO AO PS4...";
+    button.textContent = "ENVIANDO...";
     showNotice("Enviando comando para o PS4 (" + targetIp + ")...");
 
     try {
@@ -607,7 +634,7 @@ async function triggerInstall(pkg, button) {
         });
         const data = await res.json();
         if (data.success) {
-            button.textContent = "DOWNLOAD INICIADO!";
+            button.textContent = "INICIADO!";
             showNotice("✓ Instalação iniciada! Verifique as notificações do PS4.", "success");
         } else {
             button.textContent = "FALHA";
@@ -624,21 +651,61 @@ async function triggerInstall(pkg, button) {
     }
 }
 
+// RENDERIZAÇÃO DAS DLCS / UPDATES EM GRADE IDÊNTICA À PÁGINA INICIAL
 function openPackageModal(title, list) {
     document.getElementById("dlc-modal-title").textContent = title;
     const container = document.getElementById("dlc-list");
     container.innerHTML = "";
 
+    const fallbackCover = selectedGame ? selectedGame.cover : null;
+
     for (const item of list) {
-        const row = document.createElement("div");
-        row.style = "display:flex; justify-content:space-between; align-items:center; background:#1b1b1b; padding:10px; border-radius:6px;";
-        row.innerHTML = `<div><div style="font-weight:bold; font-size:13px;">${item.title || "PKG"}</div><div style="font-size:11px; color:#888;">${formatSize(item.size)}</div></div>`;
+        const card = document.createElement("article");
+        card.className = "game-card";
+
+        const coverWrap = document.createElement("div");
+        coverWrap.className = "cover-wrap";
+        
+        const coverSrc = item.iconUrl || fallbackCover;
+        if (coverSrc) {
+            const img = document.createElement("img");
+            img.className = "cover";
+            img.src = coverSrc;
+            img.loading = "lazy";
+            coverWrap.appendChild(img);
+        } else {
+            const pl = document.createElement("div");
+            pl.className = "cover-placeholder";
+            pl.textContent = item.contentId ? item.contentId.substring(0, 9) : "PKG";
+            coverWrap.appendChild(pl);
+        }
+
+        const content = document.createElement("div");
+        content.className = "game-content";
+
+        const itemTitle = document.createElement("h2");
+        itemTitle.className = "game-title";
+        itemTitle.textContent = item.title || "Pacote";
+
+        const sizeLabel = document.createElement("p");
+        sizeLabel.className = "game-id";
+        sizeLabel.style.color = "#64b5f6";
+        sizeLabel.style.fontWeight = "bold";
+        sizeLabel.textContent = formatSize(item.size);
+
         const btn = document.createElement("button");
-        btn.className = "btn-sec btn-sec-primary";
+        btn.className = "btn-access";
+        btn.type = "button";
         btn.textContent = "INSTALAR";
         btn.onclick = () => triggerInstall(item, btn);
-        row.appendChild(btn);
-        container.appendChild(row);
+
+        content.appendChild(itemTitle);
+        content.appendChild(sizeLabel);
+        content.appendChild(btn);
+
+        card.appendChild(coverWrap);
+        card.appendChild(content);
+        container.appendChild(card);
     }
     document.getElementById("dlc-overlay").classList.add("visible");
 }
