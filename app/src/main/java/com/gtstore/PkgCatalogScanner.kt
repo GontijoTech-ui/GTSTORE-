@@ -7,49 +7,30 @@ import androidx.documentfile.provider.DocumentFile
 /**
  * Scanner independente do servidor HTTP.
  *
- * IMPORTANTE:
- * - Não modifica HttpServer.
- * - Não modifica PackageInfo.
- * - Não interfere no /pkg/{id}.
- * - Não interpreta nomes de arquivos.
- * - Não consulta fontes externas.
- *
- * A classificação é feita exclusivamente pelo CATEGORY
- * retornado pelo PkgMetaReader.
+ * Classifica e trata as variações do mesmo jogo (Game, Update, DLC)
+ * com base na categoria e metadados retornados pelo PkgMetaReader.
  */
 object PkgCatalogScanner {
 
-    /**
-     * Resultado de uma leitura individual.
-     *
-     * O objeto mantém a URI apenas para permitir que a aplicação
-     * posteriormente associe o item à origem, sem alterar o
-     * conteúdo extraído do PKG.
-     */
     data class SourcePkg(
         val uri: Uri,
         val fileName: String
     )
 
-    /**
-     * Resultado da varredura.
-     *
-     * scanned:
-     * quantidade de arquivos .pkg encontrados.
-     *
-     * cataloged:
-     * quantidade de PKGs que conseguiram ser lidos pelo
-     * PkgMetaReader.
-     *
-     * failed:
-     * arquivos encontrados mas cujo metadata não pôde ser lido.
-     */
     data class Result(
         val items: List<PkgCatalogItem>,
         val scanned: Int,
         val cataloged: Int,
         val failed: Int
-    )
+    ) {
+        /**
+         * Agrupa os pacotes pelo código CUSA / Title ID.
+         * Exemplo: agrupa o jogo base CUSA00123 junto com todos os seus updates e DLCs.
+         */
+        fun groupByGame(): Map<String, List<PkgCatalogItem>> {
+            return items.groupBy { extractTitleId(it.contentId) }
+        }
+    }
 
     /**
      * Varre uma árvore SAF inteira.
@@ -67,11 +48,9 @@ object PkgCatalogScanner {
             )
 
         val files = ArrayList<SourcePkg>()
-
         collectPkgFiles(root, files)
 
         val items = ArrayList<PkgCatalogItem>()
-
         var failed = 0
 
         for (source in files) {
@@ -89,11 +68,15 @@ object PkgCatalogScanner {
                 continue
             }
 
+            val category = meta.category.trim().lowercase()
+            val itemType = classify(category)
+            val formattedTitle = formatTitle(meta.title, itemType)
+
             items += PkgCatalogItem(
-                title = meta.title,
+                title = formattedTitle,
                 contentId = meta.contentId,
                 category = meta.category,
-                type = classify(meta.category),
+                type = itemType,
                 icon = meta.icon,
                 digest = meta.digest,
                 digestMatches = meta.digestMatches
@@ -145,15 +128,56 @@ object PkgCatalogScanner {
     }
 
     /**
-     * Classificação baseada EXCLUSIVAMENTE no CATEGORY
-     * fornecido pelo PkgMetaReader.
+     * Classificação completa das categorias oficiais do PS4:
+     * - gd, gda: Game (App Digital)
+     * - gp, gpe: Update / Patch
+     * - ac: DLC / Add-on
      */
-    private fun classify(category: String): String {
-        return when (category.lowercase()) {
-            "gd" -> PkgCatalogItem.TYPE_GAME
-            "gp" -> PkgCatalogItem.TYPE_UPDATE
+    fun classify(category: String): String {
+        return when (category.trim().lowercase()) {
+            "gd", "gda" -> PkgCatalogItem.TYPE_GAME
+            "gp", "gpe" -> PkgCatalogItem.TYPE_UPDATE
             "ac" -> PkgCatalogItem.TYPE_DLC
             else -> PkgCatalogItem.TYPE_OTHER
+        }
+    }
+
+    /**
+     * Garante que Updates e DLCs não fiquem com o mesmo título do jogo base.
+     */
+    private fun formatTitle(originalTitle: String, type: String): String {
+        val title = originalTitle.trim()
+
+        return when (type) {
+            PkgCatalogItem.TYPE_UPDATE -> {
+                if (title.contains("update", ignoreCase = true) || title.contains("patch", ignoreCase = true)) {
+                    title
+                } else {
+                    "$title [UPDATE]"
+                }
+            }
+            PkgCatalogItem.TYPE_DLC -> {
+                if (title.contains("dlc", ignoreCase = true)) {
+                    title
+                } else {
+                    "$title [DLC]"
+                }
+            }
+            else -> title
+        }
+    }
+
+    /**
+     * Extrai o Title ID (ex: CUSA00123) a partir do Content ID padrão:
+     * Exemplo: EP0001-CUSA00123_00-0000000000000000 -> CUSA00123
+     */
+    fun extractTitleId(contentId: String): String {
+        if (contentId.isBlank()) return ""
+        val parts = contentId.split("-")
+        return if (parts.size >= 2) {
+            parts[1].substringBefore("_")
+        } else {
+            contentId
         }
     }
 }
