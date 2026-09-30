@@ -18,6 +18,7 @@ import java.net.SocketException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
+import java.security.SecureRandom
 import java.util.Collections
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
@@ -31,7 +32,8 @@ data class PinRequest(
     val createdAt: Long = System.currentTimeMillis()
 ) {
     val isExpired: Boolean
-        get() = (System.currentTimeMillis() - createdAt) > HttpServer.PIN_TIMEOUT_MS
+        get() = (System.currentTimeMillis() - createdAt) >
+            HttpServer.PIN_TIMEOUT_MS
 }
 
 // Compatibilidade de tipo
@@ -52,6 +54,7 @@ class HttpServer(
         private const val PAYLOAD_DIR = "payloads"
         private const val MAX_LOG_LINES = 300
         private const val MASTER_PIN = "888888"
+        private const val MAX_PIN_REQUESTS = 80
 
         private const val ZERO_DIGEST =
             "0000000000000000000000000000000000000000000000000000000000000000"
@@ -74,6 +77,13 @@ class HttpServer(
         Collections.synchronizedList(ArrayList<PinRequest>())
 
     /**
+     * Gerador criptograficamente mais forte para os PINs.
+     *
+     * O PIN continua tendo 6 dígitos.
+     */
+    private val secureRandom = SecureRandom()
+
+    /**
      * Catálogo oficial do GTSTORE.
      *
      * Não contém PKG local.
@@ -89,6 +99,7 @@ class HttpServer(
 
     fun getPinRequests(): List<PinRequest> {
         synchronized(pinRequests) {
+
             pinRequests.removeAll {
                 (System.currentTimeMillis() - it.createdAt) >
                     60 * 60 * 1000L
@@ -102,38 +113,113 @@ class HttpServer(
     fun getActivePinsList(): List<PinRequest> =
         getPinRequests()
 
+    /**
+     * Gera um PIN exclusivo entre todos os PINs ativos.
+     *
+     * Regras:
+     *
+     * 1. O PIN possui exatamente 6 dígitos.
+     * 2. O MASTER_PIN nunca é sorteado.
+     * 3. PINs expirados são removidos antes da geração.
+     * 4. O novo PIN não pode existir em nenhuma solicitação ativa.
+     * 5. Toda a operação é sincronizada para impedir colisões
+     *    quando duas requisições chegam simultaneamente.
+     */
+    @Synchronized
     fun createPinForGame(
         gameTitle: String,
         gameKey: String,
         clientIp: String = ""
     ): PinRequest {
 
-        val pin = (100000..999999).random().toString()
-
-        val req = PinRequest(
-            id = System.currentTimeMillis(),
-            gameTitle = gameTitle,
-            gameKey = gameKey,
-            pin = pin,
-            clientIp = clientIp,
-            createdAt = System.currentTimeMillis()
-        )
-
         synchronized(pinRequests) {
-            pinRequests.add(0, req)
 
-            while (pinRequests.size > 80) {
-                pinRequests.removeAt(pinRequests.size - 1)
+            /*
+             * Remove PINs que já expiraram.
+             *
+             * O tempo oficial de validade é PIN_TIMEOUT_MS,
+             * atualmente 10 minutos.
+             */
+            pinRequests.removeAll {
+                it.isExpired
             }
+
+            /*
+             * Procura um PIN que:
+             *
+             * - tenha 6 dígitos;
+             * - não seja o PIN mestre;
+             * - não esteja sendo utilizado por nenhuma
+             *   solicitação ativa.
+             *
+             * Como existem 900.000 combinações possíveis
+             * entre 100000 e 999999 e mantemos no máximo
+             * 80 solicitações, a colisão é extremamente
+             * improvável e, mesmo se ocorrer, o loop gera
+             * outro PIN.
+             */
+            var pin: String
+
+            do {
+                pin =
+                    (100000 + secureRandom.nextInt(900000))
+                        .toString()
+
+            } while (
+                pin == MASTER_PIN ||
+                pinRequests.any {
+                    it.pin == pin
+                }
+            )
+
+            val now =
+                System.currentTimeMillis()
+
+            val req =
+                PinRequest(
+                    id = now,
+                    gameTitle = gameTitle,
+                    gameKey = gameKey,
+                    pin = pin,
+                    clientIp = clientIp,
+                    createdAt = now
+                )
+
+            pinRequests.add(
+                0,
+                req
+            )
+
+            /*
+             * Mantém somente as últimas 80 solicitações.
+             *
+             * Isso é apenas limite de memória/listagem.
+             * A validade real do PIN continua sendo
+             * PIN_TIMEOUT_MS.
+             */
+            while (
+                pinRequests.size >
+                MAX_PIN_REQUESTS
+            ) {
+                pinRequests.removeAt(
+                    pinRequests.lastIndex
+                )
+            }
+
+            dbg(
+                "PIN gerado para " +
+                    "$gameTitle ($gameKey): $pin"
+            )
+
+            return req
         }
-
-        dbg("PIN gerado para $gameTitle ($gameKey): $pin")
-
-        return req
     }
 
     fun generateAdminPin(): String =
-        createPinForGame("Acesso Geral", "ALL").pin
+        createPinForGame(
+            "Acesso Geral",
+            "ALL"
+        ).pin
 
     // =========================================================
     // LOG
@@ -145,16 +231,26 @@ class HttpServer(
             java.text.SimpleDateFormat(
                 "HH:mm:ss",
                 java.util.Locale.US
-            ).format(java.util.Date())
+            ).format(
+                java.util.Date()
+            )
 
-        val line = "$time $msg"
+        val line =
+            "$time $msg"
 
-        android.util.Log.d("GTStore", line)
+        android.util.Log.d(
+            "GTStore",
+            line
+        )
 
         synchronized(logLines) {
+
             logLines.add(line)
 
-            while (logLines.size > MAX_LOG_LINES) {
+            while (
+                logLines.size >
+                MAX_LOG_LINES
+            ) {
                 logLines.removeAt(0)
             }
         }
@@ -166,7 +262,9 @@ class HttpServer(
 
     val localAddress: String
         get() =
-            getWifiIpv4Address()?.hostAddress ?: "0.0.0.0"
+            getWifiIpv4Address()
+                ?.hostAddress
+                ?: "0.0.0.0"
 
     data class ServerStatus(
         val running: Boolean,
@@ -189,19 +287,23 @@ class HttpServer(
 
                 serverSocket =
                     if (address != null) {
+
                         ServerSocket(
                             port,
                             100,
                             address
                         )
+
                     } else {
+
                         ServerSocket(
                             port,
                             100
                         )
                     }
 
-                serverSocket?.reuseAddress = true
+                serverSocket?.reuseAddress =
+                    true
 
                 running = true
 
@@ -262,14 +364,16 @@ class HttpServer(
 
     fun getStatus(): ServerStatus {
 
-        val address = localAddress
+        val address =
+            localAddress
 
         return ServerStatus(
             running = running,
             port = port,
             localAddress = address,
             url = "http://$address:$port",
-            activeConnections = activeConnections.get()
+            activeConnections =
+                activeConnections.get()
         )
     }
 
@@ -277,12 +381,17 @@ class HttpServer(
     // HTTP CLIENT
     // =========================================================
 
-    private fun handleClient(socket: Socket) {
+    private fun handleClient(
+        socket: Socket
+    ) {
 
         activeConnections.incrementAndGet()
 
         val clientIp =
-            (socket.remoteSocketAddress as? InetSocketAddress)
+            (
+                socket.remoteSocketAddress
+                    as? InetSocketAddress
+                )
                 ?.address
                 ?.hostAddress
                 ?: ""
@@ -296,7 +405,8 @@ class HttpServer(
                 client.soTimeout =
                     SOCKET_TIMEOUT_MS
 
-                client.tcpNoDelay = true
+                client.tcpNoDelay =
+                    true
 
                 val input =
                     BufferedReader(
@@ -316,7 +426,8 @@ class HttpServer(
                     input.readLine()
                         ?: return
 
-                if (requestLine.length >
+                if (
+                    requestLine.length >
                     MAX_HEADER_SIZE
                 ) {
 
@@ -371,15 +482,22 @@ class HttpServer(
                             line.substring(
                                 0,
                                 separator
-                            ).trim().lowercase()
+                            )
+                                .trim()
+                                .lowercase()
                         ] =
                             line.substring(
                                 separator + 1
-                            ).trim()
+                            )
+                                .trim()
                     }
                 }
 
-                if (!target.startsWith("/api/log")) {
+                if (
+                    !target.startsWith(
+                        "/api/log"
+                    )
+                ) {
 
                     dbg(
                         "$clientIp $method $target"
@@ -387,13 +505,16 @@ class HttpServer(
                 }
 
                 val contentLength =
-                    headers["content-length"]
+                    headers[
+                        "content-length"
+                    ]
                         ?.toIntOrNull()
                         ?: 0
 
                 if (
                     contentLength < 0 ||
-                    contentLength > MAX_POST_SIZE
+                    contentLength >
+                    MAX_POST_SIZE
                 ) {
 
                     sendError(
@@ -412,12 +533,15 @@ class HttpServer(
                     ) {
 
                         val chars =
-                            CharArray(contentLength)
+                            CharArray(
+                                contentLength
+                            )
 
                         var off = 0
 
                         while (
-                            off < contentLength
+                            off <
+                            contentLength
                         ) {
 
                             val n =
@@ -438,9 +562,10 @@ class HttpServer(
                             chars,
                             0,
                             off
-                        ).toByteArray(
-                            StandardCharsets.ISO_8859_1
                         )
+                            .toByteArray(
+                                StandardCharsets.ISO_8859_1
+                            )
 
                     } else {
 
@@ -477,7 +602,9 @@ class HttpServer(
                         )
 
                     "OPTIONS" ->
-                        sendOptions(output)
+                        sendOptions(
+                            output
+                        )
 
                     else ->
                         sendError(
@@ -501,7 +628,9 @@ class HttpServer(
                         client.getOutputStream()
 
                     if (
-                        target.startsWith("/api/")
+                        target.startsWith(
+                            "/api/"
+                        )
                     ) {
 
                         sendJsonError(
@@ -524,7 +653,8 @@ class HttpServer(
 
             } finally {
 
-                activeConnections.decrementAndGet()
+                activeConnections
+                    .decrementAndGet()
             }
         }
     }
@@ -630,8 +760,14 @@ class HttpServer(
                 output,
                 200,
                 JSONObject()
-                    .put("success", true)
-                    .put("requestId", req.id)
+                    .put(
+                        "success",
+                        true
+                    )
+                    .put(
+                        "requestId",
+                        req.id
+                    )
             )
 
         } catch (_: Exception) {
@@ -666,25 +802,41 @@ class HttpServer(
             val pin =
                 json.optString(
                     "pin"
-                ).trim()
+                )
+                    .trim()
 
             val gameKey =
                 json.optString(
                     "gameKey"
-                ).trim()
+                )
+                    .trim()
 
+            /*
+             * PIN mestre.
+             *
+             * Continua sendo uma exceção:
+             * ele não é exclusivo de um jogo.
+             */
             if (pin == MASTER_PIN) {
 
                 sendJson(
                     output,
                     200,
                     JSONObject()
-                        .put("valid", true)
+                        .put(
+                            "valid",
+                            true
+                        )
                 )
 
                 return
             }
 
+            /*
+             * Como o gerador garante unicidade entre
+             * todos os PINs ativos, no máximo uma solicitação
+             * ativa poderá corresponder a este PIN.
+             */
             val matching =
                 getPinRequests()
                     .firstOrNull {
@@ -697,7 +849,10 @@ class HttpServer(
                     output,
                     200,
                     JSONObject()
-                        .put("valid", false)
+                        .put(
+                            "valid",
+                            false
+                        )
                         .put(
                             "message",
                             "PIN incorreto ou não encontrado."
@@ -713,7 +868,10 @@ class HttpServer(
                     output,
                     200,
                     JSONObject()
-                        .put("valid", false)
+                        .put(
+                            "valid",
+                            false
+                        )
                         .put(
                             "message",
                             "Este PIN expirou! O prazo de 10 minutos encerrou."
@@ -738,7 +896,10 @@ class HttpServer(
                     output,
                     200,
                     JSONObject()
-                        .put("valid", false)
+                        .put(
+                            "valid",
+                            false
+                        )
                         .put(
                             "message",
                             "Este PIN é exclusivo para o jogo: ${matching.gameTitle}"
@@ -752,7 +913,10 @@ class HttpServer(
                 output,
                 200,
                 JSONObject()
-                    .put("valid", true)
+                    .put(
+                        "valid",
+                        true
+                    )
             )
 
         } catch (_: Exception) {
@@ -780,20 +944,24 @@ class HttpServer(
 
             val json =
                 if (body.isNotEmpty()) {
+
                     JSONObject(
                         String(
                             body,
                             StandardCharsets.UTF_8
                         )
                     )
+
                 } else {
+
                     JSONObject()
                 }
 
             var ps4Ip =
                 json.optString(
                     "ip"
-                ).trim()
+                )
+                    .trim()
 
             if (!isValidIp(ps4Ip)) {
                 ps4Ip = clientIp
@@ -826,7 +994,9 @@ class HttpServer(
              * Não existe mais busca por arquivo .pkg local.
              */
             val item =
-                catalogManager.getByIndex(pkgId)
+                catalogManager.getByIndex(
+                    pkgId
+                )
 
             if (item == null) {
 
@@ -851,7 +1021,9 @@ class HttpServer(
             }
 
             val payloadTemplate =
-                loadPayload("payload.bin")
+                loadPayload(
+                    "payload.bin"
+                )
                     ?: loadPayload(
                         "direct-installer.bin"
                     )
@@ -951,7 +1123,8 @@ class HttpServer(
                     )
 
                     payload[off + 4] =
-                        (callbackPort ushr 8).toByte()
+                        (callbackPort ushr 8)
+                            .toByte()
 
                     payload[off + 5] =
                         callbackPort.toByte()
@@ -1075,7 +1248,9 @@ class HttpServer(
             out.write(
                 ByteBuffer
                     .allocate(4)
-                    .order(ByteOrder.LITTLE_ENDIAN)
+                    .order(
+                        ByteOrder.LITTLE_ENDIAN
+                    )
                     .putInt(v)
                     .array()
             )
@@ -1086,7 +1261,9 @@ class HttpServer(
             out.write(
                 ByteBuffer
                     .allocate(8)
-                    .order(ByteOrder.LITTLE_ENDIAN)
+                    .order(
+                        ByteOrder.LITTLE_ENDIAN
+                    )
                     .putLong(v)
                     .array()
             )
@@ -1129,7 +1306,8 @@ class HttpServer(
          * PS4 + CATEGORY
          */
         val bgftType =
-            "PS4" + item.category.uppercase()
+            "PS4" +
+                item.category.uppercase()
 
         str(bgftType)
 
@@ -1142,7 +1320,9 @@ class HttpServer(
          * Ícone persistido pelo CatalogManager.
          */
         val icon =
-            catalogManager.getIcon(item)
+            catalogManager.getIcon(
+                item
+            )
 
         if (
             icon == null ||
@@ -1239,8 +1419,11 @@ class HttpServer(
 
             Socket().use { socket ->
 
-                socket.tcpNoDelay = true
-                socket.soTimeout = 8000
+                socket.tcpNoDelay =
+                    true
+
+                socket.soTimeout =
+                    8000
 
                 socket.connect(
                     InetSocketAddress(
@@ -1254,6 +1437,7 @@ class HttpServer(
                     socket.getOutputStream()
 
                 out.write(payload)
+
                 out.flush()
 
                 try {
@@ -1302,7 +1486,9 @@ class HttpServer(
                         while (true) {
 
                             val read =
-                                input.read(buffer)
+                                input.read(
+                                    buffer
+                                )
 
                             if (read <= 0) {
                                 break
@@ -1447,11 +1633,16 @@ class HttpServer(
             path == "/api/log" -> {
 
                 val text =
-                    synchronized(logLines) {
-                        logLines.joinToString("\n")
-                    }.ifEmpty {
-                        "(sem logs)"
+                    synchronized(
+                        logLines
+                    ) {
+                        logLines.joinToString(
+                            "\n"
+                        )
                     }
+                        .ifEmpty {
+                            "(sem logs)"
+                        }
 
                 sendResponse(
                     output,
@@ -1465,12 +1656,18 @@ class HttpServer(
                 )
             }
 
-            path.startsWith("/json/") -> {
+            path.startsWith(
+                "/json/"
+            ) -> {
 
                 val id =
                     path
-                        .removePrefix("/json/")
-                        .removeSuffix(".json")
+                        .removePrefix(
+                            "/json/"
+                        )
+                        .removeSuffix(
+                            ".json"
+                        )
                         .toIntOrNull()
 
                 if (id != null) {
@@ -1503,7 +1700,9 @@ class HttpServer(
 
                 val id =
                     uri
-                        .getQueryParameter("id")
+                        .getQueryParameter(
+                            "id"
+                        )
                         ?.toIntOrNull()
 
                 if (id == null) {
@@ -1524,11 +1723,15 @@ class HttpServer(
                 }
             }
 
-            path.startsWith("/pkg/") -> {
+            path.startsWith(
+                "/pkg/"
+            ) -> {
 
                 val id =
                     path
-                        .removePrefix("/pkg/")
+                        .removePrefix(
+                            "/pkg/"
+                        )
                         .split("/")
                         .firstOrNull()
                         ?.toIntOrNull()
@@ -1630,7 +1833,9 @@ class HttpServer(
                 )
 
         val icon =
-            catalogManager.getIcon(item)
+            catalogManager.getIcon(
+                item
+            )
 
         if (
             icon == null ||
@@ -1674,7 +1879,9 @@ class HttpServer(
         for (item in packages) {
 
             val icon =
-                catalogManager.getIcon(item)
+                catalogManager.getIcon(
+                    item
+                )
 
             array.put(
                 JSONObject()
@@ -1692,7 +1899,8 @@ class HttpServer(
                     )
                     .put(
                         "file",
-                        item.indexString + ".pkg"
+                        item.indexString +
+                            ".pkg"
                     )
                     .put(
                         "size",
@@ -1732,8 +1940,12 @@ class HttpServer(
                             icon != null &&
                             icon.isNotEmpty()
                         ) {
-                            "/api/package-icon/${item.catalogIndex}"
+
+                            "/api/package-icon/" +
+                                item.catalogIndex
+
                         } else {
+
                             ""
                         }
                     )
@@ -1809,8 +2021,11 @@ class HttpServer(
 
         val digest =
             if (item.digest.isNotBlank()) {
+
                 item.digest
+
             } else {
+
                 ZERO_DIGEST
             }
 
@@ -2070,13 +2285,21 @@ class HttpServer(
 
         val statusText =
             when (statusCode) {
+
                 200 -> "OK"
+
                 201 -> "Created"
+
                 400 -> "Bad Request"
+
                 404 -> "Not Found"
+
                 500 -> "Internal Server Error"
+
                 502 -> "Bad Gateway"
+
                 504 -> "Gateway Timeout"
+
                 else -> "OK"
             }
 
@@ -2201,14 +2424,24 @@ class HttpServer(
 
         val statusText =
             when (statusCode) {
+
                 400 -> "Bad Request"
+
                 404 -> "Not Found"
+
                 405 -> "Method Not Allowed"
+
                 422 -> "Unprocessable Entity"
-                431 -> "Request Header Fields Too Large"
+
+                431 ->
+                    "Request Header Fields Too Large"
+
                 500 -> "Internal Server Error"
+
                 502 -> "Bad Gateway"
+
                 504 -> "Gateway Timeout"
+
                 else -> message
             }
 
