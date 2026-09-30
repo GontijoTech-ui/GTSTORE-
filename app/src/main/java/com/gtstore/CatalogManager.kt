@@ -1,7 +1,6 @@
 package com.gtstore
 
 import android.content.Context
-import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -58,46 +57,35 @@ class CatalogManager(
         val items = loadItems()
 
         /*
-         * A identidade principal é o CONTENT_ID.
+         * A identidade de um pacote no catálogo é composta por:
+         * CONTENT_ID + CATEGORIA + VERSÃO
          *
-         * A URL não participa da identidade.
+         * Isso permite que o Jogo Base (gd), o Update (gp v01.01) e as DLCs (ac)
+         * coexistam no catálogo sem conflitar nem sobrescrever um ao outro.
          */
         val existing =
             items.firstOrNull {
-                it.contentId.equals(
-                    remote.contentId,
-                    ignoreCase = true
-                )
+                it.contentId.equals(remote.contentId, ignoreCase = true) &&
+                it.category.equals(remote.category, ignoreCase = true) &&
+                normalizeVersion(it.version) == normalizeVersion(remote.version)
             }
 
         if (existing != null) {
-
-            if (!identityMatches(existing, remote)) {
-                return OperationResult(
-                    false,
-                    buildMismatchMessage(
-                        existing,
-                        remote
-                    ),
-                    existing
-                )
-            }
-
             /*
-             * IMPORTANTE:
-             * em atualização de URL, o índice permanece
-             * exatamente o mesmo.
+             * Mesma variação já existente: apenas atualiza o link (URL)
+             * preservando o catalogIndex original.
              */
             val updated =
                 existing.copy(
-                    url = remote.url
+                    url = remote.url,
+                    size = remote.size,
+                    digest = remote.digest,
+                    digestMatches = remote.digestMatches
                 )
 
             val updatedItems =
                 items.map {
-                    if (it.catalogIndex ==
-                        existing.catalogIndex
-                    ) {
+                    if (it.catalogIndex == existing.catalogIndex) {
                         updated
                     } else {
                         it
@@ -113,21 +101,22 @@ class CatalogManager(
 
             return OperationResult(
                 true,
-                "URL atualizada. Índice ${existing.indexString} preservado.",
+                "URL atualizada para [${updated.type}] ${updated.title}. Índice ${existing.indexString} preservado.",
                 updated
             )
         }
 
-        val newIndex =
-            nextIndex()
+        val newIndex = nextIndex()
+        val itemType = classify(remote.category)
+        val formattedTitle = formatItemTitle(remote.title, itemType, remote.version)
 
         val item =
             CatalogItem(
                 catalogIndex = newIndex,
-                title = remote.title,
+                title = formattedTitle,
                 contentId = remote.contentId,
                 category = remote.category,
-                type = classify(remote.category),
+                type = itemType,
                 version = remote.version,
                 size = remote.size,
                 digest = remote.digest,
@@ -142,8 +131,7 @@ class CatalogManager(
 
         val finalItem =
             item.copy(
-                iconFile =
-                    iconFileName(newIndex)
+                iconFile = iconFileName(newIndex)
             )
 
         saveItems(
@@ -152,7 +140,7 @@ class CatalogManager(
 
         return OperationResult(
             true,
-            "PKG reconhecido e adicionado ao catálogo como índice ${finalItem.indexString}.",
+            "PKG reconhecido como [$itemType] e adicionado com o índice ${finalItem.indexString}.",
             finalItem
         )
     }
@@ -208,198 +196,88 @@ class CatalogManager(
         }
     }
 
-    private fun identityMatches(
-        existing: CatalogItem,
-        remote: RemotePkgReader.Result
-    ): Boolean {
-
-        /*
-         * CONTENT_ID é a identidade principal.
-         */
-        if (!existing.contentId.equals(
-                remote.contentId,
-                ignoreCase = true
-            )
-        ) {
-            return false
-        }
-
-        /*
-         * CATEGORY evita trocar, por exemplo,
-         * GAME por UPDATE/DLC com o mesmo identificador
-         * em uma situação inconsistente.
-         */
-        if (!existing.category.equals(
-                remote.category,
-                ignoreCase = true
-            )
-        ) {
-            return false
-        }
-
-        /*
-         * TITLE funciona como confirmação adicional.
-         */
-        if (!sameTitle(
-                existing.title,
-                remote.title
-            )
-        ) {
-            return false
-        }
-
-        return true
-    }
-
-    private fun sameTitle(
-        first: String,
-        second: String
-    ): Boolean {
-
-        fun normalize(value: String): String =
-            value
-                .trim()
-                .replace(
-                    Regex("\\s+"),
-                    " "
-                )
-                .lowercase()
-
-        return normalize(first) ==
-                normalize(second)
-    }
-
-    private fun buildMismatchMessage(
-        existing: CatalogItem,
-        remote: RemotePkgReader.Result
+    /**
+     * Adiciona indicação clara no título caso seja Update ou DLC
+     * para que o usuário diferencie visualmente no console e no app.
+     */
+    private fun formatItemTitle(
+        originalTitle: String,
+        type: String,
+        version: String
     ): String {
+        val cleanTitle = originalTitle.trim()
 
-        return buildString {
-            append("URL rejeitada.\n")
-            append(
-                "Esperado: ${existing.contentId}"
-            )
-            append(" / ${existing.category}\n")
-            append(
-                "Encontrado: ${remote.contentId}"
-            )
-            append(" / ${remote.category}\n")
-            append(
-                "Índice ${existing.indexString} e URL atual preservados."
-            )
+        return when (type) {
+            PkgCatalogItem.TYPE_UPDATE -> {
+                val v = if (version.isNotBlank()) " v$version" else ""
+                if (cleanTitle.contains("update", ignoreCase = true) || cleanTitle.contains("patch", ignoreCase = true)) {
+                    cleanTitle
+                } else {
+                    "$cleanTitle [UPDATE$v]"
+                }
+            }
+            PkgCatalogItem.TYPE_DLC -> {
+                if (cleanTitle.contains("dlc", ignoreCase = true)) {
+                    cleanTitle
+                } else {
+                    "$cleanTitle [DLC]"
+                }
+            }
+            else -> cleanTitle
         }
+    }
+
+    private fun normalizeVersion(v: String?): String {
+        return v?.trim()?.removePrefix("0")?.ifBlank { "0" } ?: "0"
     }
 
     private fun classify(
         category: String
     ): String {
-
-        return when (
-            category.trim().lowercase()
-        ) {
-            "gd" -> PkgCatalogItem.TYPE_GAME
-            "gp" -> PkgCatalogItem.TYPE_UPDATE
+        return when (category.trim().lowercase()) {
+            "gd", "gda" -> PkgCatalogItem.TYPE_GAME
+            "gp", "gpe" -> PkgCatalogItem.TYPE_UPDATE
             "ac" -> PkgCatalogItem.TYPE_DLC
             else -> PkgCatalogItem.TYPE_OTHER
         }
     }
 
     private fun nextIndex(): Int {
+        val current = prefs.getInt(KEY_NEXT_INDEX, 1)
 
-        val current =
-            prefs.getInt(
-                KEY_NEXT_INDEX,
-                1
-            )
-
-        /*
-         * O contador nunca diminui.
-         *
-         * Assim um índice utilizado não é reutilizado
-         * caso o item seja removido futuramente.
-         */
         prefs.edit()
-            .putInt(
-                KEY_NEXT_INDEX,
-                current + 1
-            )
+            .putInt(KEY_NEXT_INDEX, current + 1)
             .apply()
 
         return current
     }
 
     private fun loadItems(): List<CatalogItem> {
-
-        val raw =
-            prefs.getString(
-                KEY_ITEMS,
-                null
-            )
-                ?: return emptyList()
+        val raw = prefs.getString(KEY_ITEMS, null) ?: return emptyList()
 
         return try {
-
-            val array =
-                JSONArray(raw)
+            val array = JSONArray(raw)
 
             buildList {
-
                 for (i in 0 until array.length()) {
-
-                    val item =
-                        array.getJSONObject(i)
-
+                    val item = array.getJSONObject(i)
                     add(
                         CatalogItem(
-                            catalogIndex =
-                                item.getInt(
-                                    "catalogIndex"
-                                ),
-                            title =
-                                item.optString(
-                                    "title"
-                                ),
-                            contentId =
-                                item.optString(
-                                    "contentId"
-                                ),
-                            category =
-                                item.optString(
-                                    "category"
-                                ),
-                            type =
-                                item.optString(
-                                    "type"
-                                ),
-                            version =
-                                item.optString(
-                                    "version"
-                                ),
-                            size =
-                                item.optLong(
-                                    "size"
-                                ),
-                            digest =
-                                item.optString(
-                                    "digest"
-                                ),
-                            digestMatches =
-                                item.optBoolean(
-                                    "digestMatches"
-                                ),
-                            url =
-                                item.optString(
-                                    "url"
-                                ),
-                            iconFile =
-                                item.optString(
-                                    "iconFile"
-                                )
+                            catalogIndex = item.getInt("catalogIndex"),
+                            title = item.optString("title"),
+                            contentId = item.optString("contentId"),
+                            category = item.optString("category"),
+                            type = item.optString("type"),
+                            version = item.optString("version"),
+                            size = item.optLong("size"),
+                            digest = item.optString("digest"),
+                            digestMatches = item.optBoolean("digestMatches"),
+                            url = item.optString("url"),
+                            iconFile = item.optString("iconFile")
                         )
                     )
                 }
             }
-
         } catch (_: Exception) {
             emptyList()
         }
@@ -408,65 +286,27 @@ class CatalogManager(
     private fun saveItems(
         items: List<CatalogItem>
     ) {
-
         val array = JSONArray()
 
         items.forEach { item ->
-
             array.put(
                 JSONObject()
-                    .put(
-                        "catalogIndex",
-                        item.catalogIndex
-                    )
-                    .put(
-                        "title",
-                        item.title
-                    )
-                    .put(
-                        "contentId",
-                        item.contentId
-                    )
-                    .put(
-                        "category",
-                        item.category
-                    )
-                    .put(
-                        "type",
-                        item.type
-                    )
-                    .put(
-                        "version",
-                        item.version
-                    )
-                    .put(
-                        "size",
-                        item.size
-                    )
-                    .put(
-                        "digest",
-                        item.digest
-                    )
-                    .put(
-                        "digestMatches",
-                        item.digestMatches
-                    )
-                    .put(
-                        "url",
-                        item.url
-                    )
-                    .put(
-                        "iconFile",
-                        item.iconFile
-                    )
+                    .put("catalogIndex", item.catalogIndex)
+                    .put("title", item.title)
+                    .put("contentId", item.contentId)
+                    .put("category", item.category)
+                    .put("type", item.type)
+                    .put("version", item.version)
+                    .put("size", item.size)
+                    .put("digest", item.digest)
+                    .put("digestMatches", item.digestMatches)
+                    .put("url", item.url)
+                    .put("iconFile", item.iconFile)
             )
         }
 
         prefs.edit()
-            .putString(
-                KEY_ITEMS,
-                array.toString()
-            )
+            .putString(KEY_ITEMS, array.toString())
             .apply()
     }
 
@@ -474,56 +314,27 @@ class CatalogManager(
         catalogIndex: Int,
         icon: ByteArray?
     ) {
-
-        if (icon == null ||
-            icon.isEmpty()
-        ) {
-            return
-        }
+        if (icon == null || icon.isEmpty()) return
 
         try {
-
-            val directory =
-                File(
-                    context.filesDir,
-                    ICON_DIR
-                )
-
+            val directory = File(context.filesDir, ICON_DIR)
             if (!directory.exists()) {
                 directory.mkdirs()
             }
-
-            File(
-                directory,
-                iconFileName(catalogIndex)
-            ).writeBytes(icon)
-
+            File(directory, iconFileName(catalogIndex)).writeBytes(icon)
         } catch (_: Exception) {
         }
     }
 
-    private fun iconFileName(
-        catalogIndex: Int
-    ): String {
+    private fun iconFileName(catalogIndex: Int): String {
         return "icon_${catalogIndex.toString().padStart(6, '0')}.png"
     }
 
-    private fun isValidUrl(
-        rawUrl: String
-    ): Boolean {
-
+    private fun isValidUrl(rawUrl: String): Boolean {
         return try {
-
-            val uri =
-                URI(rawUrl)
-
-            val scheme =
-                uri.scheme?.lowercase()
-
-            (scheme == "http" ||
-                    scheme == "https") &&
-                    !uri.host.isNullOrBlank()
-
+            val uri = URI(rawUrl)
+            val scheme = uri.scheme?.lowercase()
+            (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
         } catch (_: Exception) {
             false
         }
