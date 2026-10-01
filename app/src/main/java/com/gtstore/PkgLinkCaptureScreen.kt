@@ -2,7 +2,6 @@ package com.gtstore
 
 import android.annotation.SuppressLint
 import android.webkit.CookieManager
-import android.webkit.DownloadListener
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -33,13 +32,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
-
 data class PkgCaptureResult(
     val sourceUrl: String,
     val directUrl: String,
     val fileName: String
 )
-
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -67,9 +64,6 @@ fun PkgLinkCaptureScreen(
         mutableStateOf(false)
     }
 
-    /*
-     * A referência do WebView fica no estado da tela.
-     */
     var browser by remember {
         mutableStateOf<WebView?>(null)
     }
@@ -82,9 +76,10 @@ fun PkgLinkCaptureScreen(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
 
-        /*
-         * BOTÕES
-         */
+        // ---------------------------------------------------------
+        // BOTÕES
+        // ---------------------------------------------------------
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -124,17 +119,18 @@ fun PkgLinkCaptureScreen(
             }
         }
 
-        /*
-         * STATUS
-         */
+        // ---------------------------------------------------------
+        // STATUS
+        // ---------------------------------------------------------
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = CardBlack
             ),
             border = BorderStroke(
-                1.dp,
-                BorderDark
+                width = 1.dp,
+                color = BorderDark
             )
         ) {
             Column(
@@ -170,9 +166,10 @@ fun PkgLinkCaptureScreen(
             modifier = Modifier.height(2.dp)
         )
 
-        /*
-         * WEBVIEW
-         */
+        // ---------------------------------------------------------
+        // WEBVIEW
+        // ---------------------------------------------------------
+
         AndroidView(
             modifier = Modifier
                 .fillMaxWidth()
@@ -180,54 +177,51 @@ fun PkgLinkCaptureScreen(
 
             factory = { context ->
 
-                WebView(context).also { view ->
+                WebView(context).apply {
 
-                    /*
-                     * Guarda a referência para os botões.
-                     */
-                    browser = view
+                    browser = this
 
-                    /*
-                     * CONFIGURAÇÕES
-                     */
-                    view.settings.javaScriptEnabled = true
-                    view.settings.domStorageEnabled = true
-                    view.settings.databaseEnabled = true
-                    view.settings.loadsImagesAutomatically = true
-                    view.settings.javaScriptCanOpenWindowsAutomatically = true
-                    view.settings.setSupportMultipleWindows(false)
+                    // -------------------------------------------------
+                    // CONFIGURAÇÕES DO WEBVIEW
+                    // -------------------------------------------------
 
-                    /*
-                     * Cookies.
-                     */
-                    CookieManager
-                        .getInstance()
-                        .setAcceptCookie(true)
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.databaseEnabled = true
+                    settings.loadsImagesAutomatically = true
+                    settings.javaScriptCanOpenWindowsAutomatically = true
+                    settings.setSupportMultipleWindows(false)
 
-                    CookieManager
-                        .getInstance()
-                        .setAcceptThirdPartyCookies(
-                            view,
-                            true
-                        )
+                    // -------------------------------------------------
+                    // COOKIES
+                    // -------------------------------------------------
 
-                    /*
-                     * Chrome.
-                     */
-                    view.webChromeClient = WebChromeClient()
+                    val cookieManager = CookieManager.getInstance()
 
-                    /*
-                     * Navegação.
-                     */
-                    view.webViewClient = object : WebViewClient() {
+                    cookieManager.setAcceptCookie(true)
+                    cookieManager.setAcceptThirdPartyCookies(
+                        this,
+                        true
+                    )
+
+                    // -------------------------------------------------
+                    // CHROME CLIENT
+                    // -------------------------------------------------
+
+                    webChromeClient = WebChromeClient()
+
+                    // -------------------------------------------------
+                    // NAVEGAÇÃO
+                    // -------------------------------------------------
+
+                    webViewClient = object : WebViewClient() {
 
                         override fun shouldOverrideUrlLoading(
                             view: WebView,
                             request: WebResourceRequest
                         ): Boolean {
 
-                            currentUrl =
-                                request.url.toString()
+                            currentUrl = request.url.toString()
 
                             return false
                         }
@@ -250,93 +244,92 @@ fun PkgLinkCaptureScreen(
                         }
                     }
 
-                    /*
-                     * DOWNLOAD
-                     */
-                    view.setDownloadListener(
-                        DownloadListener { url,
-                                            userAgent,
-                                            contentDisposition,
-                                            mimeType,
-                                            contentLength ->
+                    // -------------------------------------------------
+                    // CAPTURA DO DOWNLOAD
+                    // -------------------------------------------------
 
-                            if (captured) {
-                                return@DownloadListener
-                            }
+                    setDownloadListener { url,
+                                          userAgent,
+                                          contentDisposition,
+                                          mimeType,
+                                          contentLength ->
 
-                            /*
-                             * Aceita apenas HTTP/HTTPS.
-                             */
-                            val isHttp =
-                                url.startsWith(
-                                    "http://",
-                                    ignoreCase = true
-                                )
+                        if (captured) {
+                            return@setDownloadListener
+                        }
 
-                            val isHttps =
-                                url.startsWith(
-                                    "https://",
-                                    ignoreCase = true
-                                )
+                        // -------------------------------------------------
+                        // VERIFICA URL
+                        // -------------------------------------------------
 
-                            if (!isHttp && !isHttps) {
+                        val isHttp = url.startsWith(
+                            "http://",
+                            ignoreCase = true
+                        )
 
-                                status =
-                                    "Download detectado, " +
-                                            "mas o endereço não é HTTP/HTTPS."
+                        val isHttps = url.startsWith(
+                            "https://",
+                            ignoreCase = true
+                        )
 
-                                return@DownloadListener
-                            }
-
-                            /*
-                             * Descobre o nome.
-                             */
-                            val guessedFileName =
-                                URLUtil.guessFileName(
-                                    url,
-                                    contentDisposition,
-                                    mimeType
-                                )
-
-                            val finalFileName =
-                                guessedFileName
-                                    .trim()
-                                    .ifBlank {
-                                        "download.pkg"
-                                    }
-
-                            /*
-                             * Capturado.
-                             */
-                            captured = true
+                        if (!isHttp && !isHttps) {
 
                             status =
-                                "Link PKG capturado. " +
-                                        "Validando arquivo..."
+                                "Download detectado, " +
+                                        "mas o endereço não é HTTP/HTTPS."
 
-                            onCaptured(
-                                PkgCaptureResult(
-                                    sourceUrl = sourceUrl,
-                                    directUrl = url,
-                                    fileName = finalFileName
-                                )
-                            )
+                            return@setDownloadListener
                         }
+
+                        // -------------------------------------------------
+                        // DESCOBRE O NOME DO ARQUIVO
+                        // -------------------------------------------------
+
+                        val guessedFileName =
+                            URLUtil.guessFileName(
+                                url,
+                                contentDisposition,
+                                mimeType
+                            )
+
+                        val finalFileName =
+                            guessedFileName
+                                .trim()
+                                .ifBlank {
+                                    "download.pkg"
+                                }
+
+                        // -------------------------------------------------
+                        // DOWNLOAD CAPTURADO
+                        // -------------------------------------------------
+
+                        captured = true
+
+                        status =
+                            "Link PKG capturado. " +
+                                    "Validando arquivo..."
+
+                        onCaptured(
+                            PkgCaptureResult(
+                                sourceUrl = sourceUrl,
+                                directUrl = url,
+                                fileName = finalFileName
+                            )
+                        )
                     }
 
-                    /*
-                     * Abre a página inicial.
-                     */
-                    view.loadUrl(sourceUrl)
+                    // -------------------------------------------------
+                    // ABRE URL INICIAL
+                    // -------------------------------------------------
+
+                    loadUrl(sourceUrl)
                 }
             },
 
-            /*
-             * Atualização do AndroidView.
-             *
-             * Não precisamos recriar nem recarregar
-             * a página aqui.
-             */
+            // ---------------------------------------------------------
+            // ATUALIZAÇÃO DO ANDROIDVIEW
+            // ---------------------------------------------------------
+
             update = { view ->
 
                 browser = view
@@ -345,4 +338,4 @@ fun PkgLinkCaptureScreen(
             }
         )
     }
-            }
+}
