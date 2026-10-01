@@ -50,9 +50,7 @@ fun PkgLinkCaptureScreen(
     onCancel: () -> Unit
 ) {
     var currentUrl by remember { mutableStateOf(sourceUrl) }
-    var status by remember {
-        mutableStateOf("Navegue normalmente pelo site. Anúncios redirecionados serão bloqueados automaticamente.")
-    }
+    var status by remember { mutableStateOf("Aguardando início do download do PKG...") }
     var captured by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
     var browser by remember { mutableStateOf<WebView?>(null) }
@@ -73,6 +71,21 @@ fun PkgLinkCaptureScreen(
         }
     }
 
+    fun isDomainPermitted(url: String): Boolean {
+        val host = try {
+            Uri.parse(url).host?.lowercase() ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+        if (host.isBlank()) return true
+
+        val isSource = sourceHost.isNotEmpty() && (host.contains(sourceHost) || sourceHost.contains(host))
+        val isAllowed = allowedDomains.any { domain ->
+            domain.isNotBlank() && host.contains(domain)
+        }
+        return isSource || isAllowed
+    }
+
     fun handleCapturedUrl(url: String, contentDisposition: String? = null, mimeType: String? = null) {
         if (captured) return
 
@@ -80,7 +93,6 @@ fun PkgLinkCaptureScreen(
         val isHttps = url.startsWith("https://", ignoreCase = true)
 
         if (!isHttp && !isHttps) {
-            status = "Download detectado, mas o endereço não é HTTP/HTTPS."
             return
         }
 
@@ -206,24 +218,15 @@ fun PkgLinkCaptureScreen(
                             request: WebResourceRequest
                         ): Boolean {
                             val urlString = request.url.toString()
-                            val destHost = request.url.host?.lowercase() ?: ""
 
-                            // 1. Se for o PKG: captura e encerra o fluxo
                             if (urlString.substringBefore("?").endsWith(".pkg", ignoreCase = true)) {
                                 currentUrl = urlString
                                 handleCapturedUrl(urlString)
                                 return true
                             }
 
-                            // 2. Verifica se o domínio de destino é o original ou pertence à lista de exceções
-                            val isSourceDomain = sourceHost.isNotEmpty() && (destHost.contains(sourceHost) || sourceHost.contains(destHost))
-                            val isAllowedException = allowedDomains.any { exception ->
-                                exception.isNotEmpty() && destHost.contains(exception)
-                            }
-
-                            // Se for domínio estranho (propaganda) fora das exceções, bloqueia e volta
-                            if (!isSourceDomain && !isAllowedException) {
-                                status = "Redirecionamento bloqueado ($destHost). Retornando..."
+                            // Volta imediatamente em silêncio
+                            if (!isDomainPermitted(urlString)) {
                                 if (view.canGoBack()) {
                                     view.goBack()
                                 }
@@ -232,6 +235,18 @@ fun PkgLinkCaptureScreen(
 
                             currentUrl = urlString
                             return false
+                        }
+
+                        override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                            super.onPageStarted(view, url, favicon)
+
+                            // Interrompe carregamentos indesejados via script e volta sem alterar status
+                            if (!url.substringBefore("?").endsWith(".pkg", ignoreCase = true) && !isDomainPermitted(url)) {
+                                view.stopLoading()
+                                if (view.canGoBack()) {
+                                    view.goBack()
+                                }
+                            }
                         }
 
                         override fun onPageFinished(view: WebView, url: String) {
