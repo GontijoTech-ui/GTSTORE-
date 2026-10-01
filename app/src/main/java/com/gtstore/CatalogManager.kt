@@ -1,6 +1,7 @@
 package com.gtstore
 
 import android.content.Context
+import android.util.LruCache
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -20,8 +21,16 @@ class CatalogManager(
         private const val PREFS = "GTSTORE_CATALOG_MANAGER"
         private const val KEY_ITEMS = "items"
         private const val KEY_NEXT_INDEX = "next_index"
-
         private const val ICON_DIR = "catalog_icons"
+
+        // Cache em memória para os itens (evita ler o SharedPreferences repetidamente)
+        @Volatile
+        private var memoryCache: List<CatalogItem>? = null
+
+        // Cache em memória para ícones (máximo 4MB para evitar consumo excessivo de RAM)
+        private val iconCache = object : LruCache<String, ByteArray>(4 * 1024 * 1024) {
+            override fun sizeOf(key: String, value: ByteArray): Int = value.size
+        }
     }
 
     private val prefs =
@@ -126,21 +135,7 @@ class CatalogManager(
         fileName: String
     ): OperationResult {
 
-        val items = loadItems()
-
-        /*
-         * Identidade:
-         *
-         * CONTENT_ID + CATEGORY + VERSION
-         *
-         * Assim:
-         *
-         * Jogo base
-         * Update
-         * DLC
-         *
-         * podem coexistir.
-         */
+        val items = loadItemsInternal()
 
         val existing =
             items.firstOrNull {
@@ -161,21 +156,18 @@ class CatalogManager(
             val updated =
                 existing.copy(
                     url = remote.url,
-
                     sourceUrl =
                         if (sourceUrl.isNotBlank()) {
                             sourceUrl
                         } else {
                             existing.sourceUrl
                         },
-
                     fileName =
                         if (fileName.isNotBlank()) {
                             fileName
                         } else {
                             existing.fileName
                         },
-
                     size = remote.size,
                     digest = remote.digest,
                     digestMatches = remote.digestMatches
@@ -183,10 +175,7 @@ class CatalogManager(
 
             val updatedItems =
                 items.map {
-                    if (
-                        it.catalogIndex ==
-                        existing.catalogIndex
-                    ) {
+                    if (it.catalogIndex == existing.catalogIndex) {
                         updated
                     } else {
                         it
@@ -194,11 +183,7 @@ class CatalogManager(
                 }
 
             saveItems(updatedItems)
-
-            saveIcon(
-                updated.catalogIndex,
-                remote.icon
-            )
+            saveIcon(updated.catalogIndex, remote.icon)
 
             return OperationResult(
                 true,
@@ -207,16 +192,9 @@ class CatalogManager(
             )
         }
 
-        // ====================================================
         // NOVO ITEM
-        // ====================================================
-
-        val newIndex =
-            nextIndex()
-
-        val itemType =
-            classify(remote.category)
-
+        val newIndex = nextIndex()
+        val itemType = classify(remote.category)
         val formattedTitle =
             formatItemTitle(
                 remote.title,
@@ -237,40 +215,30 @@ class CatalogManager(
                 digestMatches = remote.digestMatches,
                 url = remote.url,
                 sourceUrl = sourceUrl,
-                fileName = fileName
+                fileName = fileName,
+                iconFile = iconFileName(newIndex)
             )
 
-        saveIcon(
-            newIndex,
-            remote.icon
-        )
-
-        val finalItem =
-            item.copy(
-                iconFile =
-                    iconFileName(newIndex)
-            )
-
-        saveItems(
-            items + finalItem
-        )
+        saveIcon(newIndex, remote.icon)
+        saveItems(items + item)
 
         return OperationResult(
             true,
-            "PKG reconhecido como [$itemType] e adicionado com o índice ${finalItem.indexString}.",
-            finalItem
+            "PKG reconhecido como [$itemType] e adicionado com o índice ${item.indexString}.",
+            item
         )
     }
 
     // ========================================================
-    // CONSULTAS
+    // CONSULTAS OTIMIZADAS COM MEMORY CACHE
     // ========================================================
 
     fun getAll(): List<CatalogItem> {
-        return loadItems()
-            .sortedBy {
-                it.catalogIndex
+        return memoryCache ?: synchronized(this) {
+            memoryCache ?: loadItemsInternal().sortedBy { it.catalogIndex }.also {
+                memoryCache = it
             }
+        }
     }
 
     fun getByIndex(
@@ -295,7 +263,7 @@ class CatalogManager(
     }
 
     // ========================================================
-    // ÍCONE
+    // ÍCONE OTIMIZADO COM LRUCACHE
     // ========================================================
 
     fun getIcon(
@@ -306,6 +274,9 @@ class CatalogManager(
             return null
         }
 
+        // Tenta pegar primeiro da memória RAM
+        iconCache.get(item.iconFile)?.let { return it }
+
         val file =
             File(
                 context.filesDir,
@@ -313,13 +284,13 @@ class CatalogManager(
             )
 
         return try {
-
             if (file.exists()) {
-                file.readBytes()
+                val bytes = file.readBytes()
+                iconCache.put(item.iconFile, bytes)
+                bytes
             } else {
                 null
             }
-
         } catch (_: Exception) {
             null
         }
@@ -335,13 +306,10 @@ class CatalogManager(
         version: String
     ): String {
 
-        val cleanTitle =
-            originalTitle.trim()
+        val cleanTitle = originalTitle.trim()
 
         return when (type) {
-
             PkgCatalogItem.TYPE_UPDATE -> {
-
                 val v =
                     if (version.isNotBlank()) {
                         " v$version"
@@ -350,14 +318,8 @@ class CatalogManager(
                     }
 
                 if (
-                    cleanTitle.contains(
-                        "update",
-                        ignoreCase = true
-                    ) ||
-                    cleanTitle.contains(
-                        "patch",
-                        ignoreCase = true
-                    )
+                    cleanTitle.contains("update", ignoreCase = true) ||
+                    cleanTitle.contains("patch", ignoreCase = true)
                 ) {
                     cleanTitle
                 } else {
@@ -366,13 +328,7 @@ class CatalogManager(
             }
 
             PkgCatalogItem.TYPE_DLC -> {
-
-                if (
-                    cleanTitle.contains(
-                        "dlc",
-                        ignoreCase = true
-                    )
-                ) {
+                if (cleanTitle.contains("dlc", ignoreCase = true)) {
                     cleanTitle
                 } else {
                     "$cleanTitle [DLC]"
@@ -390,7 +346,6 @@ class CatalogManager(
     private fun normalizeVersion(
         v: String?
     ): String {
-
         return v
             ?.trim()
             ?.removePrefix("0")
@@ -401,26 +356,11 @@ class CatalogManager(
     private fun classify(
         category: String
     ): String {
-
-        return when (
-            category
-                .trim()
-                .lowercase()
-        ) {
-
-            "gd",
-            "gda" ->
-                PkgCatalogItem.TYPE_GAME
-
-            "gp",
-            "gpe" ->
-                PkgCatalogItem.TYPE_UPDATE
-
-            "ac" ->
-                PkgCatalogItem.TYPE_DLC
-
-            else ->
-                PkgCatalogItem.TYPE_OTHER
+        return when (category.trim().lowercase()) {
+            "gd", "gda" -> PkgCatalogItem.TYPE_GAME
+            "gp", "gpe" -> PkgCatalogItem.TYPE_UPDATE
+            "ac" -> PkgCatalogItem.TYPE_DLC
+            else -> PkgCatalogItem.TYPE_OTHER
         }
     }
 
@@ -429,201 +369,79 @@ class CatalogManager(
     // ========================================================
 
     private fun nextIndex(): Int {
-
-        val current =
-            prefs.getInt(
-                KEY_NEXT_INDEX,
-                1
-            )
-
-        prefs.edit()
-            .putInt(
-                KEY_NEXT_INDEX,
-                current + 1
-            )
-            .apply()
-
+        val current = prefs.getInt(KEY_NEXT_INDEX, 1)
+        prefs.edit().putInt(KEY_NEXT_INDEX, current + 1).apply()
         return current
     }
 
     // ========================================================
-    // CARREGAMENTO
+    // CARREGAMENTO INTERNO (DISCO)
     // ========================================================
 
-    private fun loadItems(): List<CatalogItem> {
-
-        val raw =
-            prefs.getString(
-                KEY_ITEMS,
-                null
-            )
-                ?: return emptyList()
+    private fun loadItemsInternal(): List<CatalogItem> {
+        val raw = prefs.getString(KEY_ITEMS, null) ?: return emptyList()
 
         return try {
-
-            val array =
-                JSONArray(raw)
-
+            val array = JSONArray(raw)
             buildList {
-
                 for (i in 0 until array.length()) {
-
-                    val item =
-                        array.getJSONObject(i)
-
+                    val item = array.getJSONObject(i)
                     add(
                         CatalogItem(
-                            catalogIndex =
-                                item.getInt(
-                                    "catalogIndex"
-                                ),
-
-                            title =
-                                item.optString(
-                                    "title"
-                                ),
-
-                            contentId =
-                                item.optString(
-                                    "contentId"
-                                ),
-
-                            category =
-                                item.optString(
-                                    "category"
-                                ),
-
-                            type =
-                                item.optString(
-                                    "type"
-                                ),
-
-                            version =
-                                item.optString(
-                                    "version"
-                                ),
-
-                            size =
-                                item.optLong(
-                                    "size"
-                                ),
-
-                            digest =
-                                item.optString(
-                                    "digest"
-                                ),
-
-                            digestMatches =
-                                item.optBoolean(
-                                    "digestMatches"
-                                ),
-
-                            url =
-                                item.optString(
-                                    "url"
-                                ),
-
-                            // Compatibilidade com registros antigos.
-                            sourceUrl =
-                                item.optString(
-                                    "sourceUrl"
-                                ),
-
-                            fileName =
-                                item.optString(
-                                    "fileName"
-                                ),
-
-                            iconFile =
-                                item.optString(
-                                    "iconFile"
-                                )
+                            catalogIndex = item.getInt("catalogIndex"),
+                            title = item.optString("title"),
+                            contentId = item.optString("contentId"),
+                            category = item.optString("category"),
+                            type = item.optString("type"),
+                            version = item.optString("version"),
+                            size = item.optLong("size"),
+                            digest = item.optString("digest"),
+                            digestMatches = item.optBoolean("digestMatches"),
+                            url = item.optString("url"),
+                            sourceUrl = item.optString("sourceUrl"),
+                            fileName = item.optString("fileName"),
+                            iconFile = item.optString("iconFile")
                         )
                     )
                 }
             }
-
         } catch (_: Exception) {
             emptyList()
         }
     }
 
     // ========================================================
-    // SALVAMENTO
+    // SALVAMENTO (DISCO + ATUALIZAÇÃO DA CACHE)
     // ========================================================
 
     private fun saveItems(
         items: List<CatalogItem>
     ) {
-
-        val array =
-            JSONArray()
+        val array = JSONArray()
 
         items.forEach { item ->
-
             array.put(
                 JSONObject()
-                    .put(
-                        "catalogIndex",
-                        item.catalogIndex
-                    )
-                    .put(
-                        "title",
-                        item.title
-                    )
-                    .put(
-                        "contentId",
-                        item.contentId
-                    )
-                    .put(
-                        "category",
-                        item.category
-                    )
-                    .put(
-                        "type",
-                        item.type
-                    )
-                    .put(
-                        "version",
-                        item.version
-                    )
-                    .put(
-                        "size",
-                        item.size
-                    )
-                    .put(
-                        "digest",
-                        item.digest
-                    )
-                    .put(
-                        "digestMatches",
-                        item.digestMatches
-                    )
-                    .put(
-                        "url",
-                        item.url
-                    )
-                    .put(
-                        "sourceUrl",
-                        item.sourceUrl
-                    )
-                    .put(
-                        "fileName",
-                        item.fileName
-                    )
-                    .put(
-                        "iconFile",
-                        item.iconFile
-                    )
+                    .put("catalogIndex", item.catalogIndex)
+                    .put("title", item.title)
+                    .put("contentId", item.contentId)
+                    .put("category", item.category)
+                    .put("type", item.type)
+                    .put("version", item.version)
+                    .put("size", item.size)
+                    .put("digest", item.digest)
+                    .put("digestMatches", item.digestMatches)
+                    .put("url", item.url)
+                    .put("sourceUrl", item.sourceUrl)
+                    .put("fileName", item.fileName)
+                    .put("iconFile", item.iconFile)
             )
         }
 
-        prefs.edit()
-            .putString(
-                KEY_ITEMS,
-                array.toString()
-            )
-            .apply()
+        prefs.edit().putString(KEY_ITEMS, array.toString()).apply()
+
+        // Atualiza a cache em memória imediatamente
+        memoryCache = items.sortedBy { it.catalogIndex }
     }
 
     // ========================================================
@@ -634,31 +452,18 @@ class CatalogManager(
         catalogIndex: Int,
         icon: ByteArray?
     ) {
+        if (icon == null || icon.isEmpty()) return
 
-        if (
-            icon == null ||
-            icon.isEmpty()
-        ) {
-            return
-        }
+        val fileName = iconFileName(catalogIndex)
+        // Mantém também na cache de RAM
+        iconCache.put(fileName, icon)
 
         try {
-
-            val directory =
-                File(
-                    context.filesDir,
-                    ICON_DIR
-                )
-
+            val directory = File(context.filesDir, ICON_DIR)
             if (!directory.exists()) {
                 directory.mkdirs()
             }
-
-            File(
-                directory,
-                iconFileName(catalogIndex)
-            ).writeBytes(icon)
-
+            File(directory, fileName).writeBytes(icon)
         } catch (_: Exception) {
         }
     }
@@ -666,12 +471,7 @@ class CatalogManager(
     private fun iconFileName(
         catalogIndex: Int
     ): String {
-
-        return "icon_${
-            catalogIndex
-                .toString()
-                .padStart(6, '0')
-        }.png"
+        return "icon_${catalogIndex.toString().padStart(6, '0')}.png"
     }
 
     // ========================================================
@@ -681,22 +481,10 @@ class CatalogManager(
     private fun isValidUrl(
         rawUrl: String
     ): Boolean {
-
         return try {
-
-            val uri =
-                URI(rawUrl)
-
-            val scheme =
-                uri.scheme
-                    ?.lowercase()
-
-            (
-                scheme == "http" ||
-                scheme == "https"
-            ) &&
-            !uri.host.isNullOrBlank()
-
+            val uri = URI(rawUrl)
+            val scheme = uri.scheme?.lowercase()
+            (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
         } catch (_: Exception) {
             false
         }
