@@ -77,47 +77,56 @@ fun PkgLinkCaptureScreen(
     ) {
 
         // ---------------------------------------------------------
-        // BOTÕES
-        // ---------------------------------------------------------
+// BOTÕES
+// ---------------------------------------------------------
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .height(56.dp)
+        .padding(horizontal = 4.dp),
+    horizontalArrangement = Arrangement.spacedBy(10.dp)
+) {
 
-            Button(
-                onClick = {
-                    val view = browser
+    Button(
+        onClick = {
+            val view = browser
 
-                    if (view != null && view.canGoBack()) {
-                        view.goBack()
-                    }
-                },
-                enabled = canGoBack,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(46.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF222222),
-                    disabledContainerColor = Color(0xFF111111),
-                    disabledContentColor = Color(0xFF555555)
-                )
-            ) {
-                Text("VOLTAR PÁGINA")
+            if (view != null && view.canGoBack()) {
+                view.goBack()
             }
+        },
+        enabled = canGoBack,
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxSize(),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF303030),
+            disabledContainerColor = Color(0xFF181818),
+            contentColor = Color.White,
+            disabledContentColor = Color(0xFF666666)
+        )
+    ) {
+        Text(
+            text = "VOLTAR PÁGINA"
+        )
+    }
 
-            Button(
-                onClick = onCancel,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(46.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF222222)
-                )
-            ) {
-                Text("CANCELAR")
-            }
-        }
+    Button(
+        onClick = onCancel,
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxSize(),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF303030),
+            contentColor = Color.White
+        )
+    ) {
+        Text(
+            text = "CANCELAR"
+        )
+    }
+}
 
         // ---------------------------------------------------------
         // STATUS
