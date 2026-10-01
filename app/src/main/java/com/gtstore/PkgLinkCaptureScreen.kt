@@ -49,8 +49,9 @@ fun PkgLinkCaptureScreen(
     onCaptured: (PkgCaptureResult) -> Unit,
     onCancel: () -> Unit
 ) {
-    var currentUrl by remember { mutableStateOf(sourceUrl) }
-    var lastValidPageUrl by remember { mutableStateOf(sourceUrl) }
+    var currentDisplayUrl by remember { mutableStateOf(sourceUrl) }
+    // Guarda a página atual confirmada (onde você realmente está e clicou)
+    var currentPageUrl by remember { mutableStateOf(sourceUrl) }
     var status by remember { mutableStateOf("Aguardando início do download do PKG...") }
     var captured by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
@@ -87,38 +88,13 @@ fun PkgLinkCaptureScreen(
         return isSource || isAllowed
     }
 
-    // Procura no histórico da WebView a última página válida e retorna exatamente para ela
-    fun returnToLastValidPage(view: WebView) {
-        val history = view.copyBackForwardList()
-        val currentIndex = history.currentIndex
-
-        for (i in currentIndex - 1 downTo 0) {
-            val item = history.getItemAtIndex(i)
-            val itemUrl = item?.url ?: ""
-            if (itemUrl.isNotBlank() && isDomainPermitted(itemUrl) && !itemUrl.substringBefore("?").endsWith(".pkg", ignoreCase = true)) {
-                val stepsBack = i - currentIndex
-                view.goBackOrForward(stepsBack)
-                return
-            }
-        }
-
-        // Se não encontrar no histórico, volta 1 passo normal ou carrega a última válida salva
-        if (view.canGoBack()) {
-            view.goBack()
-        } else if (lastValidPageUrl.isNotBlank() && lastValidPageUrl != view.url) {
-            view.loadUrl(lastValidPageUrl)
-        }
-    }
-
     fun handleCapturedUrl(url: String, contentDisposition: String? = null, mimeType: String? = null) {
         if (captured) return
 
         val isHttp = url.startsWith("http://", ignoreCase = true)
         val isHttps = url.startsWith("https://", ignoreCase = true)
 
-        if (!isHttp && !isHttps) {
-            return
-        }
+        if (!isHttp && !isHttps) return
 
         val guessedFileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
         val finalFileName = guessedFileName.trim().ifBlank { "download.pkg" }
@@ -126,9 +102,10 @@ fun PkgLinkCaptureScreen(
         captured = true
         status = "Link PKG capturado. Validando arquivo..."
 
+        // Envia a página exata onde você deu o último clique
         onCaptured(
             PkgCaptureResult(
-                sourceUrl = lastValidPageUrl.ifBlank { sourceUrl },
+                sourceUrl = currentPageUrl.ifBlank { sourceUrl },
                 directUrl = url,
                 fileName = finalFileName
             )
@@ -151,19 +128,12 @@ fun PkgLinkCaptureScreen(
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(
-                    text = "CAPTURA DE LINK",
-                    color = TextWhite
-                )
+                Text(text = "CAPTURA DE LINK", color = TextWhite)
+                Text(text = status, color = if (captured) GreenLed else TextMuted)
 
-                Text(
-                    text = status,
-                    color = if (captured) GreenLed else TextMuted
-                )
-
-                if (currentUrl.isNotBlank()) {
+                if (currentDisplayUrl.isNotBlank()) {
                     Text(
-                        text = currentUrl,
+                        text = currentDisplayUrl,
                         color = Color(0xFF64B5F6),
                         maxLines = 1
                     )
@@ -181,7 +151,7 @@ fun PkgLinkCaptureScreen(
                 onClick = {
                     val view = browser
                     if (view != null && view.canGoBack()) {
-                        returnToLastValidPage(view)
+                        view.goBack()
                     }
                 },
                 enabled = canGoBack,
@@ -243,38 +213,44 @@ fun PkgLinkCaptureScreen(
                         ): Boolean {
                             val urlString = request.url.toString()
 
+                            // 1. Link PKG direto detectado
                             if (urlString.substringBefore("?").endsWith(".pkg", ignoreCase = true)) {
-                                currentUrl = urlString
+                                currentDisplayUrl = urlString
                                 handleCapturedUrl(urlString)
                                 return true
                             }
 
-                            // Se tentar carregar domínio inválido, retorna diretamente à última página segura
+                            // 2. Se for anúncio/domínio não autorizado ao clicar:
+                            // Apenas retorna 'true' para NÃO carregar a página estranha.
+                            // Dessa forma você continua exatamente onde clicou, sem dar passos em falso para trás!
                             if (!isDomainPermitted(urlString)) {
-                                returnToLastValidPage(view)
                                 return true
                             }
 
-                            currentUrl = urlString
+                            currentDisplayUrl = urlString
                             return false
                         }
 
                         override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                             super.onPageStarted(view, url, favicon)
 
+                            // 3. Se um script tentar empurrar um redirecionamento forçado para anúncio:
                             if (!url.substringBefore("?").endsWith(".pkg", ignoreCase = true) && !isDomainPermitted(url)) {
                                 view.stopLoading()
-                                returnToLastValidPage(view)
+                                // Se a URL carregada foi alterada, restaura a última página válida
+                                if (currentPageUrl.isNotBlank() && view.url != currentPageUrl) {
+                                    view.loadUrl(currentPageUrl)
+                                }
                             }
                         }
 
                         override fun onPageFinished(view: WebView, url: String) {
-                            currentUrl = url
+                            currentDisplayUrl = url
                             canGoBack = view.canGoBack()
 
-                            // Armazena a última página legítima carregada
+                            // Só confirma que mudamos de página se a nova página for autorizada e válida
                             if (!url.substringBefore("?").endsWith(".pkg", ignoreCase = true) && isDomainPermitted(url)) {
-                                lastValidPageUrl = url
+                                currentPageUrl = url
                             }
 
                             if (!captured) {
