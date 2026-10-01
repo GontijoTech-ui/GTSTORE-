@@ -68,12 +68,9 @@ fun PkgLinkCaptureScreen(
     }
 
     /*
-     * Referência do WebView.
-     *
-     * Ela fica no escopo da tela inteira para que
-     * o botão VOLTAR PÁGINA consiga acessar o WebView.
+     * A referência do WebView fica no estado da tela.
      */
-    var webView by remember {
+    var browser by remember {
         mutableStateOf<WebView?>(null)
     }
 
@@ -93,17 +90,12 @@ fun PkgLinkCaptureScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
 
-            /*
-             * VOLTAR PÁGINA
-             *
-             * Volta somente dentro do histórico do WebView.
-             */
             Button(
                 onClick = {
-                    webView?.let { view ->
-                        if (view.canGoBack()) {
-                            view.goBack()
-                        }
+                    val view = browser
+
+                    if (view != null && view.canGoBack()) {
+                        view.goBack()
                     }
                 },
                 enabled = canGoBack,
@@ -119,11 +111,6 @@ fun PkgLinkCaptureScreen(
                 Text("VOLTAR PÁGINA")
             }
 
-            /*
-             * CANCELAR
-             *
-             * Sai completamente da captura.
-             */
             Button(
                 onClick = onCancel,
                 modifier = Modifier
@@ -138,7 +125,7 @@ fun PkgLinkCaptureScreen(
         }
 
         /*
-         * INFORMAÇÕES DA CAPTURA
+         * STATUS
          */
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -193,34 +180,25 @@ fun PkgLinkCaptureScreen(
 
             factory = { context ->
 
-                WebView(context).apply {
+                WebView(context).also { view ->
 
                     /*
-                     * Guarda a referência do WebView.
+                     * Guarda a referência para os botões.
                      */
-                    webView = this
+                    browser = view
 
                     /*
-                     * CONFIGURAÇÕES DO NAVEGADOR
+                     * CONFIGURAÇÕES
                      */
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.databaseEnabled = true
-                    settings.loadsImagesAutomatically = true
-                    settings.javaScriptCanOpenWindowsAutomatically = true
-                    settings.setSupportMultipleWindows(false)
+                    view.settings.javaScriptEnabled = true
+                    view.settings.domStorageEnabled = true
+                    view.settings.databaseEnabled = true
+                    view.settings.loadsImagesAutomatically = true
+                    view.settings.javaScriptCanOpenWindowsAutomatically = true
+                    view.settings.setSupportMultipleWindows(false)
 
                     /*
-                     * User-Agent padrão.
-                     */
-                    settings.userAgentString =
-                        settings.userAgentString
-
-                    /*
-                     * COOKIES
-                     *
-                     * Mantém a sessão do site durante
-                     * a navegação manual.
+                     * Cookies.
                      */
                     CookieManager
                         .getInstance()
@@ -229,19 +207,19 @@ fun PkgLinkCaptureScreen(
                     CookieManager
                         .getInstance()
                         .setAcceptThirdPartyCookies(
-                            this,
+                            view,
                             true
                         )
 
                     /*
-                     * Chrome client.
+                     * Chrome.
                      */
-                    webChromeClient = WebChromeClient()
+                    view.webChromeClient = WebChromeClient()
 
                     /*
-                     * CONTROLE DE NAVEGAÇÃO
+                     * Navegação.
                      */
-                    webViewClient = object : WebViewClient() {
+                    view.webViewClient = object : WebViewClient() {
 
                         override fun shouldOverrideUrlLoading(
                             view: WebView,
@@ -261,10 +239,6 @@ fun PkgLinkCaptureScreen(
 
                             currentUrl = url
 
-                            /*
-                             * Atualiza o estado do botão
-                             * VOLTAR PÁGINA.
-                             */
                             canGoBack = view.canGoBack()
 
                             if (!captured) {
@@ -277,37 +251,35 @@ fun PkgLinkCaptureScreen(
                     }
 
                     /*
-                     * CAPTURA DO DOWNLOAD
+                     * DOWNLOAD
                      */
-                    setDownloadListener(
-                        DownloadListener {
-                                url,
-                                userAgent,
-                                contentDisposition,
-                                mimeType,
-                                contentLength ->
+                    view.setDownloadListener(
+                        DownloadListener { url,
+                                            userAgent,
+                                            contentDisposition,
+                                            mimeType,
+                                            contentLength ->
 
-                            /*
-                             * Ignora novos downloads depois
-                             * que um link já foi capturado.
-                             */
                             if (captured) {
                                 return@DownloadListener
                             }
 
                             /*
-                             * Aceita somente HTTP/HTTPS.
+                             * Aceita apenas HTTP/HTTPS.
                              */
-                            if (
-                                !url.startsWith(
+                            val isHttp =
+                                url.startsWith(
                                     "http://",
                                     ignoreCase = true
-                                ) &&
-                                !url.startsWith(
+                                )
+
+                            val isHttps =
+                                url.startsWith(
                                     "https://",
                                     ignoreCase = true
                                 )
-                            ) {
+
+                            if (!isHttp && !isHttps) {
 
                                 status =
                                     "Download detectado, " +
@@ -317,7 +289,7 @@ fun PkgLinkCaptureScreen(
                             }
 
                             /*
-                             * Descobre o nome do arquivo.
+                             * Descobre o nome.
                              */
                             val guessedFileName =
                                 URLUtil.guessFileName(
@@ -334,7 +306,7 @@ fun PkgLinkCaptureScreen(
                                     }
 
                             /*
-                             * Marca como capturado.
+                             * Capturado.
                              */
                             captured = true
 
@@ -342,9 +314,6 @@ fun PkgLinkCaptureScreen(
                                 "Link PKG capturado. " +
                                         "Validando arquivo..."
 
-                            /*
-                             * Envia o resultado para o Catalog Manager.
-                             */
                             onCaptured(
                                 PkgCaptureResult(
                                     sourceUrl = sourceUrl,
@@ -356,17 +325,22 @@ fun PkgLinkCaptureScreen(
                     }
 
                     /*
-                     * ABRE A URL INICIAL
+                     * Abre a página inicial.
                      */
-                    loadUrl(sourceUrl)
+                    view.loadUrl(sourceUrl)
                 }
             },
 
             /*
-             * Mantém a referência atualizada.
+             * Atualização do AndroidView.
+             *
+             * Não precisamos recriar nem recarregar
+             * a página aqui.
              */
             update = { view ->
-                webView = view
+
+                browser = view
+
                 canGoBack = view.canGoBack()
             }
         )
