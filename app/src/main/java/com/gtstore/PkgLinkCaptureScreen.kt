@@ -1,6 +1,7 @@
 package com.gtstore
 
 import android.annotation.SuppressLint
+import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
@@ -44,16 +45,25 @@ data class PkgCaptureResult(
 @Composable
 fun PkgLinkCaptureScreen(
     sourceUrl: String,
+    allowedDomains: List<String> = emptyList(),
     onCaptured: (PkgCaptureResult) -> Unit,
     onCancel: () -> Unit
 ) {
     var currentUrl by remember { mutableStateOf(sourceUrl) }
     var status by remember {
-        mutableStateOf("Navegue normalmente pelo site. Resolva o CAPTCHA manualmente e inicie o download do PKG.")
+        mutableStateOf("Navegue normalmente pelo site. Anúncios redirecionados serão bloqueados automaticamente.")
     }
     var captured by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
     var browser by remember { mutableStateOf<WebView?>(null) }
+
+    val sourceHost = remember(sourceUrl) {
+        try {
+            Uri.parse(sourceUrl).host?.lowercase() ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+    }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -96,10 +106,6 @@ fun PkgLinkCaptureScreen(
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-
-        // ---------------------------------------------------------
-        // 1. TOPO: CARD DE INSTRUÇÕES / STATUS
-        // ---------------------------------------------------------
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = CardBlack),
@@ -129,9 +135,6 @@ fun PkgLinkCaptureScreen(
             }
         }
 
-        // ---------------------------------------------------------
-        // 2. MEIO: BOTÕES DE CONTROLE
-        // ---------------------------------------------------------
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -175,9 +178,6 @@ fun PkgLinkCaptureScreen(
 
         Spacer(modifier = Modifier.height(2.dp))
 
-        // ---------------------------------------------------------
-        // 3. BASE: WEBVIEW (OCUPA TODO O RESTANTE DA ÁREA)
-        // ---------------------------------------------------------
         AndroidView(
             modifier = Modifier
                 .fillMaxWidth()
@@ -190,7 +190,7 @@ fun PkgLinkCaptureScreen(
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
                     settings.loadsImagesAutomatically = true
-                    settings.javaScriptCanOpenWindowsAutomatically = true
+                    settings.javaScriptCanOpenWindowsAutomatically = false
                     settings.setSupportMultipleWindows(false)
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
@@ -206,13 +206,31 @@ fun PkgLinkCaptureScreen(
                             request: WebResourceRequest
                         ): Boolean {
                             val urlString = request.url.toString()
-                            currentUrl = urlString
+                            val destHost = request.url.host?.lowercase() ?: ""
 
+                            // 1. Se for o PKG: captura e encerra o fluxo
                             if (urlString.substringBefore("?").endsWith(".pkg", ignoreCase = true)) {
+                                currentUrl = urlString
                                 handleCapturedUrl(urlString)
                                 return true
                             }
 
+                            // 2. Verifica se o domínio de destino é o original ou pertence à lista de exceções
+                            val isSourceDomain = sourceHost.isNotEmpty() && (destHost.contains(sourceHost) || sourceHost.contains(destHost))
+                            val isAllowedException = allowedDomains.any { exception ->
+                                exception.isNotEmpty() && destHost.contains(exception)
+                            }
+
+                            // Se for domínio estranho (propaganda) fora das exceções, bloqueia e volta
+                            if (!isSourceDomain && !isAllowedException) {
+                                status = "Redirecionamento bloqueado ($destHost). Retornando..."
+                                if (view.canGoBack()) {
+                                    view.goBack()
+                                }
+                                return true
+                            }
+
+                            currentUrl = urlString
                             return false
                         }
 
