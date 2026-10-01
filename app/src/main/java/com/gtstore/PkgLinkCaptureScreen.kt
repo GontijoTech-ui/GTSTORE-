@@ -1,14 +1,13 @@
 package com.gtstore
 
 import android.annotation.SuppressLint
-import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
+import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.webkit.URLUtil
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -33,13 +32,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import java.net.URLDecoder
+
 
 data class PkgCaptureResult(
     val sourceUrl: String,
     val directUrl: String,
     val fileName: String
 )
+
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -54,7 +54,8 @@ fun PkgLinkCaptureScreen(
 
     var status by remember {
         mutableStateOf(
-            "Navegue normalmente pelo site. Resolva o CAPTCHA manualmente e inicie o download do PKG."
+            "Navegue normalmente pelo site. " +
+                    "Resolva o CAPTCHA manualmente e inicie o download do PKG."
         )
     }
 
@@ -62,12 +63,8 @@ fun PkgLinkCaptureScreen(
         mutableStateOf(false)
     }
 
-    /*
-     * Mantemos uma referência ao WebView para que o botão VOLTAR
-     * possa controlar o histórico da navegação.
-     */
-    var webViewReference by remember {
-        mutableStateOf<WebView?>(null)
+    var canGoBack by remember {
+        mutableStateOf(false)
     }
 
     Column(
@@ -79,33 +76,50 @@ fun PkgLinkCaptureScreen(
     ) {
 
         /*
-         * BARRA DE CONTROLE
+         * BOTÕES DO WEBVIEW
          */
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
 
+            /*
+             * VOLTAR PÁGINA
+             *
+             * A referência ao WebView será mantida através
+             * de uma variável local.
+             */
+            var webView by remember {
+                mutableStateOf<WebView?>(null)
+            }
+
             Button(
                 onClick = {
-                    val webView = webViewReference
-
-                    if (webView != null && webView.canGoBack()) {
-                        webView.goBack()
-                    } else {
-                        onCancel()
+                    webView?.let { view ->
+                        if (view.canGoBack()) {
+                            view.goBack()
+                        }
                     }
                 },
+                enabled = canGoBack,
                 modifier = Modifier
                     .weight(1f)
                     .height(46.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF222222)
+                    containerColor = Color(0xFF222222),
+                    disabledContainerColor = Color(0xFF111111),
+                    disabledContentColor = Color(0xFF555555)
                 )
             ) {
-                Text("VOLTAR")
+                Text("VOLTAR PÁGINA")
             }
 
+            /*
+             * CANCELAR
+             *
+             * Sai completamente do navegador e volta
+             * para o Catalog Manager.
+             */
             Button(
                 onClick = onCancel,
                 modifier = Modifier
@@ -120,7 +134,7 @@ fun PkgLinkCaptureScreen(
         }
 
         /*
-         * STATUS DA CAPTURA
+         * INFORMAÇÕES
          */
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -138,12 +152,12 @@ fun PkgLinkCaptureScreen(
             ) {
 
                 Text(
-                    "CAPTURA DE LINK",
+                    text = "CAPTURA DE LINK",
                     color = TextWhite
                 )
 
                 Text(
-                    status,
+                    text = status,
                     color = if (captured) {
                         GreenLed
                     } else {
@@ -153,9 +167,9 @@ fun PkgLinkCaptureScreen(
 
                 if (currentUrl.isNotBlank()) {
                     Text(
-                        currentUrl,
+                        text = currentUrl,
                         color = Color(0xFF64B5F6),
-                        maxLines = 3
+                        maxLines = 2
                     )
                 }
             }
@@ -177,11 +191,12 @@ fun PkgLinkCaptureScreen(
 
                 WebView(context).apply {
 
-                    webViewReference = this
-
                     /*
-                     * CONFIGURAÇÕES DO WEBVIEW
+                     * Guardamos a referência para o botão
+                     * VOLTAR PÁGINA.
                      */
+                    webView = this
+
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
@@ -190,16 +205,14 @@ fun PkgLinkCaptureScreen(
                     settings.setSupportMultipleWindows(false)
 
                     /*
-                     * Mantém o User-Agent normal do WebView.
+                     * Mantém o User-Agent padrão do WebView.
                      */
                     settings.userAgentString =
                         settings.userAgentString
 
                     /*
-                     * COOKIES
-                     *
-                     * Importante para sites que utilizam sessão,
-                     * CAPTCHA ou autenticação durante a navegação.
+                     * Cookies são importantes para manter
+                     * a sessão do site durante a navegação.
                      */
                     CookieManager
                         .getInstance()
@@ -212,9 +225,6 @@ fun PkgLinkCaptureScreen(
                             true
                         )
 
-                    /*
-                     * Permite recursos adicionais do site.
-                     */
                     webChromeClient = WebChromeClient()
 
                     /*
@@ -222,258 +232,17 @@ fun PkgLinkCaptureScreen(
                      */
                     webViewClient = object : WebViewClient() {
 
-                        /*
-                         * Intercepta URLs antes que o WebView tente
-                         * carregá-las.
-                         */
                         override fun shouldOverrideUrlLoading(
                             view: WebView,
                             request: WebResourceRequest
                         ): Boolean {
 
-                            val url =
+                            currentUrl =
                                 request.url.toString()
 
-                            currentUrl = url
-
-                            /*
-                             * =================================================
-                             * TRATAMENTO DO SCHEME "shopeebr://"
-                             * =================================================
-                             *
-                             * Alguns sites da Shopee não apontam diretamente
-                             * para HTTPS.
-                             *
-                             * Eles fazem algo como:
-                             *
-                             * shopeebr://reactPath?
-                             * navigate_url=https%3A%2F%2Fshopee.com.br...
-                             *
-                             * O WebView não conhece "shopeebr://", causando:
-                             *
-                             * net::ERR_UNKNOWN_URL_SCHEME
-                             *
-                             * Aqui extraímos "navigate_url", decodificamos
-                             * e carregamos a URL HTTPS no próprio WebView.
-                             */
-                            if (
-                                url.startsWith(
-                                    "shopeebr://",
-                                    ignoreCase = true
-                                )
-                            ) {
-
-                                try {
-
-                                    val uri =
-                                        Uri.parse(url)
-
-                                    val navigateUrl =
-                                        uri.getQueryParameter(
-                                            "navigate_url"
-                                        )
-
-                                    if (
-                                        !navigateUrl.isNullOrBlank()
-                                    ) {
-
-                                        /*
-                                         * O Android normalmente já entrega
-                                         * o parâmetro decodificado através
-                                         * de getQueryParameter().
-                                         *
-                                         * Caso ainda esteja codificado,
-                                         * fazemos uma segunda tentativa.
-                                         */
-                                        val decodedUrl =
-                                            try {
-                                                URLDecoder.decode(
-                                                    navigateUrl,
-                                                    "UTF-8"
-                                                )
-                                            } catch (
-                                                _: Exception
-                                            ) {
-                                                navigateUrl
-                                            }
-
-                                        if (
-                                            decodedUrl.startsWith(
-                                                "http://",
-                                                ignoreCase = true
-                                            ) ||
-                                            decodedUrl.startsWith(
-                                                "https://",
-                                                ignoreCase = true
-                                            )
-                                        ) {
-
-                                            currentUrl =
-                                                decodedUrl
-
-                                            status =
-                                                "Continuando a navegação..."
-
-                                            view.loadUrl(
-                                                decodedUrl
-                                            )
-
-                                            return true
-                                        }
-                                    }
-
-                                } catch (
-                                    _: Exception
-                                ) {
-                                    /*
-                                     * Se não for possível interpretar
-                                     * o endereço, simplesmente impedimos
-                                     * que o WebView mostre
-                                     * ERR_UNKNOWN_URL_SCHEME.
-                                     */
-                                }
-
-                                status =
-                                    "Redirecionamento do site não pôde ser processado."
-
-                                return true
-                            }
-
-                            /*
-                             * Outros schemes que não sejam HTTP/HTTPS
-                             * também não devem gerar uma página de erro
-                             * dentro do WebView.
-                             */
-                            if (
-                                !url.startsWith(
-                                    "http://",
-                                    ignoreCase = true
-                                ) &&
-                                !url.startsWith(
-                                    "https://",
-                                    ignoreCase = true
-                                )
-                            ) {
-
-                                status =
-                                    "O site tentou abrir um endereço externo."
-
-                                return true
-                            }
-
-                            /*
-                             * HTTP/HTTPS normal.
-                             */
                             return false
                         }
 
-                        /*
-                         * Compatibilidade com navegação iniciada por
-                         * métodos antigos do WebView.
-                         */
-                        override fun shouldOverrideUrlLoading(
-                            view: WebView,
-                            url: String
-                        ): Boolean {
-
-                            currentUrl = url
-
-                            /*
-                             * Tratamento do shopeebr:// também nesta
-                             * sobrecarga.
-                             */
-                            if (
-                                url.startsWith(
-                                    "shopeebr://",
-                                    ignoreCase = true
-                                )
-                            ) {
-
-                                try {
-
-                                    val uri =
-                                        Uri.parse(url)
-
-                                    val navigateUrl =
-                                        uri.getQueryParameter(
-                                            "navigate_url"
-                                        )
-
-                                    if (
-                                        !navigateUrl.isNullOrBlank()
-                                    ) {
-
-                                        val decodedUrl =
-                                            try {
-                                                URLDecoder.decode(
-                                                    navigateUrl,
-                                                    "UTF-8"
-                                                )
-                                            } catch (
-                                                _: Exception
-                                            ) {
-                                                navigateUrl
-                                            }
-
-                                        if (
-                                            decodedUrl.startsWith(
-                                                "http://",
-                                                ignoreCase = true
-                                            ) ||
-                                            decodedUrl.startsWith(
-                                                "https://",
-                                                ignoreCase = true
-                                            )
-                                        ) {
-
-                                            currentUrl =
-                                                decodedUrl
-
-                                            status =
-                                                "Continuando a navegação..."
-
-                                            view.loadUrl(
-                                                decodedUrl
-                                            )
-
-                                            return true
-                                        }
-                                    }
-
-                                } catch (
-                                    _: Exception
-                                ) {
-                                }
-
-                                status =
-                                    "Redirecionamento do site não pôde ser processado."
-
-                                return true
-                            }
-
-                            if (
-                                !url.startsWith(
-                                    "http://",
-                                    ignoreCase = true
-                                ) &&
-                                !url.startsWith(
-                                    "https://",
-                                    ignoreCase = true
-                                )
-                            ) {
-
-                                status =
-                                    "O site tentou abrir um endereço externo."
-
-                                return true
-                            }
-
-                            return false
-                        }
-
-                        /*
-                         * Página terminou de carregar.
-                         */
                         override fun onPageFinished(
                             view: WebView,
                             url: String
@@ -481,23 +250,24 @@ fun PkgLinkCaptureScreen(
 
                             currentUrl = url
 
+                            /*
+                             * Atualiza o estado do botão
+                             * VOLTAR PÁGINA.
+                             */
+                            canGoBack = view.canGoBack()
+
                             if (!captured) {
 
                                 status =
-                                    "Página carregada. Continue a navegação até iniciar o download do PKG."
+                                    "Página carregada. " +
+                                            "Continue a navegação até " +
+                                            "iniciar o download do PKG."
                             }
                         }
                     }
 
                     /*
-                     * =========================================================
                      * CAPTURA DO DOWNLOAD
-                     * =========================================================
-                     *
-                     * Este callback somente é chamado quando o WebView
-                     * identifica uma tentativa de download.
-                     *
-                     * O shopeebr:// NÃO chega aqui como PKG.
                      */
                     setDownloadListener(
                         DownloadListener {
@@ -512,7 +282,7 @@ fun PkgLinkCaptureScreen(
                             }
 
                             /*
-                             * Precisamos de uma URL HTTP/HTTPS real.
+                             * Só aceitamos links HTTP/HTTPS.
                              */
                             if (
                                 !url.startsWith(
@@ -526,13 +296,14 @@ fun PkgLinkCaptureScreen(
                             ) {
 
                                 status =
-                                    "Download detectado, mas o endereço não é HTTP/HTTPS."
+                                    "Download detectado, " +
+                                            "mas o endereço não é HTTP/HTTPS."
 
                                 return@DownloadListener
                             }
 
                             /*
-                             * Tenta descobrir o nome real do arquivo.
+                             * Tenta descobrir o nome do arquivo.
                              */
                             val guessedFileName =
                                 URLUtil.guessFileName(
@@ -549,61 +320,42 @@ fun PkgLinkCaptureScreen(
                                     }
 
                             /*
-                             * Verificação adicional.
-                             *
-                             * Se o servidor informar um nome que não
-                             * pareça PKG, ainda mantemos o link porque
-                             * alguns servidores utilizam nomes genéricos.
+                             * Marcamos como capturado.
                              */
-                            val normalizedFileName =
-                                finalFileName
-                                    .substringBefore("?")
-                                    .substringBefore("#")
-                                    .trim()
-
                             captured = true
 
                             status =
-                                "Link de download capturado. Validando arquivo..."
+                                "Link PKG capturado. " +
+                                        "Validando arquivo..."
 
                             /*
-                             * Entrega o link para o CatalogManager.
-                             *
-                             * sourceUrl:
-                             * URL original digitada pelo usuário.
-                             *
-                             * directUrl:
-                             * URL real fornecida pelo site no download.
-                             *
-                             * fileName:
-                             * nome descoberto pelo WebView.
+                             * Entrega o resultado ao Catalog Manager.
                              */
                             onCaptured(
                                 PkgCaptureResult(
                                     sourceUrl = sourceUrl,
                                     directUrl = url,
-                                    fileName =
-                                        normalizedFileName
+                                    fileName = finalFileName
                                 )
                             )
                         }
-                    )
+                    }
 
                     /*
-                     * PRIMEIRO CARREGAMENTO
+                     * Abre a URL inicial.
                      */
                     loadUrl(sourceUrl)
                 }
             },
 
             /*
-             * Mantém a referência atualizada caso o Compose
-             * recrie a View.
+             * Atualiza a referência caso o Android recrie
+             * o WebView.
              */
-            update = { webView ->
-
-                webViewReference = webView
+            update = { view ->
+                webView = view
+                canGoBack = view.canGoBack()
             }
         )
     }
-}
+            }
