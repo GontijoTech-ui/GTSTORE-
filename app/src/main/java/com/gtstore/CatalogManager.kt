@@ -47,26 +47,30 @@ class CatalogManager(
     fun registerOrUpdate(
         rawUrl: String
     ): OperationResult {
-
         val url = rawUrl.trim()
+        AppLogger.log("--------------------------------------------------")
+        AppLogger.log("[CatalogManager] registerOrUpdate recebido: \"$url\"")
 
         if (!isValidUrl(url)) {
+            AppLogger.log("[CatalogManager] FALHA: isValidUrl retornou false para: \"$url\"")
             return OperationResult(
                 false,
                 "URL inválida. Use http:// ou https://."
             )
         }
 
-        val remote =
-            RemotePkgReader.read(
-                context,
-                url
+        AppLogger.log("[CatalogManager] URL válida. Encaminhando para RemotePkgReader.read...")
+        val remote = RemotePkgReader.read(context, url)
+        
+        if (remote == null) {
+            AppLogger.log("[CatalogManager] FALHA: RemotePkgReader.read retornou null.")
+            return OperationResult(
+                false,
+                "Não foi possível reconhecer um PKG nessa URL."
             )
-                ?: return OperationResult(
-                    false,
-                    "Não foi possível reconhecer um PKG nessa URL."
-                )
+        }
 
+        AppLogger.log("[CatalogManager] PKG lido com sucesso. Gravando no catálogo...")
         return saveRemotePkg(
             remote = remote,
             sourceUrl = "",
@@ -84,17 +88,18 @@ class CatalogManager(
         directUrl: String,
         fileName: String
     ): OperationResult {
+        val normalizedSource = sourceUrl.trim()
+        val normalizedDirect = directUrl.trim()
+        val normalizedFileName = fileName.trim()
 
-        val normalizedSource =
-            sourceUrl.trim()
-
-        val normalizedDirect =
-            directUrl.trim()
-
-        val normalizedFileName =
-            fileName.trim()
+        AppLogger.log("--------------------------------------------------")
+        AppLogger.log("[CatalogManager] registerOrUpdateCaptured acionado!")
+        AppLogger.log("[CatalogManager] sourceUrl: \"$normalizedSource\"")
+        AppLogger.log("[CatalogManager] directUrl: \"$normalizedDirect\"")
+        AppLogger.log("[CatalogManager] fileName: \"$normalizedFileName\"")
 
         if (!isValidUrl(normalizedSource)) {
+            AppLogger.log("[CatalogManager] FALHA: URL de origem inválida ($normalizedSource)")
             return OperationResult(
                 false,
                 "URL de origem inválida."
@@ -102,22 +107,25 @@ class CatalogManager(
         }
 
         if (!isValidUrl(normalizedDirect)) {
+            AppLogger.log("[CatalogManager] FALHA: URL de download direto inválida ($normalizedDirect)")
             return OperationResult(
                 false,
                 "URL de download inválida."
             )
         }
 
-        val remote =
-            RemotePkgReader.read(
-                context,
-                normalizedDirect
-            )
-                ?: return OperationResult(
-                    false,
-                    "O link foi capturado, mas não foi possível reconhecer um PKG nele."
-                )
+        AppLogger.log("[CatalogManager] URLs validadas. Chamando RemotePkgReader.read...")
+        val remote = RemotePkgReader.read(context, normalizedDirect)
 
+        if (remote == null) {
+            AppLogger.log("[CatalogManager] FALHA: RemotePkgReader retornou null para a URL capturada.")
+            return OperationResult(
+                false,
+                "O link foi capturado, mas não foi possível reconhecer um PKG nele."
+            )
+        }
+
+        AppLogger.log("[CatalogManager] PKG reconhecido. Salvando item capturado...")
         return saveRemotePkg(
             remote = remote,
             sourceUrl = normalizedSource,
@@ -152,7 +160,7 @@ class CatalogManager(
             }
 
         if (existing != null) {
-
+            AppLogger.log("[CatalogManager] Atualizando item existente: ${existing.title} (Índice: ${existing.indexString})")
             val updated =
                 existing.copy(
                     url = remote.url,
@@ -201,6 +209,8 @@ class CatalogManager(
                 itemType,
                 remote.version
             )
+
+        AppLogger.log("[CatalogManager] Criando novo registro: $formattedTitle (Tipo: $itemType, Novo Índice: $newIndex)")
 
         val item =
             CatalogItem(
@@ -274,7 +284,6 @@ class CatalogManager(
             return null
         }
 
-        // Tenta pegar primeiro da memória RAM
         iconCache.get(item.iconFile)?.let { return it }
 
         val file =
@@ -440,7 +449,6 @@ class CatalogManager(
 
         prefs.edit().putString(KEY_ITEMS, array.toString()).apply()
 
-        // Atualiza a cache em memória imediatamente
         memoryCache = items.sortedBy { it.catalogIndex }
     }
 
@@ -455,7 +463,6 @@ class CatalogManager(
         if (icon == null || icon.isEmpty()) return
 
         val fileName = iconFileName(catalogIndex)
-        // Mantém também na cache de RAM
         iconCache.put(fileName, icon)
 
         try {
