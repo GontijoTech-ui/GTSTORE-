@@ -41,6 +41,9 @@ data class PkgCaptureResult(
     val fileName: String
 )
 
+private const val BROWSER_USER_AGENT =
+    "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun PkgLinkCaptureScreen(
@@ -50,7 +53,6 @@ fun PkgLinkCaptureScreen(
     onCancel: () -> Unit
 ) {
     var currentDisplayUrl by remember { mutableStateOf(sourceUrl) }
-    // Guarda a página atual confirmada (onde você realmente está e clicou)
     var currentPageUrl by remember { mutableStateOf(sourceUrl) }
     var status by remember { mutableStateOf("Aguardando início do download do PKG...") }
     var captured by remember { mutableStateOf(false) }
@@ -85,7 +87,12 @@ fun PkgLinkCaptureScreen(
         val isAllowed = allowedDomains.any { domain ->
             domain.isNotBlank() && host.contains(domain)
         }
-        return isSource || isAllowed
+        // Permite explicitamente redes e túneis comuns de CDNs de download
+        val isCommonCdn = host.contains("filekeeper") || 
+                          host.contains("dlproxy") || 
+                          host.contains("akirabox")
+
+        return isSource || isAllowed || isCommonCdn
     }
 
     fun handleCapturedUrl(url: String, contentDisposition: String? = null, mimeType: String? = null) {
@@ -101,8 +108,8 @@ fun PkgLinkCaptureScreen(
 
         captured = true
         status = "Link PKG capturado. Validando arquivo..."
+        AppLogger.log("[PkgLinkCaptureScreen] Link capturado com sucesso: $url")
 
-        // Envia a página exata onde você deu o último clique
         onCaptured(
             PkgCaptureResult(
                 sourceUrl = currentPageUrl.ifBlank { sourceUrl },
@@ -192,11 +199,12 @@ fun PkgLinkCaptureScreen(
                 WebView(context).apply {
                     browser = this
 
+                    settings.userAgentString = BROWSER_USER_AGENT
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
                     settings.loadsImagesAutomatically = true
-                    settings.javaScriptCanOpenWindowsAutomatically = false
+                    settings.javaScriptCanOpenWindowsAutomatically = true
                     settings.setSupportMultipleWindows(false)
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
@@ -213,16 +221,23 @@ fun PkgLinkCaptureScreen(
                         ): Boolean {
                             val urlString = request.url.toString()
 
-                            // 1. Link PKG direto detectado
-                            if (urlString.substringBefore("?").endsWith(".pkg", ignoreCase = true)) {
+                            // Se for rota interna do Filekeeper (contém /f/ ou /dcsu...), NÃO intercepte!
+                            // Deixe o WebView carregar a página normalmente para gerar a sessão e o redirecionamento.
+                            if (urlString.contains("filekeeper.net/dcsu", ignoreCase = true) ||
+                                urlString.contains("filekeeper.net/f/", ignoreCase = true)) {
+                                currentDisplayUrl = urlString
+                                return false
+                            }
+
+                            // Captura apenas quando o link terminar em .pkg E vier de túnel/CDN real (ou tiver parâmetros de streaming)
+                            val cleanPath = urlString.substringBefore("?")
+                            if (cleanPath.endsWith(".pkg", ignoreCase = true)) {
                                 currentDisplayUrl = urlString
                                 handleCapturedUrl(urlString)
                                 return true
                             }
 
-                            // 2. Se for anúncio/domínio não autorizado ao clicar:
-                            // Apenas retorna 'true' para NÃO carregar a página estranha.
-                            // Dessa forma você continua exatamente onde clicou, sem dar passos em falso para trás!
+                            // Bloqueio de popups e domínios não autorizados
                             if (!isDomainPermitted(urlString)) {
                                 return true
                             }
@@ -234,10 +249,8 @@ fun PkgLinkCaptureScreen(
                         override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                             super.onPageStarted(view, url, favicon)
 
-                            // 3. Se um script tentar empurrar um redirecionamento forçado para anúncio:
                             if (!url.substringBefore("?").endsWith(".pkg", ignoreCase = true) && !isDomainPermitted(url)) {
                                 view.stopLoading()
-                                // Se a URL carregada foi alterada, restaura a última página válida
                                 if (currentPageUrl.isNotBlank() && view.url != currentPageUrl) {
                                     view.loadUrl(currentPageUrl)
                                 }
@@ -248,18 +261,19 @@ fun PkgLinkCaptureScreen(
                             currentDisplayUrl = url
                             canGoBack = view.canGoBack()
 
-                            // Só confirma que mudamos de página se a nova página for autorizada e válida
                             if (!url.substringBefore("?").endsWith(".pkg", ignoreCase = true) && isDomainPermitted(url)) {
                                 currentPageUrl = url
                             }
 
                             if (!captured) {
-                                status = "Página carregada. Continue a navegação até iniciar o download do PKG."
+                                status = "Página carregada. Clique para gerar ou iniciar o download."
                             }
                         }
                     }
 
+                    // Interceptador primário quando o site aciona o download real via headers HTTP
                     setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
+                        AppLogger.log("[PkgLinkCaptureScreen] DownloadListener disparado: $url")
                         handleCapturedUrl(url, contentDisposition, mimeType)
                     }
 
