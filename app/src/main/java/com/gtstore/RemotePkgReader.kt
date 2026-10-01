@@ -1,6 +1,7 @@
 package com.gtstore
 
 import android.content.Context
+import android.webkit.CookieManager
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
@@ -31,9 +32,11 @@ object RemotePkgReader {
     private const val MAX_ENTRY_COUNT = 4096
     private const val MAX_ENTRY_DATA = 4_000_000
 
-    // Timeouts mais ágeis para evitar congelamentos longos em falhas de conexão
-    private const val CONNECT_TIMEOUT = 10_000
-    private const val READ_TIMEOUT = 20_000
+    private const val CONNECT_TIMEOUT = 15_000
+    private const val READ_TIMEOUT = 25_000
+
+    private const val BROWSER_USER_AGENT =
+        "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
     fun read(context: Context, rawUrl: String): Result? {
         val url = rawUrl.trim()
@@ -120,15 +123,7 @@ object RemotePkgReader {
     }
 
     private fun determineSize(url: String): Long {
-        val headConnection = openConnection(url, "HEAD")
-        try {
-            headConnection.connect()
-            val length = headConnection.contentLengthLong
-            if (length > 0L) return length
-        } finally {
-            headConnection.disconnect()
-        }
-
+        // Tenta primeiro via GET com Range 0-0 (mais compatível que HEAD com proxies de download)
         val connection = openConnection(url, "GET")
         try {
             connection.setRequestProperty("Range", "bytes=0-0")
@@ -140,10 +135,20 @@ object RemotePkgReader {
 
             val length = connection.contentLengthLong
             if (length > 0L) return length
-
-            throw IOException("Servidor não informou o tamanho do arquivo.")
+        } catch (_: Exception) {
+            // Continua para o fallback de HEAD se o Range falhar
         } finally {
             connection.disconnect()
+        }
+
+        val headConnection = openConnection(url, "HEAD")
+        try {
+            headConnection.connect()
+            val length = headConnection.contentLengthLong
+            if (length > 0L) return length
+            throw IOException("Servidor não informou o tamanho do arquivo.")
+        } finally {
+            headConnection.disconnect()
         }
     }
 
@@ -247,6 +252,22 @@ object RemotePkgReader {
         connection.readTimeout = READ_TIMEOUT
         connection.instanceFollowRedirects = true
         connection.useCaches = false
+
+        // Simula cabeçalho de navegador mobile real
+        connection.setRequestProperty("User-Agent", BROWSER_USER_AGENT)
+        connection.setRequestProperty("Accept", "*/*")
+        connection.setRequestProperty("Connection", "keep-alive")
+
+        // Injeta os cookies criados durante a navegação no WebView
+        try {
+            val cookie = CookieManager.getInstance().getCookie(rawUrl)
+            if (!cookie.isNullOrBlank()) {
+                connection.setRequestProperty("Cookie", cookie)
+            }
+        } catch (_: Exception) {
+            // Em caso de falha no CookieManager, segue sem interromper
+        }
+
         return connection
     }
 
