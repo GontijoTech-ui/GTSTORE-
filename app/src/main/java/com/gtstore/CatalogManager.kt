@@ -30,6 +30,10 @@ class CatalogManager(
             Context.MODE_PRIVATE
         )
 
+    // ========================================================
+    // URL DIRETA
+    // ========================================================
+
     @Synchronized
     fun registerOrUpdate(
         rawUrl: String
@@ -54,30 +58,124 @@ class CatalogManager(
                     "Não foi possível reconhecer um PKG nessa URL."
                 )
 
+        return saveRemotePkg(
+            remote = remote,
+            sourceUrl = "",
+            fileName = ""
+        )
+    }
+
+    // ========================================================
+    // URL CAPTURADA PELO WEBVIEW
+    // ========================================================
+
+    @Synchronized
+    fun registerOrUpdateCaptured(
+        sourceUrl: String,
+        directUrl: String,
+        fileName: String
+    ): OperationResult {
+
+        val normalizedSource =
+            sourceUrl.trim()
+
+        val normalizedDirect =
+            directUrl.trim()
+
+        val normalizedFileName =
+            fileName.trim()
+
+        if (!isValidUrl(normalizedSource)) {
+            return OperationResult(
+                false,
+                "URL de origem inválida."
+            )
+        }
+
+        if (!isValidUrl(normalizedDirect)) {
+            return OperationResult(
+                false,
+                "URL de download inválida."
+            )
+        }
+
+        val remote =
+            RemotePkgReader.read(
+                context,
+                normalizedDirect
+            )
+                ?: return OperationResult(
+                    false,
+                    "O link foi capturado, mas não foi possível reconhecer um PKG nele."
+                )
+
+        return saveRemotePkg(
+            remote = remote,
+            sourceUrl = normalizedSource,
+            fileName = normalizedFileName
+        )
+    }
+
+    // ========================================================
+    // SALVAMENTO CENTRAL
+    // ========================================================
+
+    private fun saveRemotePkg(
+        remote: RemotePkgReader.Result,
+        sourceUrl: String,
+        fileName: String
+    ): OperationResult {
+
         val items = loadItems()
 
         /*
-         * A identidade de um pacote no catálogo é composta por:
-         * CONTENT_ID + CATEGORIA + VERSÃO
+         * Identidade:
          *
-         * Isso permite que o Jogo Base (gd), o Update (gp v01.01) e as DLCs (ac)
-         * coexistam no catálogo sem conflitar nem sobrescrever um ao outro.
+         * CONTENT_ID + CATEGORY + VERSION
+         *
+         * Assim:
+         *
+         * Jogo base
+         * Update
+         * DLC
+         *
+         * podem coexistir.
          */
+
         val existing =
             items.firstOrNull {
-                it.contentId.equals(remote.contentId, ignoreCase = true) &&
-                it.category.equals(remote.category, ignoreCase = true) &&
-                normalizeVersion(it.version) == normalizeVersion(remote.version)
+                it.contentId.equals(
+                    remote.contentId,
+                    ignoreCase = true
+                ) &&
+                it.category.equals(
+                    remote.category,
+                    ignoreCase = true
+                ) &&
+                normalizeVersion(it.version) ==
+                normalizeVersion(remote.version)
             }
 
         if (existing != null) {
-            /*
-             * Mesma variação já existente: apenas atualiza o link (URL)
-             * preservando o catalogIndex original.
-             */
+
             val updated =
                 existing.copy(
                     url = remote.url,
+
+                    sourceUrl =
+                        if (sourceUrl.isNotBlank()) {
+                            sourceUrl
+                        } else {
+                            existing.sourceUrl
+                        },
+
+                    fileName =
+                        if (fileName.isNotBlank()) {
+                            fileName
+                        } else {
+                            existing.fileName
+                        },
+
                     size = remote.size,
                     digest = remote.digest,
                     digestMatches = remote.digestMatches
@@ -85,7 +183,10 @@ class CatalogManager(
 
             val updatedItems =
                 items.map {
-                    if (it.catalogIndex == existing.catalogIndex) {
+                    if (
+                        it.catalogIndex ==
+                        existing.catalogIndex
+                    ) {
                         updated
                     } else {
                         it
@@ -106,9 +207,22 @@ class CatalogManager(
             )
         }
 
-        val newIndex = nextIndex()
-        val itemType = classify(remote.category)
-        val formattedTitle = formatItemTitle(remote.title, itemType, remote.version)
+        // ====================================================
+        // NOVO ITEM
+        // ====================================================
+
+        val newIndex =
+            nextIndex()
+
+        val itemType =
+            classify(remote.category)
+
+        val formattedTitle =
+            formatItemTitle(
+                remote.title,
+                itemType,
+                remote.version
+            )
 
         val item =
             CatalogItem(
@@ -121,7 +235,9 @@ class CatalogManager(
                 size = remote.size,
                 digest = remote.digest,
                 digestMatches = remote.digestMatches,
-                url = remote.url
+                url = remote.url,
+                sourceUrl = sourceUrl,
+                fileName = fileName
             )
 
         saveIcon(
@@ -131,7 +247,8 @@ class CatalogManager(
 
         val finalItem =
             item.copy(
-                iconFile = iconFileName(newIndex)
+                iconFile =
+                    iconFileName(newIndex)
             )
 
         saveItems(
@@ -145,9 +262,15 @@ class CatalogManager(
         )
     }
 
+    // ========================================================
+    // CONSULTAS
+    // ========================================================
+
     fun getAll(): List<CatalogItem> {
         return loadItems()
-            .sortedBy { it.catalogIndex }
+            .sortedBy {
+                it.catalogIndex
+            }
     }
 
     fun getByIndex(
@@ -171,6 +294,10 @@ class CatalogManager(
             }
     }
 
+    // ========================================================
+    // ÍCONE
+    // ========================================================
+
     fun getIcon(
         item: CatalogItem
     ): ByteArray? {
@@ -186,155 +313,390 @@ class CatalogManager(
             )
 
         return try {
+
             if (file.exists()) {
                 file.readBytes()
             } else {
                 null
             }
+
         } catch (_: Exception) {
             null
         }
     }
 
-    /**
-     * Adiciona indicação clara no título caso seja Update ou DLC
-     * para que o usuário diferencie visualmente no console e no app.
-     */
+    // ========================================================
+    // TÍTULO
+    // ========================================================
+
     private fun formatItemTitle(
         originalTitle: String,
         type: String,
         version: String
     ): String {
-        val cleanTitle = originalTitle.trim()
+
+        val cleanTitle =
+            originalTitle.trim()
 
         return when (type) {
+
             PkgCatalogItem.TYPE_UPDATE -> {
-                val v = if (version.isNotBlank()) " v$version" else ""
-                if (cleanTitle.contains("update", ignoreCase = true) || cleanTitle.contains("patch", ignoreCase = true)) {
+
+                val v =
+                    if (version.isNotBlank()) {
+                        " v$version"
+                    } else {
+                        ""
+                    }
+
+                if (
+                    cleanTitle.contains(
+                        "update",
+                        ignoreCase = true
+                    ) ||
+                    cleanTitle.contains(
+                        "patch",
+                        ignoreCase = true
+                    )
+                ) {
                     cleanTitle
                 } else {
                     "$cleanTitle [UPDATE$v]"
                 }
             }
+
             PkgCatalogItem.TYPE_DLC -> {
-                if (cleanTitle.contains("dlc", ignoreCase = true)) {
+
+                if (
+                    cleanTitle.contains(
+                        "dlc",
+                        ignoreCase = true
+                    )
+                ) {
                     cleanTitle
                 } else {
                     "$cleanTitle [DLC]"
                 }
             }
+
             else -> cleanTitle
         }
     }
 
-    private fun normalizeVersion(v: String?): String {
-        return v?.trim()?.removePrefix("0")?.ifBlank { "0" } ?: "0"
+    // ========================================================
+    // CLASSIFICAÇÃO
+    // ========================================================
+
+    private fun normalizeVersion(
+        v: String?
+    ): String {
+
+        return v
+            ?.trim()
+            ?.removePrefix("0")
+            ?.ifBlank { "0" }
+            ?: "0"
     }
 
     private fun classify(
         category: String
     ): String {
-        return when (category.trim().lowercase()) {
-            "gd", "gda" -> PkgCatalogItem.TYPE_GAME
-            "gp", "gpe" -> PkgCatalogItem.TYPE_UPDATE
-            "ac" -> PkgCatalogItem.TYPE_DLC
-            else -> PkgCatalogItem.TYPE_OTHER
+
+        return when (
+            category
+                .trim()
+                .lowercase()
+        ) {
+
+            "gd",
+            "gda" ->
+                PkgCatalogItem.TYPE_GAME
+
+            "gp",
+            "gpe" ->
+                PkgCatalogItem.TYPE_UPDATE
+
+            "ac" ->
+                PkgCatalogItem.TYPE_DLC
+
+            else ->
+                PkgCatalogItem.TYPE_OTHER
         }
     }
 
+    // ========================================================
+    // ÍNDICE
+    // ========================================================
+
     private fun nextIndex(): Int {
-        val current = prefs.getInt(KEY_NEXT_INDEX, 1)
+
+        val current =
+            prefs.getInt(
+                KEY_NEXT_INDEX,
+                1
+            )
 
         prefs.edit()
-            .putInt(KEY_NEXT_INDEX, current + 1)
+            .putInt(
+                KEY_NEXT_INDEX,
+                current + 1
+            )
             .apply()
 
         return current
     }
 
+    // ========================================================
+    // CARREGAMENTO
+    // ========================================================
+
     private fun loadItems(): List<CatalogItem> {
-        val raw = prefs.getString(KEY_ITEMS, null) ?: return emptyList()
+
+        val raw =
+            prefs.getString(
+                KEY_ITEMS,
+                null
+            )
+                ?: return emptyList()
 
         return try {
-            val array = JSONArray(raw)
+
+            val array =
+                JSONArray(raw)
 
             buildList {
+
                 for (i in 0 until array.length()) {
-                    val item = array.getJSONObject(i)
+
+                    val item =
+                        array.getJSONObject(i)
+
                     add(
                         CatalogItem(
-                            catalogIndex = item.getInt("catalogIndex"),
-                            title = item.optString("title"),
-                            contentId = item.optString("contentId"),
-                            category = item.optString("category"),
-                            type = item.optString("type"),
-                            version = item.optString("version"),
-                            size = item.optLong("size"),
-                            digest = item.optString("digest"),
-                            digestMatches = item.optBoolean("digestMatches"),
-                            url = item.optString("url"),
-                            iconFile = item.optString("iconFile")
+                            catalogIndex =
+                                item.getInt(
+                                    "catalogIndex"
+                                ),
+
+                            title =
+                                item.optString(
+                                    "title"
+                                ),
+
+                            contentId =
+                                item.optString(
+                                    "contentId"
+                                ),
+
+                            category =
+                                item.optString(
+                                    "category"
+                                ),
+
+                            type =
+                                item.optString(
+                                    "type"
+                                ),
+
+                            version =
+                                item.optString(
+                                    "version"
+                                ),
+
+                            size =
+                                item.optLong(
+                                    "size"
+                                ),
+
+                            digest =
+                                item.optString(
+                                    "digest"
+                                ),
+
+                            digestMatches =
+                                item.optBoolean(
+                                    "digestMatches"
+                                ),
+
+                            url =
+                                item.optString(
+                                    "url"
+                                ),
+
+                            // Compatibilidade com registros antigos.
+                            sourceUrl =
+                                item.optString(
+                                    "sourceUrl"
+                                ),
+
+                            fileName =
+                                item.optString(
+                                    "fileName"
+                                ),
+
+                            iconFile =
+                                item.optString(
+                                    "iconFile"
+                                )
                         )
                     )
                 }
             }
+
         } catch (_: Exception) {
             emptyList()
         }
     }
 
+    // ========================================================
+    // SALVAMENTO
+    // ========================================================
+
     private fun saveItems(
         items: List<CatalogItem>
     ) {
-        val array = JSONArray()
+
+        val array =
+            JSONArray()
 
         items.forEach { item ->
+
             array.put(
                 JSONObject()
-                    .put("catalogIndex", item.catalogIndex)
-                    .put("title", item.title)
-                    .put("contentId", item.contentId)
-                    .put("category", item.category)
-                    .put("type", item.type)
-                    .put("version", item.version)
-                    .put("size", item.size)
-                    .put("digest", item.digest)
-                    .put("digestMatches", item.digestMatches)
-                    .put("url", item.url)
-                    .put("iconFile", item.iconFile)
+                    .put(
+                        "catalogIndex",
+                        item.catalogIndex
+                    )
+                    .put(
+                        "title",
+                        item.title
+                    )
+                    .put(
+                        "contentId",
+                        item.contentId
+                    )
+                    .put(
+                        "category",
+                        item.category
+                    )
+                    .put(
+                        "type",
+                        item.type
+                    )
+                    .put(
+                        "version",
+                        item.version
+                    )
+                    .put(
+                        "size",
+                        item.size
+                    )
+                    .put(
+                        "digest",
+                        item.digest
+                    )
+                    .put(
+                        "digestMatches",
+                        item.digestMatches
+                    )
+                    .put(
+                        "url",
+                        item.url
+                    )
+                    .put(
+                        "sourceUrl",
+                        item.sourceUrl
+                    )
+                    .put(
+                        "fileName",
+                        item.fileName
+                    )
+                    .put(
+                        "iconFile",
+                        item.iconFile
+                    )
             )
         }
 
         prefs.edit()
-            .putString(KEY_ITEMS, array.toString())
+            .putString(
+                KEY_ITEMS,
+                array.toString()
+            )
             .apply()
     }
+
+    // ========================================================
+    // ÍCONE
+    // ========================================================
 
     private fun saveIcon(
         catalogIndex: Int,
         icon: ByteArray?
     ) {
-        if (icon == null || icon.isEmpty()) return
+
+        if (
+            icon == null ||
+            icon.isEmpty()
+        ) {
+            return
+        }
 
         try {
-            val directory = File(context.filesDir, ICON_DIR)
+
+            val directory =
+                File(
+                    context.filesDir,
+                    ICON_DIR
+                )
+
             if (!directory.exists()) {
                 directory.mkdirs()
             }
-            File(directory, iconFileName(catalogIndex)).writeBytes(icon)
+
+            File(
+                directory,
+                iconFileName(catalogIndex)
+            ).writeBytes(icon)
+
         } catch (_: Exception) {
         }
     }
 
-    private fun iconFileName(catalogIndex: Int): String {
-        return "icon_${catalogIndex.toString().padStart(6, '0')}.png"
+    private fun iconFileName(
+        catalogIndex: Int
+    ): String {
+
+        return "icon_${
+            catalogIndex
+                .toString()
+                .padStart(6, '0')
+        }.png"
     }
 
-    private fun isValidUrl(rawUrl: String): Boolean {
+    // ========================================================
+    // URL
+    // ========================================================
+
+    private fun isValidUrl(
+        rawUrl: String
+    ): Boolean {
+
         return try {
-            val uri = URI(rawUrl)
-            val scheme = uri.scheme?.lowercase()
-            (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
+
+            val uri =
+                URI(rawUrl)
+
+            val scheme =
+                uri.scheme
+                    ?.lowercase()
+
+            (
+                scheme == "http" ||
+                scheme == "https"
+            ) &&
+            !uri.host.isNullOrBlank()
+
         } catch (_: Exception) {
             false
         }
