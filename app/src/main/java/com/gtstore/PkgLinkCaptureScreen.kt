@@ -50,6 +50,7 @@ fun PkgLinkCaptureScreen(
     onCancel: () -> Unit
 ) {
     var currentUrl by remember { mutableStateOf(sourceUrl) }
+    var lastValidPageUrl by remember { mutableStateOf(sourceUrl) }
     var status by remember { mutableStateOf("Aguardando início do download do PKG...") }
     var captured by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
@@ -86,6 +87,29 @@ fun PkgLinkCaptureScreen(
         return isSource || isAllowed
     }
 
+    // Procura no histórico da WebView a última página válida e retorna exatamente para ela
+    fun returnToLastValidPage(view: WebView) {
+        val history = view.copyBackForwardList()
+        val currentIndex = history.currentIndex
+
+        for (i in currentIndex - 1 downTo 0) {
+            val item = history.getItemAtIndex(i)
+            val itemUrl = item?.url ?: ""
+            if (itemUrl.isNotBlank() && isDomainPermitted(itemUrl) && !itemUrl.substringBefore("?").endsWith(".pkg", ignoreCase = true)) {
+                val stepsBack = i - currentIndex
+                view.goBackOrForward(stepsBack)
+                return
+            }
+        }
+
+        // Se não encontrar no histórico, volta 1 passo normal ou carrega a última válida salva
+        if (view.canGoBack()) {
+            view.goBack()
+        } else if (lastValidPageUrl.isNotBlank() && lastValidPageUrl != view.url) {
+            view.loadUrl(lastValidPageUrl)
+        }
+    }
+
     fun handleCapturedUrl(url: String, contentDisposition: String? = null, mimeType: String? = null) {
         if (captured) return
 
@@ -104,7 +128,7 @@ fun PkgLinkCaptureScreen(
 
         onCaptured(
             PkgCaptureResult(
-                sourceUrl = sourceUrl,
+                sourceUrl = lastValidPageUrl.ifBlank { sourceUrl },
                 directUrl = url,
                 fileName = finalFileName
             )
@@ -157,7 +181,7 @@ fun PkgLinkCaptureScreen(
                 onClick = {
                     val view = browser
                     if (view != null && view.canGoBack()) {
-                        view.goBack()
+                        returnToLastValidPage(view)
                     }
                 },
                 enabled = canGoBack,
@@ -225,11 +249,9 @@ fun PkgLinkCaptureScreen(
                                 return true
                             }
 
-                            // Volta imediatamente em silêncio
+                            // Se tentar carregar domínio inválido, retorna diretamente à última página segura
                             if (!isDomainPermitted(urlString)) {
-                                if (view.canGoBack()) {
-                                    view.goBack()
-                                }
+                                returnToLastValidPage(view)
                                 return true
                             }
 
@@ -240,18 +262,20 @@ fun PkgLinkCaptureScreen(
                         override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                             super.onPageStarted(view, url, favicon)
 
-                            // Interrompe carregamentos indesejados via script e volta sem alterar status
                             if (!url.substringBefore("?").endsWith(".pkg", ignoreCase = true) && !isDomainPermitted(url)) {
                                 view.stopLoading()
-                                if (view.canGoBack()) {
-                                    view.goBack()
-                                }
+                                returnToLastValidPage(view)
                             }
                         }
 
                         override fun onPageFinished(view: WebView, url: String) {
                             currentUrl = url
                             canGoBack = view.canGoBack()
+
+                            // Armazena a última página legítima carregada
+                            if (!url.substringBefore("?").endsWith(".pkg", ignoreCase = true) && isDomainPermitted(url)) {
+                                lastValidPageUrl = url
+                            }
 
                             if (!captured) {
                                 status = "Página carregada. Continue a navegação até iniciar o download do PKG."
