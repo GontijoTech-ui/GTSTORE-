@@ -87,10 +87,10 @@ fun PkgLinkCaptureScreen(
         val isAllowed = allowedDomains.any { domain ->
             domain.isNotBlank() && host.contains(domain)
         }
-        // Permite explicitamente redes e túneis comuns de CDNs de download
         val isCommonCdn = host.contains("filekeeper") || 
                           host.contains("dlproxy") || 
-                          host.contains("akirabox")
+                          host.contains("akirabox") ||
+                          host.contains("mocha")
 
         return isSource || isAllowed || isCommonCdn
     }
@@ -221,15 +221,14 @@ fun PkgLinkCaptureScreen(
                         ): Boolean {
                             val urlString = request.url.toString()
 
-                            // Se for rota interna do Filekeeper (contém /f/ ou /dcsu...), NÃO intercepte!
-                            // Deixe o WebView carregar a página normalmente para gerar a sessão e o redirecionamento.
-                            if (urlString.contains("filekeeper.net/dcsu", ignoreCase = true) ||
-                                urlString.contains("filekeeper.net/f/", ignoreCase = true)) {
+                            // 1. Qualquer URL do domínio filekeeper.net NUNCA é o binário direto;
+                            // ela deve sempre carregar na página para gerar a sessão e redirecionar para dlproxy.uk.
+                            if (urlString.contains("filekeeper.net", ignoreCase = true)) {
                                 currentDisplayUrl = urlString
                                 return false
                             }
 
-                            // Captura apenas quando o link terminar em .pkg E vier de túnel/CDN real (ou tiver parâmetros de streaming)
+                            // 2. Intercepta URLs .pkg diretas que NÃO sejam da página intermediária do Filekeeper
                             val cleanPath = urlString.substringBefore("?")
                             if (cleanPath.endsWith(".pkg", ignoreCase = true)) {
                                 currentDisplayUrl = urlString
@@ -237,7 +236,7 @@ fun PkgLinkCaptureScreen(
                                 return true
                             }
 
-                            // Bloqueio de popups e domínios não autorizados
+                            // 3. Bloqueio de popups e domínios não autorizados
                             if (!isDomainPermitted(urlString)) {
                                 return true
                             }
@@ -249,7 +248,8 @@ fun PkgLinkCaptureScreen(
                         override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                             super.onPageStarted(view, url, favicon)
 
-                            if (!url.substringBefore("?").endsWith(".pkg", ignoreCase = true) && !isDomainPermitted(url)) {
+                            val isNotIntermediate = !url.contains("filekeeper.net", ignoreCase = true)
+                            if (isNotIntermediate && !url.substringBefore("?").endsWith(".pkg", ignoreCase = true) && !isDomainPermitted(url)) {
                                 view.stopLoading()
                                 if (currentPageUrl.isNotBlank() && view.url != currentPageUrl) {
                                     view.loadUrl(currentPageUrl)
@@ -271,7 +271,6 @@ fun PkgLinkCaptureScreen(
                         }
                     }
 
-                    // Interceptador primário quando o site aciona o download real via headers HTTP
                     setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
                         AppLogger.log("[PkgLinkCaptureScreen] DownloadListener disparado: $url")
                         handleCapturedUrl(url, contentDisposition, mimeType)
