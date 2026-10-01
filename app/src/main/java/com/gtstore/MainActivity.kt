@@ -49,6 +49,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.awaitFirstDown
+import androidx.compose.ui.input.pointer.awaitPointerEvent
+import androidx.compose.ui.input.pointer.awaitPointerEventScope
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -85,41 +90,189 @@ enum class GTStoreScreen {
 }
 
 // ============================================================
+// GESTO VOLTAR
+//
+// Direção:
+// Borda direita -> esquerda
+//
+// O gesto precisa:
+// 1. Começar nos últimos 48 dp da tela.
+// 2. Percorrer pelo menos 120 dp.
+// ============================================================
+
+private fun Modifier.gtStoreSwipeBack(
+    enabled: Boolean,
+    onBack: () -> Unit
+): Modifier {
+
+    if (!enabled) {
+        return this
+    }
+
+    return pointerInput(enabled) {
+
+        val edgeSize =
+            48.dp.toPx()
+
+        val minimumSwipe =
+            120.dp.toPx()
+
+        awaitPointerEventScope {
+
+            while (true) {
+
+                val down =
+                    awaitFirstDown(
+                        requireUnconsumed = false,
+                        pass = PointerEventPass.Initial
+                    )
+
+                /*
+                 * O gesto precisa começar próximo
+                 * da borda direita.
+                 */
+                if (
+                    down.position.x <
+                    size.width - edgeSize
+                ) {
+                    continue
+                }
+
+                val pointerId =
+                    down.id
+
+                val startX =
+                    down.position.x
+
+                var currentX =
+                    startX
+
+                var triggered =
+                    false
+
+                while (true) {
+
+                    val event =
+                        awaitPointerEvent(
+                            pass =
+                                PointerEventPass.Initial
+                        )
+
+                    val change =
+                        event.changes.firstOrNull {
+                            it.id == pointerId
+                        }
+
+                    if (change == null) {
+                        break
+                    }
+
+                    if (!change.pressed) {
+                        break
+                    }
+
+                    currentX =
+                        change.position.x
+
+                    /*
+                     * Distância percorrida da direita
+                     * para a esquerda.
+                     */
+                    val distance =
+                        startX - currentX
+
+                    /*
+                     * Gesto válido:
+                     *
+                     * direita -> esquerda
+                     */
+                    if (
+                        !triggered &&
+                        distance >= minimumSwipe
+                    ) {
+
+                        triggered = true
+
+                        onBack()
+
+                        /*
+                         * Não consumimos o gesto.
+                         *
+                         * Isso evita bloquear desnecessariamente
+                         * componentes filhos, especialmente o WebView.
+                         */
+                        break
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
 // ACTIVITY
 // ============================================================
 
 class MainActivity : ComponentActivity() {
 
     private val gtStoreHttpServer: HttpServer
-        get() = (application as GTStoreApplication).httpServer
+        get() =
+            (application as GTStoreApplication)
+                .httpServer
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreate(
+        savedInstanceState: Bundle?
+    ) {
+
+        super.onCreate(
+            savedInstanceState
+        )
 
         setContent {
 
-            val colorScheme = darkColorScheme(
-                background = PureBlack,
-                surface = PureBlack,
-                primary = RedAccent,
-                onPrimary = TextWhite,
-                onBackground = TextWhite,
-                onSurface = TextWhite
-            )
+            val colorScheme =
+                darkColorScheme(
+                    background =
+                        PureBlack,
+
+                    surface =
+                        PureBlack,
+
+                    primary =
+                        RedAccent,
+
+                    onPrimary =
+                        TextWhite,
+
+                    onBackground =
+                        TextWhite,
+
+                    onSurface =
+                        TextWhite
+                )
 
             MaterialTheme(
-                colorScheme = colorScheme
+                colorScheme =
+                    colorScheme
             ) {
 
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = PureBlack
+                    modifier =
+                        Modifier.fillMaxSize(),
+
+                    color =
+                        PureBlack
                 ) {
 
                     GTStoreApp(
-                        httpServer = gtStoreHttpServer,
-                        onStartServer = ::startServerService,
-                        onStopServer = ::stopServerService
+                        httpServer =
+                            gtStoreHttpServer,
+
+                        onStartServer =
+                            ::startServerService,
+
+                        onStopServer =
+                            ::stopServerService
                     )
                 }
             }
@@ -133,6 +286,7 @@ class MainActivity : ComponentActivity() {
                 this,
                 GTStoreService::class.java
             ).apply {
+
                 action =
                     GTStoreService.ACTION_START
             }
@@ -142,11 +296,15 @@ class MainActivity : ComponentActivity() {
             Build.VERSION_CODES.O
         ) {
 
-            startForegroundService(intent)
+            startForegroundService(
+                intent
+            )
 
         } else {
 
-            startService(intent)
+            startService(
+                intent
+            )
         }
     }
 
@@ -157,11 +315,14 @@ class MainActivity : ComponentActivity() {
                 this,
                 GTStoreService::class.java
             ).apply {
+
                 action =
                     GTStoreService.ACTION_STOP
             }
 
-        startService(intent)
+        startService(
+            intent
+        )
     }
 }
 
@@ -177,56 +338,118 @@ fun GTStoreApp(
 ) {
 
     var currentScreen by remember {
+
         mutableStateOf(
             GTStoreScreen.DASHBOARD
         )
     }
 
-    when (currentScreen) {
+    /*
+     * O Dashboard é a raiz do aplicativo.
+     *
+     * Portanto o gesto só fica ativo nas outras telas.
+     */
+    val canSwipeBack =
+        currentScreen !=
+            GTStoreScreen.DASHBOARD
 
-        GTStoreScreen.DASHBOARD -> {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .gtStoreSwipeBack(
+                    enabled =
+                        canSwipeBack,
 
-            Dashboard(
-                httpServer = httpServer,
-                onNavigate = {
-                    currentScreen = it
-                }
-            )
-        }
+                    onBack = {
 
-        GTStoreScreen.SERVIDOR -> {
+                        currentScreen =
+                            GTStoreScreen.DASHBOARD
+                    }
+                )
+    ) {
 
-            ServerScreen(
-                httpServer = httpServer,
-                onStartServer = onStartServer,
-                onStopServer = onStopServer,
-                onBack = {
-                    currentScreen =
-                        GTStoreScreen.DASHBOARD
-                }
-            )
-        }
+        when (
+            currentScreen
+        ) {
 
-        GTStoreScreen.CATALOGO -> {
+            // =================================================
+            // DASHBOARD
+            // =================================================
 
-            CatalogManagerScreen(
-                httpServer = httpServer,
-                onBack = {
-                    currentScreen =
-                        GTStoreScreen.DASHBOARD
-                }
-            )
-        }
+            GTStoreScreen.DASHBOARD -> {
 
-        GTStoreScreen.ADMIN -> {
+                Dashboard(
+                    httpServer =
+                        httpServer,
 
-            AdminScreen(
-                httpServer = httpServer,
-                onBack = {
-                    currentScreen =
-                        GTStoreScreen.DASHBOARD
-                }
-            )
+                    onNavigate = {
+
+                        currentScreen =
+                            it
+                    }
+                )
+            }
+
+            // =================================================
+            // SERVIDOR
+            // =================================================
+
+            GTStoreScreen.SERVIDOR -> {
+
+                ServerScreen(
+                    httpServer =
+                        httpServer,
+
+                    onStartServer =
+                        onStartServer,
+
+                    onStopServer =
+                        onStopServer,
+
+                    onBack = {
+
+                        currentScreen =
+                            GTStoreScreen.DASHBOARD
+                    }
+                )
+            }
+
+            // =================================================
+            // CATALOG MANAGER
+            // =================================================
+
+            GTStoreScreen.CATALOGO -> {
+
+                CatalogManagerScreen(
+                    httpServer =
+                        httpServer,
+
+                    onBack = {
+
+                        currentScreen =
+                            GTStoreScreen.DASHBOARD
+                    }
+                )
+            }
+
+            // =================================================
+            // ADMIN
+            // =================================================
+
+            GTStoreScreen.ADMIN -> {
+
+                AdminScreen(
+                    httpServer =
+                        httpServer,
+
+                    onBack = {
+
+                        currentScreen =
+                            GTStoreScreen.DASHBOARD
+                    }
+                )
+            }
         }
     }
 }
@@ -291,7 +514,9 @@ fun CatalogManagerItemCard(
 
                 Column(
                     modifier =
-                        Modifier.weight(1f)
+                        Modifier.weight(
+                            1f
+                        )
                 ) {
 
                     Text(
@@ -313,7 +538,9 @@ fun CatalogManagerItemCard(
                             item.contentId,
 
                         color =
-                            Color(0xFF64B5F6),
+                            Color(
+                                0xFF64B5F6
+                            ),
 
                         fontSize =
                             12.sp
@@ -332,7 +559,8 @@ fun CatalogManagerItemCard(
                                 )
 
                                 if (
-                                    item.version.isNotBlank()
+                                    item.version
+                                        .isNotBlank()
                                 ) {
 
                                     append(
@@ -353,7 +581,8 @@ fun CatalogManagerItemCard(
                     )
 
                     if (
-                        item.fileName.isNotBlank()
+                        item.fileName
+                            .isNotBlank()
                     ) {
 
                         Text(
@@ -407,7 +636,8 @@ fun CatalogManagerItemCard(
             }
 
             if (
-                item.sourceUrl.isBlank()
+                item.sourceUrl
+                    .isBlank()
             ) {
 
                 Text(
@@ -415,7 +645,9 @@ fun CatalogManagerItemCard(
                         "Sem URL de origem salva",
 
                     color =
-                        Color(0xFFFF9F0A),
+                        Color(
+                            0xFFFF9F0A
+                        ),
 
                     fontSize =
                         11.sp
@@ -439,6 +671,7 @@ fun Dashboard(
         LocalContext.current
 
     var serverRunning by remember {
+
         mutableStateOf(
             httpServer.isRunning()
         )
@@ -450,7 +683,9 @@ fun Dashboard(
             try {
 
                 context.assets
-                    .open("logo.jpg")
+                    .open(
+                        "logo.jpg"
+                    )
                     .use { inputStream ->
 
                         BitmapFactory
@@ -459,7 +694,9 @@ fun Dashboard(
                             )
                     }
 
-            } catch (_: Exception) {
+            } catch (
+                _: Exception
+            ) {
 
                 null
             }
@@ -472,7 +709,9 @@ fun Dashboard(
             serverRunning =
                 httpServer.isRunning()
 
-            delay(1000)
+            delay(
+                1000
+            )
         }
     }
 
@@ -484,8 +723,11 @@ fun Dashboard(
                     PureBlack
                 )
                 .padding(
-                    horizontal = 22.dp,
-                    vertical = 20.dp
+                    horizontal =
+                        22.dp,
+
+                    vertical =
+                        20.dp
                 ),
 
         verticalArrangement =
@@ -517,7 +759,8 @@ fun Dashboard(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            bottom = 10.dp
+                            bottom =
+                                10.dp
                         )
             ) {
 
@@ -584,7 +827,9 @@ fun Dashboard(
                         6.sp,
 
                     color =
-                        Color(0xFFDDDDDD),
+                        Color(
+                            0xFFDDDDDD
+                        ),
 
                     textAlign =
                         TextAlign.Center
@@ -643,6 +888,7 @@ fun Dashboard(
                     "SERVIDOR",
 
                 onClick = {
+
                     onNavigate(
                         GTStoreScreen.SERVIDOR
                     )
@@ -657,6 +903,7 @@ fun Dashboard(
                     "CATALOG MANAGER",
 
                 onClick = {
+
                     onNavigate(
                         GTStoreScreen.CATALOGO
                     )
@@ -671,6 +918,7 @@ fun Dashboard(
                     "ADMIN (SOLICITAÇÕES PIN)",
 
                 onClick = {
+
                     onNavigate(
                         GTStoreScreen.ADMIN
                     )
@@ -703,6 +951,7 @@ fun ServerScreen(
 ) {
 
     var status by remember {
+
         mutableStateOf(
             httpServer.getStatus()
         )
@@ -719,7 +968,9 @@ fun ServerScreen(
             status =
                 httpServer.getStatus()
 
-            delay(1000)
+            delay(
+                1000
+            )
         }
     }
 
@@ -730,7 +981,9 @@ fun ServerScreen(
                 .background(
                     PureBlack
                 )
-                .padding(16.dp),
+                .padding(
+                    16.dp
+                ),
 
         verticalArrangement =
             Arrangement.spacedBy(
@@ -753,14 +1006,17 @@ fun ServerScreen(
 
                 modifier =
                     Modifier.padding(
-                        vertical = 8.dp
+                        vertical =
+                            8.dp
                     )
             ) {
 
                 Box(
                     modifier =
                         Modifier
-                            .size(14.dp)
+                            .size(
+                                14.dp
+                            )
                             .clip(
                                 CircleShape
                             )
@@ -836,7 +1092,9 @@ fun ServerScreen(
                         Box(
                             modifier =
                                 Modifier
-                                    .size(14.dp)
+                                    .size(
+                                        14.dp
+                                    )
                                     .clip(
                                         CircleShape
                                     )
@@ -923,7 +1181,9 @@ fun ServerScreen(
                                 "URL: http://${status.localAddress}:${status.port}",
 
                             color =
-                                Color(0xFF64B5F6),
+                                Color(
+                                    0xFF64B5F6
+                                ),
 
                             fontSize =
                                 15.sp,
@@ -1063,6 +1323,7 @@ fun ServerScreen(
 
                         Text(
                             "ATUALIZAR STATUS",
+
                             fontWeight =
                                 FontWeight.Bold
                         )
@@ -1095,6 +1356,7 @@ fun ServerScreen(
 
                         Text(
                             "VOLTAR",
+
                             color =
                                 TextWhite
                         )
@@ -1123,7 +1385,9 @@ fun CatalogManagerScreen(
 
     val catalogManager =
         remember(context) {
-            CatalogManager(context)
+            CatalogManager(
+                context
+            )
         }
 
     var url by remember {
@@ -1184,13 +1448,16 @@ fun CatalogManagerScreen(
                                 catalogManager
                                     .registerOrUpdateCaptured(
                                         sourceUrl =
-                                            captureResult.sourceUrl,
+                                            captureResult
+                                                .sourceUrl,
 
                                         directUrl =
-                                            captureResult.directUrl,
+                                            captureResult
+                                                .directUrl,
 
                                         fileName =
-                                            captureResult.fileName
+                                            captureResult
+                                                .fileName
                                     )
 
                             } catch (
@@ -1250,7 +1517,9 @@ fun CatalogManagerScreen(
                 .background(
                     PureBlack
                 )
-                .padding(16.dp),
+                .padding(
+                    16.dp
+                ),
 
         verticalArrangement =
             Arrangement.spacedBy(
@@ -1277,14 +1546,17 @@ fun CatalogManagerScreen(
 
                 modifier =
                     Modifier.padding(
-                        vertical = 8.dp
+                        vertical =
+                            8.dp
                     )
             ) {
 
                 Box(
                     modifier =
                         Modifier
-                            .size(14.dp)
+                            .size(
+                                14.dp
+                            )
                             .clip(
                                 CircleShape
                             )
@@ -1386,6 +1658,7 @@ fun CatalogManagerScreen(
                             url,
 
                         onValueChange = {
+
                             url =
                                 it
 
@@ -1406,6 +1679,7 @@ fun CatalogManagerScreen(
                             5,
 
                         label = {
+
                             Text(
                                 "URL"
                             )
@@ -1423,7 +1697,8 @@ fun CatalogManagerScreen(
                                 url.trim()
 
                             if (
-                                normalizedUrl.isBlank()
+                                normalizedUrl
+                                    .isBlank()
                             ) {
 
                                 message =
@@ -1685,7 +1960,8 @@ fun CatalogManagerScreen(
 
                 modifier =
                     Modifier.padding(
-                        top = 6.dp
+                        top =
+                            6.dp
                     )
             )
         }
@@ -1958,6 +2234,7 @@ fun AdminScreen(
         LocalContext.current
 
     var pinRequests by remember {
+
         mutableStateOf<List<PinRequest>>(
             emptyList()
         )
@@ -1970,7 +2247,9 @@ fun AdminScreen(
             pinRequests =
                 httpServer.getPinRequests()
 
-            delay(1500)
+            delay(
+                1500
+            )
         }
     }
 
@@ -1981,7 +2260,9 @@ fun AdminScreen(
                 .background(
                     PureBlack
                 )
-                .padding(16.dp),
+                .padding(
+                    16.dp
+                ),
 
         verticalArrangement =
             Arrangement.spacedBy(
@@ -2004,14 +2285,17 @@ fun AdminScreen(
 
                 modifier =
                     Modifier.padding(
-                        vertical = 8.dp
+                        vertical =
+                            8.dp
                     )
             ) {
 
                 Box(
                     modifier =
                         Modifier
-                            .size(14.dp)
+                            .size(
+                                14.dp
+                            )
                             .clip(
                                 CircleShape
                             )
@@ -2087,7 +2371,9 @@ fun AdminScreen(
                         Box(
                             modifier =
                                 Modifier
-                                    .size(10.dp)
+                                    .size(
+                                        10.dp
+                                    )
                                     .clip(
                                         CircleShape
                                     )
@@ -2334,7 +2620,9 @@ fun AdminScreen(
                                 Box(
                                     modifier =
                                         Modifier
-                                            .size(8.dp)
+                                            .size(
+                                                8.dp
+                                            )
                                             .clip(
                                                 CircleShape
                                             )
@@ -2431,8 +2719,11 @@ fun AdminScreen(
                                     Modifier
                                         .fillMaxWidth()
                                         .padding(
-                                            horizontal = 14.dp,
-                                            vertical = 10.dp
+                                            horizontal =
+                                                14.dp,
+
+                                            vertical =
+                                                10.dp
                                         ),
 
                                 horizontalArrangement =
@@ -2651,6 +2942,7 @@ fun AdminScreen(
 
                 Text(
                     "VOLTAR",
+
                     color =
                         TextWhite
                 )
@@ -2704,8 +2996,11 @@ fun StatusCardLed(
                 Modifier
                     .fillMaxWidth()
                     .padding(
-                        horizontal = 16.dp,
-                        vertical = 14.dp
+                        horizontal =
+                            16.dp,
+
+                        vertical =
+                            14.dp
                     ),
 
             horizontalArrangement =
@@ -2723,7 +3018,9 @@ fun StatusCardLed(
                 Box(
                     modifier =
                         Modifier
-                            .size(8.dp)
+                            .size(
+                                8.dp
+                            )
                             .clip(
                                 CircleShape
                             )
@@ -2762,7 +3059,9 @@ fun StatusCardLed(
                 Box(
                     modifier =
                         Modifier
-                            .size(10.dp)
+                            .size(
+                                10.dp
+                            )
                             .clip(
                                 CircleShape
                             )
@@ -2842,8 +3141,11 @@ fun StatusCardSimple(
                 Modifier
                     .fillMaxWidth()
                     .padding(
-                        horizontal = 16.dp,
-                        vertical = 14.dp
+                        horizontal =
+                            16.dp,
+
+                        vertical =
+                            14.dp
                     ),
 
             horizontalArrangement =
@@ -2861,7 +3163,9 @@ fun StatusCardSimple(
                 Box(
                     modifier =
                         Modifier
-                            .size(8.dp)
+                            .size(
+                                8.dp
+                            )
                             .clip(
                                 CircleShape
                             )
