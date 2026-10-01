@@ -11,8 +11,18 @@ data class CatalogItem(
     val digest: String,
     val digestMatches: Boolean,
     val url: String,
+
+    // URL original do site onde o PKG foi encontrado.
+    // Usada pelo botão ATUALIZAR.
+    val sourceUrl: String = "",
+
+    // Nome do arquivo descoberto durante a captura.
+    val fileName: String = "",
+
     val iconFile: String = ""
 ) {
     val indexString: String
-        get() = catalogIndex.toString().padStart(6, '0')
+        get() = catalogIndex
+            .toString()
+            .padStart(6, '0')
 }
