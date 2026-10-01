@@ -82,6 +82,18 @@ enum class GTStoreScreen {
     CONFIGURACOES
 }
 
+fun normalizeInputUrl(raw: String): String {
+    val trimmed = raw.trim()
+    if (trimmed.isBlank()) return ""
+    return if (!trimmed.startsWith("http://", ignoreCase = true) &&
+        !trimmed.startsWith("https://", ignoreCase = true)
+    ) {
+        "https://$trimmed"
+    } else {
+        trimmed
+    }
+}
+
 class MainActivity : ComponentActivity() {
 
     private val gtStoreHttpServer: HttpServer
@@ -135,6 +147,263 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+fun StatusCardLed(
+    title: String,
+    status: String,
+    isOnline: Boolean
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = CardBlack),
+        border = BorderStroke(1.dp, BorderDark),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(RedAccent)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = TextWhite
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(if (isOnline) GreenLed else RedLed)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = status,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = if (isOnline) GreenLed else RedLed
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun StatusCardSimple(
+    title: String,
+    status: String,
+    statusColor: Color
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = CardBlack),
+        border = BorderStroke(1.dp, BorderDark),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(RedAccent)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = TextWhite
+                )
+            }
+
+            Text(
+                text = status,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                color = statusColor
+            )
+        }
+    }
+}
+
+@Composable
+fun RedMenuButton(
+    text: String,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = RedAccent,
+            contentColor = TextWhite
+        ),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Text(
+            text = text,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 1.sp
+        )
+    }
+}
+
+@Composable
+fun Dashboard(
+    httpServer: HttpServer,
+    onNavigate: (GTStoreScreen) -> Unit
+) {
+    val context = LocalContext.current
+    var serverRunning by remember { mutableStateOf(httpServer.isRunning()) }
+
+    val logoBitmap = remember {
+        try {
+            context.assets.open("logo.jpg").use { inputStream ->
+                BitmapFactory.decodeStream(inputStream)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            val isRunning = httpServer.isRunning()
+            if (serverRunning != isRunning) {
+                serverRunning = isRunning
+            }
+            delay(1000)
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PureBlack)
+            .padding(horizontal = 22.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        item { Spacer(modifier = Modifier.height(24.dp)) }
+
+        item {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp)
+            ) {
+                if (logoBitmap != null) {
+                    Image(
+                        bitmap = logoBitmap.asImageBitmap(),
+                        contentDescription = "GTSTORE Logo",
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .height(130.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                } else {
+                    Text(
+                        text = "GTSTORE",
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.Black,
+                        color = RedAccent
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "GONTIJO TECH",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 6.sp,
+                    color = Color(0xFFDDDDDD),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+
+        item {
+            StatusCardLed(
+                title = "SERVIDOR",
+                status = if (serverRunning) "ONLINE" else "OFFLINE",
+                isOnline = serverRunning
+            )
+        }
+
+        item {
+            StatusCardSimple(
+                title = "CATÁLOGO",
+                status = "PRONTO",
+                statusColor = TextWhite
+            )
+        }
+
+        item { Spacer(modifier = Modifier.height(4.dp)) }
+
+        item {
+            RedMenuButton(
+                text = "SERVIDOR",
+                onClick = { onNavigate(GTStoreScreen.SERVIDOR) }
+            )
+        }
+
+        item {
+            RedMenuButton(
+                text = "CATALOG MANAGER",
+                onClick = { onNavigate(GTStoreScreen.CATALOGO) }
+            )
+        }
+
+        item {
+            RedMenuButton(
+                text = "CATÁLOGO CADASTRADO",
+                onClick = { onNavigate(GTStoreScreen.CATALOGO_CADASTRADO) }
+            )
+        }
+
+        item {
+            RedMenuButton(
+                text = "ADMIN (SOLICITAÇÕES PIN)",
+                onClick = { onNavigate(GTStoreScreen.ADMIN) }
+            )
+        }
+
+        item {
+            RedMenuButton(
+                text = "CONFIGURAÇÕES",
+                onClick = { onNavigate(GTStoreScreen.CONFIGURACOES) }
+            )
+        }
+
+        item { Spacer(modifier = Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
 fun GTStoreApp(
     httpServer: HttpServer,
     onStartServer: () -> Unit,
@@ -145,7 +414,7 @@ fun GTStoreApp(
     when (currentScreen) {
         GTStoreScreen.DASHBOARD -> Dashboard(
             httpServer = httpServer,
-            onNavigate = { currentScreen = it }
+            onNavigate = { target: GTStoreScreen -> currentScreen = target }
         )
         GTStoreScreen.SERVIDOR -> ServerScreen(
             httpServer = httpServer,
@@ -170,18 +439,6 @@ fun GTStoreApp(
     }
 }
 
-fun normalizeInputUrl(raw: String): String {
-    val trimmed = raw.trim()
-    if (trimmed.isBlank()) return ""
-    return if (!trimmed.startsWith("http://", ignoreCase = true) &&
-        !trimmed.startsWith("https://", ignoreCase = true)
-    ) {
-        "https://$trimmed"
-    } else {
-        trimmed
-    }
-}
-
 @Composable
 fun CatalogManagerScreen(
     httpServer: HttpServer,
@@ -198,7 +455,6 @@ fun CatalogManagerScreen(
     var saving by remember { mutableStateOf(false) }
     var captureSourceUrl by remember { mutableStateOf<String?>(null) }
 
-    // Tipagem explícita List<String> para evitar erro de resolução do delegado do compilador
     var recentSources by remember {
         mutableStateOf<List<String>>(
             try {
@@ -500,6 +756,86 @@ fun CatalogManagerScreen(
 }
 
 @Composable
+fun CatalogManagerItemCard(
+    item: CatalogItem,
+    enabled: Boolean,
+    onUpdate: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = CardBlack),
+        border = BorderStroke(1.dp, BorderDark),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.title,
+                        color = TextWhite,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = item.contentId,
+                        color = Color(0xFF64B5F6),
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = buildString {
+                            append("Índice: ")
+                            append(item.indexString)
+                            if (item.version.isNotBlank()) {
+                                append(" • v")
+                                append(item.version)
+                            }
+                        },
+                        color = TextMuted,
+                        fontSize = 12.sp
+                    )
+                    if (item.fileName.isNotBlank()) {
+                        Text(
+                            text = item.fileName,
+                            color = TextMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onUpdate,
+                    enabled = enabled,
+                    modifier = Modifier.height(42.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
+                    shape = RoundedCornerShape(7.dp)
+                ) {
+                    Text(
+                        text = "ATUALIZAR",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            if (item.sourceUrl.isBlank()) {
+                Text(
+                    text = "Sem URL de origem salva",
+                    color = Color(0xFFFF9F0A),
+                    fontSize = 11.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun RegisteredCatalogScreen(
     onBack: () -> Unit
 ) {
@@ -647,86 +983,6 @@ fun RegisteredCatalogScreen(
                 Text("VOLTAR", color = TextWhite, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(16.dp))
-        }
-    }
-}
-
-@Composable
-fun CatalogManagerItemCard(
-    item: CatalogItem,
-    enabled: Boolean,
-    onUpdate: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = CardBlack),
-        border = BorderStroke(1.dp, BorderDark),
-        shape = RoundedCornerShape(10.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.title,
-                        color = TextWhite,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = item.contentId,
-                        color = Color(0xFF64B5F6),
-                        fontSize = 12.sp
-                    )
-                    Text(
-                        text = buildString {
-                            append("Índice: ")
-                            append(item.indexString)
-                            if (item.version.isNotBlank()) {
-                                append(" • v")
-                                append(item.version)
-                            }
-                        },
-                        color = TextMuted,
-                        fontSize = 12.sp
-                    )
-                    if (item.fileName.isNotBlank()) {
-                        Text(
-                            text = item.fileName,
-                            color = TextMuted,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-
-                Button(
-                    onClick = onUpdate,
-                    enabled = enabled,
-                    modifier = Modifier.height(42.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
-                    shape = RoundedCornerShape(7.dp)
-                ) {
-                    Text(
-                        text = "ATUALIZAR",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            if (item.sourceUrl.isBlank()) {
-                Text(
-                    text = "Sem URL de origem salva",
-                    color = Color(0xFFFF9F0A),
-                    fontSize = 11.sp
-                )
-            }
         }
     }
 }
@@ -1286,129 +1542,5 @@ fun AdminScreen(
             }
             Spacer(modifier = Modifier.height(16.dp))
         }
-    }
-}
-
-@Composable
-fun StatusCardLed(
-    title: String,
-    status: String,
-    isOnline: Boolean
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = CardBlack),
-        border = BorderStroke(1.dp, BorderDark),
-        shape = RoundedCornerShape(10.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(RedAccent)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = title,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = TextWhite
-                )
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(if (isOnline) GreenLed else RedLed)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = status,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = if (isOnline) GreenLed else RedLed
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun StatusCardSimple(
-    title: String,
-    status: String,
-    statusColor: Color
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = CardBlack),
-        border = BorderStroke(1.dp, BorderDark),
-        shape = RoundedCornerShape(10.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(RedAccent)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = title,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = TextWhite
-                )
-            }
-
-            Text(
-                text = status,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                color = statusColor
-            )
-        }
-    }
-}
-
-@Composable
-fun RedMenuButton(
-    text: String,
-    onClick: () -> Unit
-) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = RedAccent,
-            contentColor = TextWhite
-        ),
-        shape = RoundedCornerShape(10.dp)
-    ) {
-        Text(
-            text = text,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 1.sp
-        )
     }
 }
