@@ -183,139 +183,6 @@ fun normalizeInputUrl(raw: String): String {
 }
 
 @Composable
-fun Dashboard(
-    httpServer: HttpServer,
-    onNavigate: (GTStoreScreen) -> Unit
-) {
-    val context = LocalContext.current
-    var serverRunning by remember { mutableStateOf(httpServer.isRunning()) }
-
-    val logoBitmap = remember {
-        try {
-            context.assets.open("logo.jpg").use { inputStream ->
-                BitmapFactory.decodeStream(inputStream)
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            val isRunning = httpServer.isRunning()
-            if (serverRunning != isRunning) {
-                serverRunning = isRunning
-            }
-            delay(1000)
-        }
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(PureBlack)
-            .padding(horizontal = 22.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        item { Spacer(modifier = Modifier.height(24.dp)) }
-
-        item {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 10.dp)
-            ) {
-                if (logoBitmap != null) {
-                    Image(
-                        bitmap = logoBitmap.asImageBitmap(),
-                        contentDescription = "GTSTORE Logo",
-                        modifier = Modifier
-                            .fillMaxWidth(0.85f)
-                            .height(130.dp),
-                        contentScale = ContentScale.Fit
-                    )
-                } else {
-                    Text(
-                        text = "GTSTORE",
-                        fontSize = 36.sp,
-                        fontWeight = FontWeight.Black,
-                        color = RedAccent
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = "GONTIJO TECH",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 6.sp,
-                    color = Color(0xFFDDDDDD),
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-
-        item {
-            StatusCardLed(
-                title = "SERVIDOR",
-                status = if (serverRunning) "ONLINE" else "OFFLINE",
-                isOnline = serverRunning
-            )
-        }
-
-        item {
-            StatusCardSimple(
-                title = "CATÁLOGO",
-                status = "PRONTO",
-                statusColor = TextWhite
-            )
-        }
-
-        item { Spacer(modifier = Modifier.height(4.dp)) }
-
-        item {
-            RedMenuButton(
-                text = "SERVIDOR",
-                onClick = { onNavigate(GTStoreScreen.SERVIDOR) }
-            )
-        }
-
-        item {
-            RedMenuButton(
-                text = "CATALOG MANAGER",
-                onClick = { onNavigate(GTStoreScreen.CATALOGO) }
-            )
-        }
-
-        item {
-            RedMenuButton(
-                text = "CATÁLOGO CADASTRADO",
-                onClick = { onNavigate(GTStoreScreen.CATALOGO_CADASTRADO) }
-            )
-        }
-
-        item {
-            RedMenuButton(
-                text = "ADMIN (SOLICITAÇÕES PIN)",
-                onClick = { onNavigate(GTStoreScreen.ADMIN) }
-            )
-        }
-
-        item {
-            RedMenuButton(
-                text = "CONFIGURAÇÕES",
-                onClick = { onNavigate(GTStoreScreen.CONFIGURACOES) }
-            )
-        }
-
-        item { Spacer(modifier = Modifier.height(24.dp)) }
-    }
-}
-
-@Composable
 fun CatalogManagerScreen(
     httpServer: HttpServer,
     onBack: () -> Unit
@@ -331,12 +198,17 @@ fun CatalogManagerScreen(
     var saving by remember { mutableStateOf(false) }
     var captureSourceUrl by remember { mutableStateOf<String?>(null) }
 
+    // Tipagem explícita List<String> para evitar erro de resolução do delegado do compilador
     var recentSources by remember {
-        mutableStateOf(
+        mutableStateOf<List<String>>(
             try {
                 val raw = prefsSources.getString("recent_sources", "[]") ?: "[]"
                 val json = JSONArray(raw)
-                List(json.length()) { json.getString(it) }
+                val list = mutableListOf<String>()
+                for (i in 0 until json.length()) {
+                    list.add(json.getString(i))
+                }
+                list
             } catch (_: Exception) {
                 emptyList()
             }
@@ -568,7 +440,7 @@ fun CatalogManagerScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            recentSources.forEach { recentUrl ->
+                            for (recentUrl in recentSources) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
