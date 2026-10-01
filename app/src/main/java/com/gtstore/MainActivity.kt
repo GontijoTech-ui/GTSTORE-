@@ -74,7 +74,8 @@ enum class GTStoreScreen {
     DASHBOARD,
     SERVIDOR,
     CATALOGO,
-    ADMIN
+    ADMIN,
+    CONFIGURACOES
 }
 
 class MainActivity : ComponentActivity() {
@@ -156,86 +157,9 @@ fun GTStoreApp(
             httpServer = httpServer,
             onBack = { currentScreen = GTStoreScreen.DASHBOARD }
         )
-    }
-}
-
-@Composable
-fun CatalogManagerItemCard(
-    item: CatalogItem,
-    enabled: Boolean,
-    onUpdate: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = CardBlack),
-        border = BorderStroke(1.dp, BorderDark),
-        shape = RoundedCornerShape(10.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.title,
-                        color = TextWhite,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = item.contentId,
-                        color = Color(0xFF64B5F6),
-                        fontSize = 12.sp
-                    )
-                    Text(
-                        text = buildString {
-                            append("Índice: ")
-                            append(item.indexString)
-                            if (item.version.isNotBlank()) {
-                                append(" • v")
-                                append(item.version)
-                            }
-                        },
-                        color = TextMuted,
-                        fontSize = 12.sp
-                    )
-                    if (item.fileName.isNotBlank()) {
-                        Text(
-                            text = item.fileName,
-                            color = TextMuted,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-
-                Button(
-                    onClick = onUpdate,
-                    enabled = enabled,
-                    modifier = Modifier.height(42.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
-                    shape = RoundedCornerShape(7.dp)
-                ) {
-                    Text(
-                        text = "ATUALIZAR",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            if (item.sourceUrl.isBlank()) {
-                Text(
-                    text = "Sem URL de origem salva",
-                    color = Color(0xFFFF9F0A),
-                    fontSize = 11.sp
-                )
-            }
-        }
+        GTStoreScreen.CONFIGURACOES -> SettingsScreen(
+            onBack = { currentScreen = GTStoreScreen.DASHBOARD }
+        )
     }
 }
 
@@ -354,7 +278,219 @@ fun Dashboard(
             )
         }
 
+        item {
+            RedMenuButton(
+                text = "CONFIGURAÇÕES",
+                onClick = { onNavigate(GTStoreScreen.CONFIGURACOES) }
+            )
+        }
+
         item { Spacer(modifier = Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+fun SettingsScreen(
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("GTSTORE_SETTINGS", Context.MODE_PRIVATE) }
+    
+    var exceptionsText by remember {
+        mutableStateOf(prefs.getString("domain_exceptions", "") ?: "")
+    }
+    var message by remember { mutableStateOf("") }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PureBlack)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(vertical = 8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        .background(RedAccent)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "CONFIGURAÇÕES",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextWhite
+                )
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = CardBlack),
+                border = BorderStroke(1.dp, BorderDark),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "EXCEÇÕES DE DOMÍNIO",
+                        color = TextWhite,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = "Insira os domínios permitidos durante a captura de link (separados por vírgula ou linha). Se o site redirecionar para um destes, a navegação não será bloqueada.",
+                        color = TextMuted,
+                        fontSize = 13.sp
+                    )
+
+                    OutlinedTextField(
+                        value = exceptionsText,
+                        onValueChange = {
+                            exceptionsText = it
+                            message = ""
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = false,
+                        minLines = 4,
+                        maxLines = 8,
+                        placeholder = {
+                            Text("exemplo: mediafire.com, mega.nz, 1fichier.com")
+                        }
+                    )
+
+                    Button(
+                        onClick = {
+                            prefs.edit().putString("domain_exceptions", exceptionsText.trim()).apply()
+                            message = "Exceções salvas com sucesso!"
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "SALVAR CONFIGURAÇÃO",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
+
+                    if (message.isNotBlank()) {
+                        Text(
+                            text = message,
+                            color = GreenLed,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Button(
+                onClick = onBack,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF141414)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("VOLTAR", color = TextWhite, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+fun CatalogManagerItemCard(
+    item: CatalogItem,
+    enabled: Boolean,
+    onUpdate: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = CardBlack),
+        border = BorderStroke(1.dp, BorderDark),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.title,
+                        color = TextWhite,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = item.contentId,
+                        color = Color(0xFF64B5F6),
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = buildString {
+                            append("Índice: ")
+                            append(item.indexString)
+                            if (item.version.isNotBlank()) {
+                                append(" • v")
+                                append(item.version)
+                            }
+                        },
+                        color = TextMuted,
+                        fontSize = 12.sp
+                    )
+                    if (item.fileName.isNotBlank()) {
+                        Text(
+                            text = item.fileName,
+                            color = TextMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onUpdate,
+                    enabled = enabled,
+                    modifier = Modifier.height(42.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
+                    shape = RoundedCornerShape(7.dp)
+                ) {
+                    Text(
+                        text = "ATUALIZAR",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            if (item.sourceUrl.isBlank()) {
+                Text(
+                    text = "Sem URL de origem salva",
+                    color = Color(0xFFFF9F0A),
+                    fontSize = 11.sp
+                )
+            }
+        }
     }
 }
 
@@ -533,6 +669,7 @@ fun CatalogManagerScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val catalogManager = remember(context) { CatalogManager(context) }
+    val prefsSettings = remember { context.getSharedPreferences("GTSTORE_SETTINGS", Context.MODE_PRIVATE) }
 
     var url by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
@@ -547,8 +684,14 @@ fun CatalogManagerScreen(
     }
 
     if (captureSourceUrl != null) {
+        val exceptionsList = remember {
+            val raw = prefsSettings.getString("domain_exceptions", "") ?: ""
+            raw.split(",", "\n").map { it.trim().lowercase() }.filter { it.isNotBlank() }
+        }
+
         PkgLinkCaptureScreen(
             sourceUrl = captureSourceUrl!!,
+            allowedDomains = exceptionsList,
             onCaptured = { captureResult ->
                 captureSourceUrl = null
                 saving = true
