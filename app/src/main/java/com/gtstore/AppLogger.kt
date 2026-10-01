@@ -1,7 +1,6 @@
 package com.gtstore
 
 import android.content.Context
-import android.os.Environment
 import android.util.Log
 import java.io.File
 import java.io.FileWriter
@@ -12,16 +11,16 @@ import java.util.Locale
 object AppLogger {
 
     private const val TAG = "GTStoreLog"
-    private const val FOLDER_NAME = "logs"
     private const val FILE_NAME = "gtstore_debug.log"
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
     private var logFile: File? = null
 
     fun init(context: Context) {
         try {
-            // Diretório público: /storage/emulated/0/Download/logs/
-            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val logsDir = File(downloadsDir, FOLDER_NAME)
+            // Usa o diretório de dados do app (compatível com Android 10, 11, 12, 13, 14, 15)
+            // Não precisa de permissão de escrita e nunca dá Permission Denied (EACCES)
+            val baseDir = context.getExternalFilesDir(null) ?: context.filesDir
+            val logsDir = File(baseDir, "logs")
             if (!logsDir.exists()) {
                 logsDir.mkdirs()
             }
@@ -33,17 +32,7 @@ object AppLogger {
 
             log("=== INÍCIO DA SESSÃO DO APP ===")
         } catch (e: Exception) {
-            // Fallback caso a pasta pública esteja inacessível
-            try {
-                val fallbackDir = File(context.getExternalFilesDir(null), FOLDER_NAME)
-                fallbackDir.mkdirs()
-                logFile = File(fallbackDir, FILE_NAME)
-                if (!logFile!!.exists()) {
-                    logFile!!.createNewFile()
-                }
-            } catch (ex: Exception) {
-                Log.e(TAG, "Falha ao criar log: ${ex.message}")
-            }
+            Log.e(TAG, "Falha crítica ao iniciar arquivo de log: ${e.message}")
         }
     }
 
@@ -52,10 +41,10 @@ object AppLogger {
         val timestamp = dateFormat.format(Date())
         val formattedLine = "[$timestamp] $message\n"
 
-        // Escreve no console (Logcat)
+        // Escreve no Logcat
         Log.d(TAG, message)
 
-        // Escreve no arquivo de texto
+        // Escreve no arquivo de texto local
         try {
             logFile?.let { file ->
                 FileWriter(file, true).use { writer ->
@@ -68,7 +57,7 @@ object AppLogger {
 
     fun getLogContent(): String {
         return try {
-            logFile?.takeIf { it.exists() }?.readText() ?: "Arquivo de log vazio ou não criado."
+            logFile?.takeIf { it.exists() }?.readText() ?: "Arquivo de log ainda não possui dados."
         } catch (e: Exception) {
             "Erro ao ler log: ${e.message}"
         }
@@ -83,6 +72,6 @@ object AppLogger {
     }
 
     fun getLogPath(): String {
-        return logFile?.absolutePath ?: "Download/logs/$FILE_NAME"
+        return logFile?.absolutePath ?: "Indisponível"
     }
 }
