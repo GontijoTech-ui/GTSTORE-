@@ -1,7 +1,6 @@
 package com.gtstore
 
 import android.content.Context
-import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
@@ -25,22 +24,19 @@ object RemotePkgReader {
     )
 
     private const val MAGIC = 0x7F434E54
-
     private const val ID_PARAM_SFO = 0x1000
     private const val ID_ICON0_PNG = 0x1200
-
     private const val HEADER_SIZE = 0x1000
     private const val DIGEST_OFFSET = 0xFE0
-
     private const val MAX_ENTRY_COUNT = 4096
     private const val MAX_ENTRY_DATA = 4_000_000
 
-    private const val CONNECT_TIMEOUT = 15_000
-    private const val READ_TIMEOUT = 30_000
+    // Timeouts mais ágeis para evitar congelamentos longos em falhas de conexão
+    private const val CONNECT_TIMEOUT = 10_000
+    private const val READ_TIMEOUT = 20_000
 
     fun read(context: Context, rawUrl: String): Result? {
         val url = rawUrl.trim()
-
         if (!isValidUrl(url)) return null
 
         return try {
@@ -61,131 +57,54 @@ object RemotePkgReader {
         size: Long,
         head: ByteArray
     ): Result? {
-
-        val h = ByteBuffer
-            .wrap(head)
-            .order(ByteOrder.BIG_ENDIAN)
-
+        val h = ByteBuffer.wrap(head).order(ByteOrder.BIG_ENDIAN)
         if (h.getInt(0) != MAGIC) return null
 
         val entryCount = h.getInt(0x10)
+        if (entryCount !in 1..MAX_ENTRY_COUNT) return null
 
-        if (entryCount !in 1..MAX_ENTRY_COUNT) {
-            return null
-        }
-
-        val tableOffset =
-            h.getInt(0x18).toLong() and 0xFFFFFFFFL
-
+        val tableOffset = h.getInt(0x18).toLong() and 0xFFFFFFFFL
         val tableSize = entryCount.toLong() * 0x20L
 
-        if (tableOffset < 0L ||
-            tableSize <= 0L ||
-            tableOffset + tableSize > size
-        ) {
+        if (tableOffset < 0L || tableSize <= 0L || tableOffset + tableSize > size) {
             return null
         }
 
-        val table = range(
-            url,
-            tableOffset,
-            tableOffset + tableSize - 1L
-        )
+        val table = range(url, tableOffset, tableOffset + tableSize - 1L)
+        if (table.size != tableSize.toInt()) return null
 
-        if (table.size != tableSize.toInt()) {
-            return null
-        }
-
-        val t = ByteBuffer
-            .wrap(table)
-            .order(ByteOrder.BIG_ENDIAN)
-
+        val t = ByteBuffer.wrap(table).order(ByteOrder.BIG_ENDIAN)
         var sfo: ByteArray? = null
         var icon: ByteArray? = null
 
         for (i in 0 until entryCount) {
             val base = i * 0x20
-
             val id = t.getInt(base)
-
-            val dataOffset =
-                t.getInt(base + 16).toLong() and 0xFFFFFFFFL
-
-            val dataSize =
-                t.getInt(base + 20).toLong() and 0xFFFFFFFFL
+            val dataOffset = t.getInt(base + 16).toLong() and 0xFFFFFFFFL
+            val dataSize = t.getInt(base + 20).toLong() and 0xFFFFFFFFL
 
             if (dataSize <= 0L || dataSize > MAX_ENTRY_DATA) continue
-
-            if (dataOffset < 0L || dataOffset + dataSize > size) {
-                continue
-            }
+            if (dataOffset < 0L || dataOffset + dataSize > size) continue
 
             when (id) {
-                ID_PARAM_SFO -> {
-                    sfo = range(
-                        url,
-                        dataOffset,
-                        dataOffset + dataSize - 1L
-                    )
-                }
-
-                ID_ICON0_PNG -> {
-                    icon = range(
-                        url,
-                        dataOffset,
-                        dataOffset + dataSize - 1L
-                    )
-                }
+                ID_PARAM_SFO -> sfo = range(url, dataOffset, dataOffset + dataSize - 1L)
+                ID_ICON0_PNG -> icon = range(url, dataOffset, dataOffset + dataSize - 1L)
             }
         }
 
         val fields = parseSfo(sfo ?: return null)
-
-        val contentId = fields["CONTENT_ID"]
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?: return null
-
-        val category = fields["CATEGORY"]
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?: "gd"
-
-        val title = fields["TITLE"]
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?: fields["TITLE_00"]
-            ?.trim()
-            ?: fields["ATTRIBUTE_TITLE"]
-            ?.trim()
+        val contentId = fields["CONTENT_ID"]?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val category = fields["CATEGORY"]?.trim()?.takeIf { it.isNotEmpty() } ?: "gd"
+        val title = fields["TITLE"]?.trim()?.takeIf { it.isNotEmpty() }
+            ?: fields["TITLE_00"]?.trim()
+            ?: fields["ATTRIBUTE_TITLE"]?.trim()
             ?: contentId
 
-        val version = fields["APP_VER"]
-            ?.trim()
-            ?: fields["VERSION"]
-                ?.trim()
-            ?: ""
+        val version = fields["APP_VER"]?.trim() ?: fields["VERSION"]?.trim() ?: ""
 
-        val storedDigest =
-            head.copyOfRange(
-                DIGEST_OFFSET,
-                DIGEST_OFFSET + 32
-            )
-
-        val computedDigest =
-            MessageDigest
-                .getInstance("SHA-256")
-                .digest(
-                    head.copyOfRange(
-                        0,
-                        DIGEST_OFFSET
-                    )
-                )
-
-        val digest =
-            storedDigest.joinToString("") {
-                "%02X".format(it)
-            }
+        val storedDigest = head.copyOfRange(DIGEST_OFFSET, DIGEST_OFFSET + 32)
+        val computedDigest = MessageDigest.getInstance("SHA-256").digest(head.copyOfRange(0, DIGEST_OFFSET))
+        val digest = storedDigest.joinToString("") { "%02X".format(it) }
 
         return Result(
             url = url,
@@ -202,37 +121,25 @@ object RemotePkgReader {
 
     private fun determineSize(url: String): Long {
         val headConnection = openConnection(url, "HEAD")
-
         try {
-            headConnection.requestMethod = "HEAD"
             headConnection.connect()
-
             val length = headConnection.contentLengthLong
-
-            if (length > 0L) {
-                return length
-            }
+            if (length > 0L) return length
         } finally {
             headConnection.disconnect()
         }
 
         val connection = openConnection(url, "GET")
-
         try {
             connection.setRequestProperty("Range", "bytes=0-0")
             connection.connect()
 
             val contentRange = connection.getHeaderField("Content-Range")
             val totalFromRange = parseContentRangeTotal(contentRange)
-
-            if (totalFromRange > 0L) {
-                return totalFromRange
-            }
+            if (totalFromRange > 0L) return totalFromRange
 
             val length = connection.contentLengthLong
-            if (length > 0L) {
-                return length
-            }
+            if (length > 0L) return length
 
             throw IOException("Servidor não informou o tamanho do arquivo.")
         } finally {
@@ -245,93 +152,58 @@ object RemotePkgReader {
         start: Long,
         end: Long
     ): ByteArray {
-
         require(start >= 0L)
         require(end >= start)
 
         val connection = openConnection(url, "GET")
-
         try {
             connection.setRequestProperty("Range", "bytes=$start-$end")
             connection.setRequestProperty("Accept-Encoding", "identity")
             connection.connect()
 
             val responseCode = connection.responseCode
-
-            if (responseCode != HttpURLConnection.HTTP_PARTIAL &&
-                responseCode != HttpURLConnection.HTTP_OK
-            ) {
+            if (responseCode != HttpURLConnection.HTTP_PARTIAL && responseCode != HttpURLConnection.HTTP_OK) {
                 throw IOException("HTTP $responseCode")
             }
 
-            val expected = end - start + 1L
-
-            val output = ByteArrayOutputStream(
-                minOf(expected, 1024L * 1024L).toInt()
-            )
+            val expected = (end - start + 1L).toInt()
+            val result = ByteArray(expected)
+            var offset = 0
 
             connection.inputStream.use { input ->
-                val buffer = ByteArray(64 * 1024)
-                var remaining = expected
-
-                while (remaining > 0L) {
-                    val requested = minOf(buffer.size.toLong(), remaining).toInt()
-                    val read = input.read(buffer, 0, requested)
-
+                while (offset < expected) {
+                    val read = input.read(result, offset, expected - offset)
                     if (read <= 0) break
-
-                    output.write(buffer, 0, read)
-                    remaining -= read
+                    offset += read
                 }
             }
 
-            val result = output.toByteArray()
-
-            if (responseCode == HttpURLConnection.HTTP_PARTIAL) {
-                if (result.size.toLong() != expected) {
-                    throw IOException("Range incompleto: esperado=$expected recebido=${result.size}")
-                }
-            } else {
-                if (result.size.toLong() < expected) {
-                    throw IOException("Servidor não suporta Range.")
-                }
+            if (responseCode == HttpURLConnection.HTTP_PARTIAL && offset != expected) {
+                throw IOException("Range incompleto: esperado=$expected recebido=$offset")
             }
 
-            return result
+            return if (offset == expected) result else result.copyOf(offset)
         } finally {
             connection.disconnect()
         }
     }
 
-    private fun parseSfo(
-        data: ByteArray
-    ): Map<String, String> {
+    private fun parseSfo(data: ByteArray): Map<String, String> {
+        if (data.size < 20) return emptyMap()
 
-        if (data.size < 20) {
-            return emptyMap()
-        }
-
-        val bb = ByteBuffer
-            .wrap(data)
-            .order(ByteOrder.LITTLE_ENDIAN)
-
-        if (bb.getInt(0) != 0x46535000) { // "\0PSF"
-            return emptyMap()
-        }
+        val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+        if (bb.getInt(0) != 0x46535000) return emptyMap()
 
         val keyTable = bb.getInt(8)
         val dataTable = bb.getInt(12)
         val count = bb.getInt(16)
 
-        if (count < 0 || count > 4096) {
-            return emptyMap()
-        }
+        if (count < 0 || count > 4096) return emptyMap()
 
-        val out = HashMap<String, String>()
+        val out = HashMap<String, String>(count)
 
         for (i in 0 until count) {
             val e = 20 + i * 16
-
             if (e + 16 > data.size) break
 
             val keyOffset = bb.getShort(e).toInt() and 0xFFFF
@@ -339,11 +211,7 @@ object RemotePkgReader {
             val length = bb.getInt(e + 4)
             val dataOffset = bb.getInt(e + 12)
 
-            // Aceita UTF-8 special (0x0004) e UTF-8 null-terminated (0x0204)
-            if (format != 0x0204 && format != 0x0004) {
-                continue
-            }
-
+            if (format != 0x0204 && format != 0x0004) continue
             if (length < 0) continue
 
             val keyStart = keyTable + keyOffset
@@ -356,28 +224,19 @@ object RemotePkgReader {
 
             val valueStart = dataTable + dataOffset
             val valueEnd = valueStart + length
-
-            if (valueStart < 0 || valueEnd < valueStart || valueEnd > data.size) {
-                continue
-            }
+            if (valueStart < 0 || valueEnd < valueStart || valueEnd > data.size) continue
 
             val key = String(data, keyStart, keyEnd - keyStart, Charsets.UTF_8)
             val value = String(data, valueStart, length, Charsets.UTF_8).trimEnd('\u0000')
-
             out[key] = value
         }
 
         return out
     }
 
-    private fun openConnection(
-        rawUrl: String,
-        method: String
-    ): HttpURLConnection {
-
+    private fun openConnection(rawUrl: String, method: String): HttpURLConnection {
         val uri = URI(rawUrl)
         val scheme = uri.scheme?.lowercase()
-
         if (scheme != "http" && scheme != "https") {
             throw IOException("Somente HTTP e HTTPS são suportados.")
         }
@@ -388,16 +247,13 @@ object RemotePkgReader {
         connection.readTimeout = READ_TIMEOUT
         connection.instanceFollowRedirects = true
         connection.useCaches = false
-
         return connection
     }
 
     private fun parseContentRangeTotal(value: String?): Long {
         if (value.isNullOrBlank()) return -1L
-
         val slash = value.lastIndexOf('/')
         if (slash < 0 || slash + 1 >= value.length) return -1L
-
         return value.substring(slash + 1).trim().toLongOrNull() ?: -1L
     }
 
