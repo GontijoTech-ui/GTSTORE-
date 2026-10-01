@@ -198,6 +198,195 @@ fun GTStoreApp(
     }
 }
 
+@Composable
+fun CatalogManagerItemCard(
+    item: CatalogItem,
+    enabled: Boolean,
+    onUpdate: () -> Unit
+) {
+
+    Card(
+        modifier =
+            Modifier.fillMaxWidth(),
+
+        colors =
+            CardDefaults.cardColors(
+                containerColor =
+                    CardBlack
+            ),
+
+        border =
+            BorderStroke(
+                1.dp,
+                BorderDark
+            ),
+
+        shape =
+            RoundedCornerShape(
+                10.dp
+            )
+    ) {
+
+        Column(
+            modifier =
+                Modifier.padding(
+                    16.dp
+                ),
+
+            verticalArrangement =
+                Arrangement.spacedBy(
+                    8.dp
+                )
+        ) {
+
+            Row(
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                horizontalArrangement =
+                    Arrangement.spacedBy(
+                        10.dp
+                    ),
+
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+
+                Column(
+                    modifier =
+                        Modifier.weight(1f)
+                ) {
+
+                    Text(
+                        text =
+                            item.title,
+
+                        color =
+                            TextWhite,
+
+                        fontSize =
+                            16.sp,
+
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+
+                    Text(
+                        text =
+                            item.contentId,
+
+                        color =
+                            Color(0xFF64B5F6),
+
+                        fontSize =
+                            12.sp
+                    )
+
+                    Text(
+                        text =
+                            buildString {
+
+                                append(
+                                    "Índice: "
+                                )
+
+                                append(
+                                    item.indexString
+                                )
+
+                                if (
+                                    item.version.isNotBlank()
+                                ) {
+
+                                    append(
+                                        " • v"
+                                    )
+
+                                    append(
+                                        item.version
+                                    )
+                                }
+                            },
+
+                        color =
+                            TextMuted,
+
+                        fontSize =
+                            12.sp
+                    )
+
+                    if (
+                        item.fileName.isNotBlank()
+                    ) {
+
+                        Text(
+                            text =
+                                item.fileName,
+
+                            color =
+                                TextMuted,
+
+                            fontSize =
+                                12.sp
+                        )
+                    }
+                }
+
+                Button(
+                    onClick =
+                        onUpdate,
+
+                    enabled =
+                        enabled,
+
+                    modifier =
+                        Modifier.height(
+                            42.dp
+                        ),
+
+                    colors =
+                        ButtonDefaults.buttonColors(
+                            containerColor =
+                                RedAccent
+                        ),
+
+                    shape =
+                        RoundedCornerShape(
+                            7.dp
+                        )
+                ) {
+
+                    Text(
+                        text =
+                            "ATUALIZAR",
+
+                        fontSize =
+                            11.sp,
+
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                }
+            }
+
+            if (
+                item.sourceUrl.isBlank()
+            ) {
+
+                Text(
+                    text =
+                        "Sem URL de origem salva",
+
+                    color =
+                        Color(0xFFFF9F0A),
+
+                    fontSize =
+                        11.sp
+                )
+            }
+        }
+    }
+}
 // ============================================================
 // DASHBOARD
 // ============================================================
