@@ -6,6 +6,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.URI
+import java.net.URL
 
 class CatalogManager(
     private val context: Context
@@ -23,11 +24,9 @@ class CatalogManager(
         private const val KEY_NEXT_INDEX = "next_index"
         private const val ICON_DIR = "catalog_icons"
 
-        // Cache em memória para os itens (evita ler o SharedPreferences repetidamente)
         @Volatile
         private var memoryCache: List<CatalogItem>? = null
 
-        // Cache em memória para ícones (máximo 4MB para evitar consumo excessivo de RAM)
         private val iconCache = object : LruCache<String, ByteArray>(4 * 1024 * 1024) {
             override fun sizeOf(key: String, value: ByteArray): Int = value.size
         }
@@ -61,7 +60,7 @@ class CatalogManager(
 
         AppLogger.log("[CatalogManager] URL válida. Encaminhando para RemotePkgReader.read...")
         val remote = RemotePkgReader.read(context, url)
-        
+
         if (remote == null) {
             AppLogger.log("[CatalogManager] FALHA: RemotePkgReader.read retornou null.")
             return OperationResult(
@@ -448,7 +447,6 @@ class CatalogManager(
         }
 
         prefs.edit().putString(KEY_ITEMS, array.toString()).apply()
-
         memoryCache = items.sortedBy { it.catalogIndex }
     }
 
@@ -482,18 +480,31 @@ class CatalogManager(
     }
 
     // ========================================================
-    // URL
+    // VALIDAÇÃO RESILIENTE DE URL (COM SUPORTE A [ e ])
     // ========================================================
 
     private fun isValidUrl(
         rawUrl: String
     ): Boolean {
+        val trimmed = rawUrl.trim()
+        val isHttp = trimmed.startsWith("http://", ignoreCase = true)
+        val isHttps = trimmed.startsWith("https://", ignoreCase = true)
+        if (!isHttp && !isHttps) return false
+
         return try {
-            val uri = URI(rawUrl)
-            val scheme = uri.scheme?.lowercase()
-            (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
+            val sanitized = trimmed
+                .replace("[", "%5B")
+                .replace("]", "%5D")
+                .replace(" ", "%20")
+            val uri = URI(sanitized)
+            !uri.host.isNullOrBlank()
         } catch (_: Exception) {
-            false
+            try {
+                val u = URL(trimmed)
+                !u.host.isNullOrBlank()
+            } catch (_: Exception) {
+                false
+            }
         }
     }
 }
