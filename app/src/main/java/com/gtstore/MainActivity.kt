@@ -102,6 +102,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Inicializa o logger para salvar em Download/logs/gtstore_debug.log
+        AppLogger.init(this)
+
         setContent {
             val colorScheme = darkColorScheme(
                 background = PureBlack,
@@ -1091,6 +1094,87 @@ fun SettingsScreen(
                             color = GreenLed,
                             fontSize = 13.sp
                         )
+                    }
+                }
+            }
+        }
+
+        // Card de gerenciamento de Logs
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = CardBlack),
+                border = BorderStroke(1.dp, BorderDark),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "LOGS DO SISTEMA",
+                        color = TextWhite,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = "Arquivo: ${AppLogger.getLogPath()}",
+                        color = TextMuted,
+                        fontSize = 11.sp
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                val text = AppLogger.getLogContent()
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("GTStore Log", text))
+                                Toast.makeText(context, "Log copiado!", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222222)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("COPIAR LOG", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                val text = AppLogger.getLogContent()
+                                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, text)
+                                }
+                                context.startActivity(Intent.createChooser(sendIntent, "Enviar Log"))
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("COMPARTILHAR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            AppLogger.clearLog()
+                            Toast.makeText(context, "Log limpo!", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(38.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF141414)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("LIMPAR ARQUIVO DE LOG", color = TextMuted, fontSize = 11.sp)
                     }
                 }
             }
