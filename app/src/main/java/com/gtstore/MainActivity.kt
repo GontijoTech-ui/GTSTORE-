@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +54,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +62,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 
 val PureBlack = Color(0xFF000000)
 val CardBlack = Color(0xFF080808)
@@ -74,6 +77,7 @@ enum class GTStoreScreen {
     DASHBOARD,
     SERVIDOR,
     CATALOGO,
+    CATALOGO_CADASTRADO,
     ADMIN,
     CONFIGURACOES
 }
@@ -153,6 +157,9 @@ fun GTStoreApp(
             httpServer = httpServer,
             onBack = { currentScreen = GTStoreScreen.DASHBOARD }
         )
+        GTStoreScreen.CATALOGO_CADASTRADO -> RegisteredCatalogScreen(
+            onBack = { currentScreen = GTStoreScreen.DASHBOARD }
+        )
         GTStoreScreen.ADMIN -> AdminScreen(
             httpServer = httpServer,
             onBack = { currentScreen = GTStoreScreen.DASHBOARD }
@@ -160,6 +167,18 @@ fun GTStoreApp(
         GTStoreScreen.CONFIGURACOES -> SettingsScreen(
             onBack = { currentScreen = GTStoreScreen.DASHBOARD }
         )
+    }
+}
+
+fun normalizeInputUrl(raw: String): String {
+    val trimmed = raw.trim()
+    if (trimmed.isBlank()) return ""
+    return if (!trimmed.startsWith("http://", ignoreCase = true) &&
+        !trimmed.startsWith("https://", ignoreCase = true)
+    ) {
+        "https://$trimmed"
+    } else {
+        trimmed
     }
 }
 
@@ -273,6 +292,13 @@ fun Dashboard(
 
         item {
             RedMenuButton(
+                text = "CATÁLOGO CADASTRADO",
+                onClick = { onNavigate(GTStoreScreen.CATALOGO_CADASTRADO) }
+            )
+        }
+
+        item {
+            RedMenuButton(
                 text = "ADMIN (SOLICITAÇÕES PIN)",
                 onClick = { onNavigate(GTStoreScreen.ADMIN) }
             )
@@ -290,12 +316,556 @@ fun Dashboard(
 }
 
 @Composable
+fun CatalogManagerScreen(
+    httpServer: HttpServer,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val catalogManager = remember(context) { CatalogManager(context) }
+    val prefsSettings = remember { context.getSharedPreferences("GTSTORE_SETTINGS", Context.MODE_PRIVATE) }
+    val prefsSources = remember { context.getSharedPreferences("GTSTORE_SOURCES_HISTORY", Context.MODE_PRIVATE) }
+
+    var url by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
+    var captureSourceUrl by remember { mutableStateOf<String?>(null) }
+
+    var recentSources by remember {
+        mutableStateOf(
+            try {
+                val raw = prefsSources.getString("recent_sources", "[]") ?: "[]"
+                val json = JSONArray(raw)
+                List(json.length()) { json.getString(it) }
+            } catch (_: Exception) {
+                emptyList()
+            }
+        )
+    }
+
+    fun saveRecentSource(newUrl: String) {
+        val clean = newUrl.trim()
+        if (clean.isBlank()) return
+        val currentList = recentSources.toMutableList()
+        currentList.remove(clean)
+        currentList.add(0, clean)
+        if (currentList.size > 15) {
+            currentList.removeAt(currentList.lastIndex)
+        }
+        recentSources = currentList
+        val jsonArray = JSONArray()
+        currentList.forEach { jsonArray.put(it) }
+        prefsSources.edit().putString("recent_sources", jsonArray.toString()).apply()
+    }
+
+    fun deleteRecentSource(target: String) {
+        val currentList = recentSources.toMutableList()
+        currentList.remove(target)
+        recentSources = currentList
+        val jsonArray = JSONArray()
+        currentList.forEach { jsonArray.put(it) }
+        prefsSources.edit().putString("recent_sources", jsonArray.toString()).apply()
+    }
+
+    if (captureSourceUrl != null) {
+        val exceptionsList = remember {
+            val raw = prefsSettings.getString("domain_exceptions", "") ?: ""
+            raw.split(",", "\n").map { it.trim().lowercase() }.filter { it.isNotBlank() }
+        }
+
+        PkgLinkCaptureScreen(
+            sourceUrl = captureSourceUrl!!,
+            allowedDomains = exceptionsList,
+            onCaptured = { captureResult ->
+                captureSourceUrl = null
+                saving = true
+                message = "Link capturado. Validando PKG..."
+
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        try {
+                            catalogManager.registerOrUpdateCaptured(
+                                sourceUrl = captureResult.sourceUrl,
+                                directUrl = captureResult.directUrl,
+                                fileName = captureResult.fileName
+                            )
+                        } catch (e: Exception) {
+                            CatalogManager.OperationResult(
+                                success = false,
+                                message = e.message ?: "Erro ao processar o PKG."
+                            )
+                        }
+                    }
+
+                    saving = false
+                    message = result.message
+                    if (result.success) {
+                        url = ""
+                    }
+                }
+            },
+            onCancel = { captureSourceUrl = null }
+        )
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PureBlack)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(vertical = 8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        .background(RedAccent)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "CATALOG MANAGER",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextWhite
+                )
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = CardBlack),
+                border = BorderStroke(1.dp, BorderDark),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "INSERIR URL",
+                        color = TextWhite,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    OutlinedTextField(
+                        value = url,
+                        onValueChange = {
+                            url = it
+                            message = ""
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("https://...") }
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                val normalizedUrl = normalizeInputUrl(url)
+                                if (normalizedUrl.isBlank()) {
+                                    message = "Informe uma URL."
+                                    return@Button
+                                }
+
+                                saving = true
+                                message = "Analisando PKG remoto..."
+
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        try {
+                                            catalogManager.registerOrUpdate(normalizedUrl)
+                                        } catch (e: Exception) {
+                                            CatalogManager.OperationResult(
+                                                success = false,
+                                                message = e.message ?: "Erro ao processar a URL."
+                                            )
+                                        }
+                                    }
+
+                                    saving = false
+                                    message = result.message
+                                    if (result.success) {
+                                        url = ""
+                                    }
+                                }
+                            },
+                            enabled = !saving,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = if (saving) "..." else "SALVAR DIRETA",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                val source = normalizeInputUrl(url)
+                                if (source.isBlank()) {
+                                    message = "Informe a URL inicial do site."
+                                    return@Button
+                                }
+                                saveRecentSource(source)
+                                message = ""
+                                captureSourceUrl = source
+                            },
+                            enabled = !saving,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222222)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = "CAPTURAR LINK",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
+                    if (message.isNotBlank()) {
+                        Text(
+                            text = message,
+                            color = if (saving) {
+                                TextMuted
+                            } else if (message.startsWith("URL atualizada") || message.startsWith("PKG reconhecido")) {
+                                GreenLed
+                            } else {
+                                TextMuted
+                            },
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    if (recentSources.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "FONTES RECENTES (TOQUE PARA ABRIR):",
+                            color = Color(0xFFDDDDDD),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            recentSources.forEach { recentUrl ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFF141414), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = recentUrl,
+                                        color = Color(0xFF64B5F6),
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable {
+                                                url = recentUrl
+                                                saveRecentSource(recentUrl)
+                                                captureSourceUrl = recentUrl
+                                            }
+                                    )
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    Text(
+                                        text = "✕",
+                                        color = Color(0xFF888888),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier
+                                            .clickable { deleteRecentSource(recentUrl) }
+                                            .padding(4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Button(
+                onClick = onBack,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF141414)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("VOLTAR", color = TextWhite, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+fun RegisteredCatalogScreen(
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val catalogManager = remember(context) { CatalogManager(context) }
+    val prefsSettings = remember { context.getSharedPreferences("GTSTORE_SETTINGS", Context.MODE_PRIVATE) }
+
+    var items by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
+    var captureSourceUrl by remember { mutableStateOf<String?>(null) }
+    var message by remember { mutableStateOf("") }
+    var updating by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        items = withContext(Dispatchers.IO) {
+            catalogManager.getAll()
+        }
+    }
+
+    if (captureSourceUrl != null) {
+        val exceptionsList = remember {
+            val raw = prefsSettings.getString("domain_exceptions", "") ?: ""
+            raw.split(",", "\n").map { it.trim().lowercase() }.filter { it.isNotBlank() }
+        }
+
+        PkgLinkCaptureScreen(
+            sourceUrl = captureSourceUrl!!,
+            allowedDomains = exceptionsList,
+            onCaptured = { captureResult ->
+                captureSourceUrl = null
+                updating = true
+                message = "Atualizando link do PKG..."
+
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        try {
+                            catalogManager.registerOrUpdateCaptured(
+                                sourceUrl = captureResult.sourceUrl,
+                                directUrl = captureResult.directUrl,
+                                fileName = captureResult.fileName
+                            )
+                        } catch (e: Exception) {
+                            CatalogManager.OperationResult(
+                                success = false,
+                                message = e.message ?: "Erro ao atualizar."
+                            )
+                        }
+                    }
+
+                    updating = false
+                    message = result.message
+                    if (result.success) {
+                        items = withContext(Dispatchers.IO) { catalogManager.getAll() }
+                    }
+                }
+            },
+            onCancel = { captureSourceUrl = null }
+        )
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PureBlack)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(vertical = 8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        .background(RedAccent)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "CATÁLOGO CADASTRADO",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextWhite
+                )
+            }
+        }
+
+        if (message.isNotBlank()) {
+            item {
+                Text(
+                    text = message,
+                    color = if (updating) TextMuted else GreenLed,
+                    fontSize = 13.sp
+                )
+            }
+        }
+
+        if (items.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = CardBlack),
+                    border = BorderStroke(1.dp, BorderDark),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = "Nenhum PKG cadastrado.",
+                        modifier = Modifier.padding(20.dp),
+                        color = TextMuted,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        } else {
+            items(
+                items = items,
+                key = { it.catalogIndex }
+            ) { item ->
+                CatalogManagerItemCard(
+                    item = item,
+                    enabled = !updating,
+                    onUpdate = {
+                        if (item.sourceUrl.isBlank()) {
+                            message = "Este item não possui URL de origem salva."
+                            return@CatalogManagerItemCard
+                        }
+                        captureSourceUrl = item.sourceUrl
+                    }
+                )
+            }
+        }
+
+        item {
+            Button(
+                onClick = onBack,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF141414)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("VOLTAR", color = TextWhite, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+fun CatalogManagerItemCard(
+    item: CatalogItem,
+    enabled: Boolean,
+    onUpdate: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = CardBlack),
+        border = BorderStroke(1.dp, BorderDark),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.title,
+                        color = TextWhite,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = item.contentId,
+                        color = Color(0xFF64B5F6),
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = buildString {
+                            append("Índice: ")
+                            append(item.indexString)
+                            if (item.version.isNotBlank()) {
+                                append(" • v")
+                                append(item.version)
+                            }
+                        },
+                        color = TextMuted,
+                        fontSize = 12.sp
+                    )
+                    if (item.fileName.isNotBlank()) {
+                        Text(
+                            text = item.fileName,
+                            color = TextMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onUpdate,
+                    enabled = enabled,
+                    modifier = Modifier.height(42.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
+                    shape = RoundedCornerShape(7.dp)
+                ) {
+                    Text(
+                        text = "ATUALIZAR",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            if (item.sourceUrl.isBlank()) {
+                Text(
+                    text = "Sem URL de origem salva",
+                    color = Color(0xFFFF9F0A),
+                    fontSize = 11.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("GTSTORE_SETTINGS", Context.MODE_PRIVATE) }
-    
+
     var exceptionsText by remember {
         mutableStateOf(prefs.getString("domain_exceptions", "") ?: "")
     }
@@ -410,86 +980,6 @@ fun SettingsScreen(
                 Text("VOLTAR", color = TextWhite, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(16.dp))
-        }
-    }
-}
-
-@Composable
-fun CatalogManagerItemCard(
-    item: CatalogItem,
-    enabled: Boolean,
-    onUpdate: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = CardBlack),
-        border = BorderStroke(1.dp, BorderDark),
-        shape = RoundedCornerShape(10.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.title,
-                        color = TextWhite,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = item.contentId,
-                        color = Color(0xFF64B5F6),
-                        fontSize = 12.sp
-                    )
-                    Text(
-                        text = buildString {
-                            append("Índice: ")
-                            append(item.indexString)
-                            if (item.version.isNotBlank()) {
-                                append(" • v")
-                                append(item.version)
-                            }
-                        },
-                        color = TextMuted,
-                        fontSize = 12.sp
-                    )
-                    if (item.fileName.isNotBlank()) {
-                        Text(
-                            text = item.fileName,
-                            color = TextMuted,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-
-                Button(
-                    onClick = onUpdate,
-                    enabled = enabled,
-                    modifier = Modifier.height(42.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
-                    shape = RoundedCornerShape(7.dp)
-                ) {
-                    Text(
-                        text = "ATUALIZAR",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            if (item.sourceUrl.isBlank()) {
-                Text(
-                    text = "Sem URL de origem salva",
-                    color = Color(0xFFFF9F0A),
-                    fontSize = 11.sp
-                )
-            }
         }
     }
 }
@@ -662,340 +1152,6 @@ fun ServerScreen(
 }
 
 @Composable
-fun CatalogManagerScreen(
-    httpServer: HttpServer,
-    onBack: () -> Unit
-) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val catalogManager = remember(context) { CatalogManager(context) }
-    val prefsSettings = remember { context.getSharedPreferences("GTSTORE_SETTINGS", Context.MODE_PRIVATE) }
-
-    var url by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf("") }
-    var saving by remember { mutableStateOf(false) }
-    var items by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
-    var captureSourceUrl by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        items = withContext(Dispatchers.IO) {
-            catalogManager.getAll()
-        }
-    }
-
-    if (captureSourceUrl != null) {
-        val exceptionsList = remember {
-            val raw = prefsSettings.getString("domain_exceptions", "") ?: ""
-            raw.split(",", "\n").map { it.trim().lowercase() }.filter { it.isNotBlank() }
-        }
-
-        PkgLinkCaptureScreen(
-            sourceUrl = captureSourceUrl!!,
-            allowedDomains = exceptionsList,
-            onCaptured = { captureResult ->
-                captureSourceUrl = null
-                saving = true
-                message = "Link capturado. Validando PKG..."
-
-                scope.launch {
-                    val result = withContext(Dispatchers.IO) {
-                        try {
-                            catalogManager.registerOrUpdateCaptured(
-                                sourceUrl = captureResult.sourceUrl,
-                                directUrl = captureResult.directUrl,
-                                fileName = captureResult.fileName
-                            )
-                        } catch (e: Exception) {
-                            CatalogManager.OperationResult(
-                                success = false,
-                                message = e.message ?: "Erro ao processar o PKG."
-                            )
-                        }
-                    }
-
-                    saving = false
-                    message = result.message
-
-                    if (result.success) {
-                        items = withContext(Dispatchers.IO) { catalogManager.getAll() }
-                        url = ""
-                    }
-                }
-            },
-            onCancel = { captureSourceUrl = null }
-        )
-        return
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(PureBlack)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(vertical = 8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(14.dp)
-                        .clip(CircleShape)
-                        .background(RedAccent)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = "CATALOG MANAGER",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextWhite
-                )
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = CardBlack),
-                border = BorderStroke(1.dp, BorderDark),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "URL EXTERNA DO PKG",
-                        color = TextWhite,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Text(
-                        text = "URL direta do PKG ou URL inicial do site.",
-                        color = TextMuted,
-                        fontSize = 13.sp
-                    )
-
-                    OutlinedTextField(
-                        value = url,
-                        onValueChange = {
-                            url = it
-                            message = ""
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = false,
-                        minLines = 3,
-                        maxLines = 5,
-                        label = { Text("URL") }
-                    )
-
-                    Button(
-                        onClick = {
-                            val normalizedUrl = url.trim()
-                            if (normalizedUrl.isBlank()) {
-                                message = "Informe uma URL."
-                                return@Button
-                            }
-                            if (!normalizedUrl.startsWith("http://") && !normalizedUrl.startsWith("https://")) {
-                                message = "A URL deve começar com http:// ou https://."
-                                return@Button
-                            }
-
-                            saving = true
-                            message = "Analisando PKG remoto..."
-
-                            scope.launch {
-                                val result = withContext(Dispatchers.IO) {
-                                    try {
-                                        catalogManager.registerOrUpdate(normalizedUrl)
-                                    } catch (e: Exception) {
-                                        CatalogManager.OperationResult(
-                                            success = false,
-                                            message = e.message ?: "Erro ao processar a URL."
-                                        )
-                                    }
-                                }
-
-                                saving = false
-                                message = result.message
-
-                                if (result.success) {
-                                    items = withContext(Dispatchers.IO) { catalogManager.getAll() }
-                                    url = ""
-                                }
-                            }
-                        },
-                        enabled = !saving,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = if (saving) "PROCESSANDO..." else "SALVAR URL DIRETA",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                    }
-
-                    Button(
-                        onClick = {
-                            val source = url.trim()
-                            if (source.isBlank()) {
-                                message = "Informe a URL inicial do site."
-                                return@Button
-                            }
-                            if (!source.startsWith("http://") && !source.startsWith("https://")) {
-                                message = "A URL deve começar com http:// ou https://."
-                                return@Button
-                            }
-                            message = ""
-                            captureSourceUrl = source
-                        },
-                        enabled = !saving,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222222)),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = "CAPTURAR LINK",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                    }
-
-                    if (message.isNotBlank()) {
-                        Text(
-                            text = message,
-                            color = if (saving) {
-                                TextMuted
-                            } else if (message.startsWith("URL atualizada") || message.startsWith("PKG reconhecido")) {
-                                GreenLed
-                            } else {
-                                TextMuted
-                            },
-                            fontSize = 13.sp
-                        )
-                    }
-                }
-            }
-        }
-
-        item {
-            Text(
-                text = "CATÁLOGO CADASTRADO",
-                color = TextWhite,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 6.dp)
-            )
-        }
-
-        if (items.isEmpty()) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = CardBlack),
-                    border = BorderStroke(1.dp, BorderDark),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text(
-                        text = "Nenhum PKG cadastrado.",
-                        modifier = Modifier.padding(20.dp),
-                        color = TextMuted,
-                        fontSize = 14.sp
-                    )
-                }
-            }
-        } else {
-            items(
-                items = items,
-                key = { it.catalogIndex }
-            ) { item ->
-                CatalogManagerItemCard(
-                    item = item,
-                    enabled = !saving,
-                    onUpdate = {
-                        if (item.sourceUrl.isBlank()) {
-                            message = "Este item não possui URL de origem salva. Cadastre novamente usando CAPTURAR LINK."
-                            return@CatalogManagerItemCard
-                        }
-                        captureSourceUrl = item.sourceUrl
-                    }
-                )
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF0A0A0A)),
-                border = BorderStroke(1.dp, BorderDark),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "COMPORTAMENTO",
-                        color = TextWhite,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "• URL direta: o PKG é analisado diretamente.",
-                        color = TextMuted,
-                        fontSize = 13.sp
-                    )
-                    Text(
-                        text = "• Capturar link: o site abre dentro do GTSTORE.",
-                        color = TextMuted,
-                        fontSize = 13.sp
-                    )
-                    Text(
-                        text = "• CAPTCHA: resolvido manualmente no navegador.",
-                        color = TextMuted,
-                        fontSize = 13.sp
-                    )
-                    Text(
-                        text = "• O link direto capturado é validado pelo RemotePkgReader.",
-                        color = TextMuted,
-                        fontSize = 13.sp
-                    )
-                    Text(
-                        text = "• O PKG completo não será armazenado no Android.",
-                        color = TextMuted,
-                        fontSize = 13.sp
-                    )
-                }
-            }
-        }
-
-        item {
-            Button(
-                onClick = onBack,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF141414)),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text("VOLTAR", color = TextWhite, fontWeight = FontWeight.Bold)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-    }
-}
-
-@Composable
 fun AdminScreen(
     httpServer: HttpServer,
     onBack: () -> Unit
@@ -1080,13 +1236,6 @@ fun AdminScreen(
                         text = "Validade de cada chave: 10 minutos",
                         color = TextMuted,
                         fontSize = 13.sp
-                    )
-
-                    Text(
-                        text = "Quando o usuário clica em 'SOLICITAR PIN' no PS4, a chave aparece abaixo.",
-                        color = TextMuted,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
                     )
                 }
             }
