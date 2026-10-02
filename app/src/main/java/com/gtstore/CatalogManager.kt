@@ -96,17 +96,9 @@ class CatalogManager(
 
         AppLogger.log("--------------------------------------------------")
         AppLogger.log("[CatalogManager] registerOrUpdateCaptured acionado!")
-        AppLogger.log("[CatalogManager] sourceUrl: \"$normalizedSource\"")
-        AppLogger.log("[CatalogManager] directUrl: \"$normalizedDirect\"")
+        AppLogger.log("[CatalogManager] sourceUrl (Página de Origem): \"$normalizedSource\"")
+        AppLogger.log("[CatalogManager] directUrl (Download PKG): \"$normalizedDirect\"")
         AppLogger.log("[CatalogManager] fileName: \"$normalizedFileName\"")
-
-        if (!isValidUrl(normalizedSource)) {
-            AppLogger.log("[CatalogManager] FALHA: URL de origem inválida ($normalizedSource)")
-            return OperationResult(
-                false,
-                "URL de origem inválida."
-            )
-        }
 
         if (!isValidUrl(normalizedDirect)) {
             AppLogger.log("[CatalogManager] FALHA: URL de download direto inválida ($normalizedDirect)")
@@ -127,7 +119,7 @@ class CatalogManager(
             )
         }
 
-        AppLogger.log("[CatalogManager] PKG reconhecido. Atualizando link e capa do item...")
+        AppLogger.log("[CatalogManager] PKG reconhecido. Atualizando link, origem e capa do item...")
         return saveRemotePkg(
             remote = remote,
             sourceUrl = normalizedSource,
@@ -162,30 +154,34 @@ class CatalogManager(
             }
 
         if (existing != null) {
-            AppLogger.log("[CatalogManager] Atualizando link e capa de: ${existing.title} (Índice: ${existing.indexString})")
-            
-            // Define o nome do arquivo de ícone
+            // Se veio uma página de origem na captura (mesmo que redirecionada), atualiza obrigatoriamente
+            val finalSourceUrl = if (sourceUrl.isNotBlank()) {
+                sourceUrl.trim()
+            } else {
+                existing.sourceUrl
+            }
+
+            val finalFileName = if (fileName.isNotBlank()) {
+                fileName.trim()
+            } else {
+                existing.fileName
+            }
+
             val iconName = if (existing.iconFile.isNotBlank()) {
                 existing.iconFile
             } else {
                 iconFileName(existing.catalogIndex)
             }
 
+            AppLogger.log("[CatalogManager] Atualizando item: ${existing.title} (Índice: ${existing.indexString})")
+            AppLogger.log("[CatalogManager] -> Nova página de origem: \"$finalSourceUrl\"")
+            AppLogger.log("[CatalogManager] -> Novo link direto: \"${remote.url}\"")
+
             val updated =
                 existing.copy(
                     url = remote.url,
-                    sourceUrl =
-                        if (sourceUrl.isNotBlank()) {
-                            sourceUrl
-                        } else {
-                            existing.sourceUrl
-                        },
-                    fileName =
-                        if (fileName.isNotBlank()) {
-                            fileName
-                        } else {
-                            existing.fileName
-                        },
+                    sourceUrl = finalSourceUrl,
+                    fileName = finalFileName,
                     size = remote.size,
                     digest = remote.digest,
                     digestMatches = remote.digestMatches,
@@ -201,25 +197,23 @@ class CatalogManager(
                     }
                 }
 
-            // Grava os dados do catálogo
+            // Grava alterações no banco persistente
             saveItems(updatedItems)
 
-            // Salva / Sobrescreve a nova capa obtida do PKG
+            // Atualiza fisicamente a capa caso o PKG contenha icon0.png
             if (remote.icon != null && remote.icon.isNotEmpty()) {
                 saveIcon(existing.catalogIndex, remote.icon)
-                AppLogger.log("[CatalogManager] Capa atualizada com sucesso para o índice ${existing.indexString}")
-            } else {
-                AppLogger.log("[CatalogManager] Nenhum ícone novo retornado pelo PKG. Capa anterior mantida.")
+                AppLogger.log("[CatalogManager] Capa regravada fisicamente com sucesso para índice ${existing.indexString}")
             }
 
             return OperationResult(
                 true,
-                "Link e capa atualizados com sucesso para [${updated.type}] ${updated.title}.",
+                "Link, página de origem e capa atualizados com sucesso para [${updated.type}] ${updated.title}.",
                 updated
             )
         }
 
-        // Caso seja um novo registro
+        // Caso seja um novo registo
         val newIndex = nextIndex()
         val itemType = classify(remote.category)
         val formattedTitle =
@@ -229,7 +223,7 @@ class CatalogManager(
                 remote.version
             )
 
-        AppLogger.log("[CatalogManager] Criando novo registro: $formattedTitle (Tipo: $itemType, Novo Índice: $newIndex)")
+        AppLogger.log("[CatalogManager] Criando novo registro: $formattedTitle (Novo Índice: $newIndex)")
 
         val item =
             CatalogItem(
@@ -243,8 +237,8 @@ class CatalogManager(
                 digest = remote.digest,
                 digestMatches = remote.digestMatches,
                 url = remote.url,
-                sourceUrl = sourceUrl,
-                fileName = fileName,
+                sourceUrl = sourceUrl.trim(),
+                fileName = fileName.trim(),
                 iconFile = iconFileName(newIndex)
             )
 
@@ -398,7 +392,7 @@ class CatalogManager(
         val total = pendentes.size
         var recuperados = 0
 
-        AppLogger.log("[CatalogManager] Iniciando recuperação de $total ícones via RemotePkgReader...")
+        AppLogger.log("[CatalogManager] Iniciando recuperação de $total ícones via links diretos de PKG...")
 
         pendentes.forEachIndexed { index, item ->
             withContext(Dispatchers.Main) {
@@ -528,6 +522,7 @@ class CatalogManager(
             )
         }
         prefs.edit().putString(KEY_ITEMS, array.toString()).apply()
+        // Invalida o cache e ordena para atualizar o Compose imediatamente
         memoryCache = items.sortedBy { it.catalogIndex }
     }
 
@@ -535,7 +530,7 @@ class CatalogManager(
         if (icon == null || icon.isEmpty()) return
         val fileName = iconFileName(catalogIndex)
         
-        // Atualiza a LruCache imediatamente
+        // Atualiza a LruCache
         iconCache.put(fileName, icon)
         try {
             val directory = File(context.filesDir, ICON_DIR)
