@@ -17,6 +17,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +34,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -102,7 +104,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Inicializa o logger para salvar em Download/logs/gtstore_debug.log
         AppLogger.init(this)
 
         setContent {
@@ -761,9 +762,19 @@ fun CatalogManagerScreen(
 @Composable
 fun CatalogManagerItemCard(
     item: CatalogItem,
+    catalogManager: CatalogManager,
     enabled: Boolean,
     onUpdate: () -> Unit
 ) {
+    val iconBitmap = remember(item.iconFile) {
+        val bytes = catalogManager.getIcon(item)
+        if (bytes != null && bytes.isNotEmpty()) {
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        } else {
+            null
+        }
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = CardBlack),
@@ -771,20 +782,47 @@ fun CatalogManagerItemCard(
         shape = RoundedCornerShape(10.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (iconBitmap != null) {
+                    Image(
+                        bitmap = iconBitmap.asImageBitmap(),
+                        contentDescription = item.title,
+                        modifier = Modifier
+                            .size(54.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp)
+                            .background(Color(0xFF181818), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = item.type.take(3),
+                            color = RedAccent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.title,
                         color = TextWhite,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = item.contentId,
@@ -803,21 +841,15 @@ fun CatalogManagerItemCard(
                         color = TextMuted,
                         fontSize = 12.sp
                     )
-                    if (item.fileName.isNotBlank()) {
-                        Text(
-                            text = item.fileName,
-                            color = TextMuted,
-                            fontSize = 12.sp
-                        )
-                    }
                 }
 
                 Button(
                     onClick = onUpdate,
                     enabled = enabled,
-                    modifier = Modifier.height(42.dp),
+                    modifier = Modifier.height(40.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
-                    shape = RoundedCornerShape(7.dp)
+                    shape = RoundedCornerShape(7.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                 ) {
                     Text(
                         text = "ATUALIZAR",
@@ -825,6 +857,16 @@ fun CatalogManagerItemCard(
                         fontWeight = FontWeight.Bold
                     )
                 }
+            }
+
+            if (item.fileName.isNotBlank()) {
+                Text(
+                    text = item.fileName,
+                    color = Color(0xFF888888),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
 
             if (item.sourceUrl.isBlank()) {
@@ -847,14 +889,37 @@ fun RegisteredCatalogScreen(
     val catalogManager = remember(context) { CatalogManager(context) }
     val prefsSettings = remember { context.getSharedPreferences("GTSTORE_SETTINGS", Context.MODE_PRIVATE) }
 
-    var items by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
+    var allItems by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
     var captureSourceUrl by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf("") }
     var updating by remember { mutableStateOf(false) }
 
+    var searchQuery by remember { mutableStateOf("") }
+    var sortAlphabetical by remember { mutableStateOf(true) }
+
     LaunchedEffect(Unit) {
-        items = withContext(Dispatchers.IO) {
+        allItems = withContext(Dispatchers.IO) {
             catalogManager.getAll()
+        }
+    }
+
+    val displayedItems = remember(allItems, searchQuery, sortAlphabetical) {
+        val filtered = if (searchQuery.isBlank()) {
+            allItems
+        } else {
+            val q = searchQuery.trim().lowercase()
+            allItems.filter { item ->
+                item.title.lowercase().contains(q) ||
+                item.contentId.lowercase().contains(q) ||
+                item.fileName.lowercase().contains(q) ||
+                item.indexString.contains(q)
+            }
+        }
+
+        if (sortAlphabetical) {
+            filtered.sortedBy { it.title.lowercase() }
+        } else {
+            filtered.sortedBy { it.catalogIndex }
         }
     }
 
@@ -891,7 +956,7 @@ fun RegisteredCatalogScreen(
                     updating = false
                     message = result.message
                     if (result.success) {
-                        items = withContext(Dispatchers.IO) { catalogManager.getAll() }
+                        allItems = withContext(Dispatchers.IO) { catalogManager.getAll() }
                     }
                 }
             },
@@ -905,13 +970,13 @@ fun RegisteredCatalogScreen(
             .fillMaxSize()
             .background(PureBlack)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
             Spacer(modifier = Modifier.height(16.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(vertical = 8.dp)
+                modifier = Modifier.padding(vertical = 4.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -922,10 +987,62 @@ fun RegisteredCatalogScreen(
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = "CATÁLOGO CADASTRADO",
-                    fontSize = 22.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextWhite
                 )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = "${displayedItems.size} de ${allItems.size}",
+                    fontSize = 12.sp,
+                    color = TextMuted
+                )
+            }
+        }
+
+        item {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Buscar título, CUSA ou índice...", color = TextMuted, fontSize = 13.sp) },
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp),
+                trailingIcon = {
+                    if (searchQuery.isNotBlank()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Text("✕", color = TextMuted, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            )
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (sortAlphabetical) "Ordem: Alfabética (A-Z)" else "Ordem: Índice (#)",
+                    color = TextMuted,
+                    fontSize = 12.sp
+                )
+
+                Button(
+                    onClick = { sortAlphabetical = !sortAlphabetical },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222222)),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = if (sortAlphabetical) "Alternar p/ Índice" else "Alternar p/ A-Z",
+                        fontSize = 11.sp,
+                        color = TextWhite,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
 
@@ -939,7 +1056,7 @@ fun RegisteredCatalogScreen(
             }
         }
 
-        if (items.isEmpty()) {
+        if (displayedItems.isEmpty()) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -948,7 +1065,7 @@ fun RegisteredCatalogScreen(
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Text(
-                        text = "Nenhum PKG cadastrado.",
+                        text = if (searchQuery.isBlank()) "Nenhum PKG cadastrado." else "Nenhum resultado para \"$searchQuery\".",
                         modifier = Modifier.padding(20.dp),
                         color = TextMuted,
                         fontSize = 14.sp
@@ -957,11 +1074,12 @@ fun RegisteredCatalogScreen(
             }
         } else {
             items(
-                items = items,
+                items = displayedItems,
                 key = { it.catalogIndex }
             ) { item ->
                 CatalogManagerItemCard(
                     item = item,
+                    catalogManager = catalogManager,
                     enabled = !updating,
                     onUpdate = {
                         if (item.sourceUrl.isBlank()) {
@@ -996,6 +1114,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("GTSTORE_SETTINGS", Context.MODE_PRIVATE) }
+    val catalogManager = remember(context) { CatalogManager(context) }
 
     var exceptionsText by remember {
         mutableStateOf(prefs.getString("domain_exceptions", "") ?: "")
@@ -1031,6 +1150,7 @@ fun SettingsScreen(
             }
         }
 
+        // Card Exceções de Domínio
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1099,7 +1219,68 @@ fun SettingsScreen(
             }
         }
 
-        // Card de gerenciamento de Logs
+        // Card Backup do Catálogo
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = CardBlack),
+                border = BorderStroke(1.dp, BorderDark),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "BACKUP DO CATÁLOGO",
+                        color = TextWhite,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = "Exporte todos os jogos já cadastrados para um arquivo JSON em Download/logs/ para não perder os dados durante atualizações ou reinstalações.",
+                        color = TextMuted,
+                        fontSize = 12.sp
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                val res = catalogManager.exportCatalogBackup()
+                                Toast.makeText(context, res, Toast.LENGTH_LONG).show()
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222222)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("EXPORTAR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                val res = catalogManager.importCatalogBackup()
+                                Toast.makeText(context, res, Toast.LENGTH_LONG).show()
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("RESTAURAR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Card Logs do Sistema
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
