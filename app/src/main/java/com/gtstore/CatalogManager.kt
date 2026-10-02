@@ -280,23 +280,30 @@ class CatalogManager(
 
     fun importCatalogBackup(): String {
         return try {
-            val primaryFile = File(
-                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "logs"),
-                "gtstore_catalog_backup.json"
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val candidateFiles = listOf(
+                File(File(downloadDir, "logs"), "gtstore_catalog_backup.json"),
+                File(downloadDir, "gtstore_catalog_backup.json"),
+                File(File(context.getExternalFilesDir(null), "logs"), "gtstore_catalog_backup.json")
             )
-            val fallbackFile = File(File(context.getExternalFilesDir(null), "logs"), "gtstore_catalog_backup.json")
 
-            val fileToRead = when {
-                primaryFile.exists() -> primaryFile
-                fallbackFile.exists() -> fallbackFile
-                else -> return "Arquivo de backup não encontrado (gtstore_catalog_backup.json)."
+            val fileToRead = candidateFiles.firstOrNull { it.exists() && it.length() > 0L }
+                ?: return "Arquivo de backup não encontrado (gtstore_catalog_backup.json)."
+
+            val content = fileToRead.readText().trim()
+            val itemsArray: JSONArray
+            val nextIdx: Int
+
+            if (content.startsWith("{")) {
+                val backupObject = JSONObject(content)
+                nextIdx = backupObject.optInt("next_index", 1)
+                itemsArray = backupObject.optJSONArray("items") ?: JSONArray()
+            } else if (content.startsWith("[")) {
+                itemsArray = JSONArray(content)
+                nextIdx = itemsArray.length() + 1
+            } else {
+                return "Formato de arquivo JSON inválido."
             }
-
-            val content = fileToRead.readText()
-            val backupObject = JSONObject(content)
-
-            val nextIdx = backupObject.optInt("next_index", 1)
-            val itemsArray = backupObject.getJSONArray("items")
 
             prefs.edit()
                 .putString(KEY_ITEMS, itemsArray.toString())
@@ -402,33 +409,50 @@ class CatalogManager(
     }
 
     private fun downloadIconFromPsn(contentId: String, destFile: File): Boolean {
-        val iconUrl = "https://tmdb.np.dl.playstation.net/tmdb2/${contentId}_00/icon0.png"
-        var connection: HttpURLConnection? = null
+        // Extrai o padrão CUSA (ex: EP9000-CUSA13323_00-GHOSTSHIP0000000 -> CUSA13323_00)
+        val cusaMatch = Regex("CUSA\\d{5}_00").find(contentId)?.value
 
-        return try {
-            val url = URL(iconUrl)
-            connection = url.openConnection() as HttpURLConnection
-            connection.connectTimeout = 7000
-            connection.readTimeout = 7000
-            connection.instanceFollowRedirects = true
+        val urlsParaTentar = mutableListOf<String>()
+        if (cusaMatch != null) {
+            urlsParaTentar.add("https://tmdb.np.dl.playstation.net/tmdb2/${cusaMatch}/icon0.png")
+        }
+        // Tentativa secundária com o contentId caso não siga o formato CUSA clássico
+        urlsParaTentar.add("https://tmdb.np.dl.playstation.net/tmdb2/${contentId}/icon0.png")
 
-            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                connection.inputStream.use { input ->
-                    FileOutputStream(destFile).use { output ->
-                        input.copyTo(output)
+        for (urlString in urlsParaTentar) {
+            var connection: HttpURLConnection? = null
+            try {
+                val url = URL(urlString)
+                connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 6000
+                connection.readTimeout = 6000
+                connection.instanceFollowRedirects = true
+
+                // User-Agent oficial simulando consola PlayStation 4 para contornar HTTP 403 Forbidden
+                connection.setRequestProperty(
+                    "User-Agent",
+                    "Mozilla/5.0 (PlayStation 4 9.00) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+                )
+                connection.setRequestProperty("Accept", "image/png,image/*;q=0.8")
+
+                if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                    connection.inputStream.use { input ->
+                        FileOutputStream(destFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    if (destFile.exists() && destFile.length() > 0L) {
+                        return true
                     }
                 }
-                true
-            } else {
-                AppLogger.log("[CatalogManager] TMDB retornou código ${connection.responseCode} para $contentId")
-                false
+            } catch (e: Exception) {
+                AppLogger.log("[CatalogManager] Falha ao consultar ($urlString): ${e.message}")
+            } finally {
+                connection?.disconnect()
             }
-        } catch (e: Exception) {
-            AppLogger.log("[CatalogManager] Erro ao buscar ícone para $contentId: ${e.message}")
-            false
-        } finally {
-            connection?.disconnect()
         }
+
+        return false
     }
 
     // ========================================================
