@@ -59,14 +59,6 @@ fun PkgLinkCaptureScreen(
     var canGoBack by remember { mutableStateOf(false) }
     var browser by remember { mutableStateOf<WebView?>(null) }
 
-    val sourceHost = remember(sourceUrl) {
-        try {
-            Uri.parse(sourceUrl).host?.lowercase() ?: ""
-        } catch (_: Exception) {
-            ""
-        }
-    }
-
     DisposableEffect(Unit) {
         onDispose {
             browser?.stopLoading()
@@ -75,29 +67,13 @@ fun PkgLinkCaptureScreen(
         }
     }
 
+    // Permite que qualquer redirecionamento web HTTP/HTTPS navegue livremente
     fun isDomainPermitted(url: String): Boolean {
-        val host = try {
-            Uri.parse(url).host?.lowercase() ?: ""
-        } catch (_: Exception) {
-            ""
-        }
-        if (host.isBlank()) return true
-
-        val isSource = sourceHost.isNotEmpty() && (host.contains(sourceHost) || sourceHost.contains(host))
-        val isAllowed = allowedDomains.any { domain ->
-            domain.isNotBlank() && host.contains(domain)
-        }
-        val isCommonCdn = host.contains("filekeeper") || 
-                          host.contains("dlproxy") || 
-                          host.contains("akirabox") ||
-                          host.contains("mocha") ||
-                          host.contains("workers.dev") ||
-                          host.contains("mediafire") ||
-                          host.contains("1fichier")
-
-        return isSource || isAllowed || isCommonCdn
+        val lower = url.lowercase()
+        return lower.startsWith("http://") || lower.startsWith("https://")
     }
 
+    // Função que calcula e salta exatamente para a ANTEPENÚLTIMA página do SuperPSX
     fun voltarParaAntepenultimaSuperPsx(view: WebView) {
         val history = view.copyBackForwardList()
         val currentIndex = history.currentIndex
@@ -105,14 +81,16 @@ fun PkgLinkCaptureScreen(
         var countSuperPsx = 0
         var targetStep = 0
 
+        // Varre o histórico de trás para frente procurando páginas do superpsx.com
         for (i in currentIndex - 1 downTo 0) {
             val item = history.getItemAtIndex(i)
             val itemUrl = item.url.lowercase()
 
             if (itemUrl.contains("superpsx.com") && !itemUrl.endsWith(".pkg")) {
                 countSuperPsx++
+                // 1 = penúltima | 2 = ANTEPENÚLTIMA
                 if (countSuperPsx == 2) {
-                    targetStep = i - currentIndex
+                    targetStep = i - currentIndex // resulta num salto negativo (ex: -2, -3)
                     break
                 }
             }
@@ -147,17 +125,20 @@ fun PkgLinkCaptureScreen(
         val guessedFileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
         val finalFileName = guessedFileName.trim().ifBlank { "download.pkg" }
 
+        // Identifica com precisão a página em que o usuário estava ao disparar o download
         val webViewUrl = view?.url?.trim() ?: ""
         val pageWhereDownloadTriggered = when {
+            // Se a URL atual não for o próprio arquivo .pkg direto
             webViewUrl.isNotBlank() && !webViewUrl.substringBefore("?").endsWith(".pkg", ignoreCase = true) -> webViewUrl
             currentDisplayUrl.isNotBlank() && !currentDisplayUrl.substringBefore("?").endsWith(".pkg", ignoreCase = true) -> currentDisplayUrl
             else -> sourceUrl
         }
 
-        status = "PKG capturado! Gravando link e retornando..."
-        AppLogger.log("[PkgLinkCaptureScreen] Página de origem: $pageWhereDownloadTriggered")
-        AppLogger.log("[PkgLinkCaptureScreen] Link direto real: $url")
+        status = "PKG capturado! Gravando link e voltando à antepenúltima página..."
+        AppLogger.log("[PkgLinkCaptureScreen] Download disparado a partir da página: $pageWhereDownloadTriggered")
+        AppLogger.log("[PkgLinkCaptureScreen] Link direto capturado: $url")
 
+        // 1. Notifica o CatalogManager enviando a página real onde o download foi gerado
         onCaptured(
             PkgCaptureResult(
                 sourceUrl = pageWhereDownloadTriggered,
@@ -166,9 +147,10 @@ fun PkgLinkCaptureScreen(
             )
         )
 
+        // 2. Executa o salto para a antepenúltima página do SuperPSX
         view?.postDelayed({
             voltarParaAntepenultimaSuperPsx(view)
-            status = "Pronto para o próximo link."
+            status = "Retornado à antepenúltima página! Pronto para o próximo link."
             processingCapture = false
         }, 1000)
     }
@@ -271,7 +253,6 @@ fun PkgLinkCaptureScreen(
                     cookieManager.setAcceptThirdPartyCookies(this, true)
 
                     webChromeClient = object : WebChromeClient() {
-                        // Trata popups e links com target="_blank" abrindo na mesma WebView
                         override fun onCreateWindow(
                             view: WebView?,
                             isDialog: Boolean,
@@ -286,7 +267,6 @@ fun PkgLinkCaptureScreen(
                                         request: WebResourceRequest
                                     ): Boolean {
                                         val targetUrl = request.url.toString()
-                                        // Redireciona o popup para o navegador principal
                                         browser?.loadUrl(targetUrl)
                                         return true
                                     }
@@ -310,24 +290,19 @@ fun PkgLinkCaptureScreen(
                             val cleanPath = urlString.substringBefore("?")
                             val host = request.url.host?.lowercase() ?: ""
 
-                            // 1. SE FOR PÁGINA DO FILEKEEPER: deixa navegar normalmente para rodar timer e tokens
-                            if (host.contains("filekeeper.net")) {
-                                currentDisplayUrl = urlString
-                                return false
-                            }
-
-                            // 2. SE FOR O ARQUIVO BINÁRIO REAL (fora do domínio do site do filekeeper)
-                            if (cleanPath.endsWith(".pkg", ignoreCase = true)) {
+                            // 1. Se for o arquivo .pkg real fora de páginas web comuns, captura na hora
+                            if (cleanPath.endsWith(".pkg", ignoreCase = true) && !host.contains("filekeeper.net")) {
                                 handleCapturedUrl(urlString)
                                 return true
                             }
 
-                            // 3. SE FOR CDN CONHECIDA (ex: dlproxy): deixa carregar para disparar o download
+                            // 2. Se for esquema de app externo (market://, intent://), ignora para não fechar o app
                             if (!isDomainPermitted(urlString)) {
-                                AppLogger.log("[PkgLinkCaptureScreen] Bloqueado redirecionamento para: $urlString")
+                                AppLogger.log("[PkgLinkCaptureScreen] Esquema ignorado: $urlString")
                                 return true
                             }
 
+                            // 3. Permite qualquer redirecionamento HTTP/HTTPS seguir livremente
                             currentDisplayUrl = urlString
                             return false
                         }
@@ -337,9 +312,10 @@ fun PkgLinkCaptureScreen(
                             canGoBack = view.canGoBack()
 
                             if (!processingCapture) {
-                                status = "Página carregada."
+                                status = "Página carregada. Tentando clicar no verificador..."
                             }
 
+                            // Script de clique automático na caixa "Não sou um robô"
                             val autoClickScript = """
                                 (function() {
                                     const selectors = [
@@ -379,6 +355,9 @@ fun PkgLinkCaptureScreen(
 
                             view.postDelayed({
                                 view.evaluateJavascript(autoClickScript, null)
+                                if (!processingCapture) {
+                                    status = "Página pronta. Clique no link desejado."
+                                }
                             }, 600)
                         }
                     }
