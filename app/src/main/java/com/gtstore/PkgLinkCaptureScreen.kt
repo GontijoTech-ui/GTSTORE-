@@ -45,6 +45,14 @@ data class PkgCaptureResult(
 private const val BROWSER_USER_AGENT =
     "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
+// Lista negra com as maiores redes de anúncios agressivos e redirecionamentos parasitas
+private val AD_BLOCK_KEYWORDS = listOf(
+    "doubleclick", "adservice", "popads", "popcash", "propellerads",
+    "adsterra", "exoclick", "bet365", "betano", "blaze", "1xbet",
+    "shorte.st", "adf.ly", "ouo.io", "trafficjunky", "syndication",
+    "onclickprediction", "clickadu", "histats", "track", "analytics"
+)
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun PkgLinkCaptureScreen(
@@ -67,10 +75,10 @@ fun PkgLinkCaptureScreen(
         }
     }
 
-    // Permite que qualquer redirecionamento web HTTP/HTTPS navegue livremente
-    fun isDomainPermitted(url: String): Boolean {
+    // Deteta se o link corresponde a publicidade ou a redes parasitárias
+    fun isAdOrSpam(url: String): Boolean {
         val lower = url.lowercase()
-        return lower.startsWith("http://") || lower.startsWith("https://")
+        return AD_BLOCK_KEYWORDS.any { lower.contains(it) }
     }
 
     // Função que calcula e salta exatamente para a ANTEPENÚLTIMA página do SuperPSX
@@ -81,7 +89,6 @@ fun PkgLinkCaptureScreen(
         var countSuperPsx = 0
         var targetStep = 0
 
-        // Varre o histórico de trás para frente procurando páginas do superpsx.com
         for (i in currentIndex - 1 downTo 0) {
             val item = history.getItemAtIndex(i)
             val itemUrl = item.url.lowercase()
@@ -90,7 +97,7 @@ fun PkgLinkCaptureScreen(
                 countSuperPsx++
                 // 1 = penúltima | 2 = ANTEPENÚLTIMA
                 if (countSuperPsx == 2) {
-                    targetStep = i - currentIndex // resulta num salto negativo (ex: -2, -3)
+                    targetStep = i - currentIndex
                     break
                 }
             }
@@ -125,10 +132,8 @@ fun PkgLinkCaptureScreen(
         val guessedFileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
         val finalFileName = guessedFileName.trim().ifBlank { "download.pkg" }
 
-        // Identifica com precisão a página em que o usuário estava ao disparar o download
         val webViewUrl = view?.url?.trim() ?: ""
         val pageWhereDownloadTriggered = when {
-            // Se a URL atual não for o próprio arquivo .pkg direto
             webViewUrl.isNotBlank() && !webViewUrl.substringBefore("?").endsWith(".pkg", ignoreCase = true) -> webViewUrl
             currentDisplayUrl.isNotBlank() && !currentDisplayUrl.substringBefore("?").endsWith(".pkg", ignoreCase = true) -> currentDisplayUrl
             else -> sourceUrl
@@ -138,7 +143,6 @@ fun PkgLinkCaptureScreen(
         AppLogger.log("[PkgLinkCaptureScreen] Download disparado a partir da página: $pageWhereDownloadTriggered")
         AppLogger.log("[PkgLinkCaptureScreen] Link direto capturado: $url")
 
-        // 1. Notifica o CatalogManager enviando a página real onde o download foi gerado
         onCaptured(
             PkgCaptureResult(
                 sourceUrl = pageWhereDownloadTriggered,
@@ -147,10 +151,9 @@ fun PkgLinkCaptureScreen(
             )
         )
 
-        // 2. Executa o salto para a antepenúltima página do SuperPSX
         view?.postDelayed({
             voltarParaAntepenultimaSuperPsx(view)
-            status = "Retornado à antepenúltima página! Pronto para o próximo link."
+            status = "Retornado! Pronto para o próximo link."
             processingCapture = false
         }, 1000)
     }
@@ -243,8 +246,7 @@ fun PkgLinkCaptureScreen(
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
                     settings.loadsImagesAutomatically = true
-                    settings.javaScriptCanOpenWindowsAutomatically = true
-                    // Permite múltiplas janelas para contornar target="_blank"
+                    settings.javaScriptCanOpenWindowsAutomatically = false // Bloqueia abertura abusiva de popups
                     settings.setSupportMultipleWindows(true)
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
@@ -259,6 +261,11 @@ fun PkgLinkCaptureScreen(
                             isUserGesture: Boolean,
                             resultMsg: Message?
                         ): Boolean {
+                            // Se a tentativa de abertura de janela não partiu de um toque intencional do utilizador, descarta
+                            if (!isUserGesture) {
+                                return false
+                            }
+
                             val transport = resultMsg?.obj as? WebView.WebViewTransport
                             val tempWebView = WebView(context).apply {
                                 webViewClient = object : WebViewClient() {
@@ -267,6 +274,13 @@ fun PkgLinkCaptureScreen(
                                         request: WebResourceRequest
                                     ): Boolean {
                                         val targetUrl = request.url.toString()
+                                        
+                                        // Bloqueia se o popup for propaganda
+                                        if (isAdOrSpam(targetUrl)) {
+                                            AppLogger.log("[PkgLinkCaptureScreen] Popup de propaganda descartado: $targetUrl")
+                                            return true
+                                        }
+
                                         browser?.loadUrl(targetUrl)
                                         return true
                                     }
@@ -287,22 +301,28 @@ fun PkgLinkCaptureScreen(
 
                             if (processingCapture) return true
 
+                            // 1. Bloqueia esquemas externos (ex: app store, apps de terceiros)
+                            val scheme = request.url.scheme?.lowercase() ?: ""
+                            if (scheme != "http" && scheme != "https") {
+                                AppLogger.log("[PkgLinkCaptureScreen] Esquema externo bloqueado: $urlString")
+                                return true
+                            }
+
+                            // 2. Bloqueia redes de anúncios e popups conhecidos
+                            if (isAdOrSpam(urlString)) {
+                                AppLogger.log("[PkgLinkCaptureScreen] Propaganda bloqueada: $urlString")
+                                return true
+                            }
+
                             val cleanPath = urlString.substringBefore("?")
                             val host = request.url.host?.lowercase() ?: ""
 
-                            // 1. Se for o arquivo .pkg real fora de páginas web comuns, captura na hora
+                            // 3. Captura se for o arquivo .pkg real fora de páginas web do Filekeeper
                             if (cleanPath.endsWith(".pkg", ignoreCase = true) && !host.contains("filekeeper.net")) {
                                 handleCapturedUrl(urlString)
                                 return true
                             }
 
-                            // 2. Se for esquema de app externo (market://, intent://), ignora para não fechar o app
-                            if (!isDomainPermitted(urlString)) {
-                                AppLogger.log("[PkgLinkCaptureScreen] Esquema ignorado: $urlString")
-                                return true
-                            }
-
-                            // 3. Permite qualquer redirecionamento HTTP/HTTPS seguir livremente
                             currentDisplayUrl = urlString
                             return false
                         }
@@ -312,13 +332,23 @@ fun PkgLinkCaptureScreen(
                             canGoBack = view.canGoBack()
 
                             if (!processingCapture) {
-                                status = "Página carregada. Tentando clicar no verificador..."
+                                status = "Página carregada."
                             }
 
-                            // Script de clique automático na caixa "Não sou um robô"
-                            val autoClickScript = """
+                            // Remove elementos visuais de sobreposição de anúncios e clica em captchas legítimos
+                            val cleanAndClickScript = """
                                 (function() {
-                                    const selectors = [
+                                    // Remove iframes e banners com atributos típicos de publicidade
+                                    const adSelectors = [
+                                        'iframe[src*="ad"]', 'iframe[src*="banner"]', 'div[class*="ad-"]', 
+                                        'div[id*="ad-"]', '.adbox', '.ad-overlay', '#popunder'
+                                    ];
+                                    for (let s of adSelectors) {
+                                        document.querySelectorAll(s).forEach(el => el.remove());
+                                    }
+
+                                    // Clica no verificador legítimo se disponível
+                                    const captchaSelectors = [
                                         '#recaptcha-anchor',
                                         '#checkbox',
                                         'input[type="checkbox"]',
@@ -327,38 +357,19 @@ fun PkgLinkCaptureScreen(
                                         '#amzn-captcha-verify-button'
                                     ];
                                     
-                                    for (let sel of selectors) {
+                                    for (let sel of captchaSelectors) {
                                         let el = document.querySelector(sel);
                                         if (el && el.offsetParent !== null) {
                                             el.click();
                                             return;
                                         }
                                     }
-
-                                    const iframes = document.querySelectorAll('iframe');
-                                    for (let f of iframes) {
-                                        try {
-                                            let doc = f.contentDocument || f.contentWindow.document;
-                                            if (doc) {
-                                                for (let sel of selectors) {
-                                                    let el = doc.querySelector(sel);
-                                                    if (el) {
-                                                        el.click();
-                                                        return;
-                                                    }
-                                                }
-                                            }
-                                        } catch(e) {}
-                                    }
                                 })();
                             """.trimIndent()
 
                             view.postDelayed({
-                                view.evaluateJavascript(autoClickScript, null)
-                                if (!processingCapture) {
-                                    status = "Página pronta. Clique no link desejado."
-                                }
-                            }, 600)
+                                view.evaluateJavascript(cleanAndClickScript, null)
+                            }, 500)
                         }
                     }
 
