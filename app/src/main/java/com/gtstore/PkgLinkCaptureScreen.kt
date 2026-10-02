@@ -146,13 +146,25 @@ fun PkgLinkCaptureScreen(
         val guessedFileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
         val finalFileName = guessedFileName.trim().ifBlank { "download.pkg" }
 
-        status = "PKG capturado! Voltando para a antepenúltima página..."
-        AppLogger.log("[PkgLinkCaptureScreen] Link capturado com sucesso: $url")
+        // Identifica com precisão a página em que o usuário estava ao disparar o download
+        val webViewUrl = view?.url?.trim() ?: ""
+        val pageWhereDownloadTriggered = when {
+            // Se o WebView já estiver com uma URL válida e não for o próprio link direto .pkg
+            webViewUrl.isNotBlank() && !webViewUrl.substringBefore("?").endsWith(".pkg", ignoreCase = true) -> webViewUrl
+            // Senão, pega a última URL que foi renderizada na tela
+            currentDisplayUrl.isNotBlank() && !currentDisplayUrl.substringBefore("?").endsWith(".pkg", ignoreCase = true) -> currentDisplayUrl
+            // Fallback caso nada mais esteja disponível
+            else -> sourceUrl
+        }
 
-        // 1. Notifica o CatalogManager para validar e registrar o PKG sem fechar a tela[span_0](start_span)[span_0](end_span)
+        status = "PKG capturado! Gravando link e voltando à antepenúltima página..."
+        AppLogger.log("[PkgLinkCaptureScreen] Download disparado a partir da página: $pageWhereDownloadTriggered")
+        AppLogger.log("[PkgLinkCaptureScreen] Link direto capturado: $url")
+
+        // 1. Notifica o CatalogManager enviando a página real onde o download foi gerado
         onCaptured(
             PkgCaptureResult(
-                sourceUrl = sourceUrl,
+                sourceUrl = pageWhereDownloadTriggered,
                 directUrl = url,
                 fileName = finalFileName
             )
@@ -273,16 +285,15 @@ fun PkgLinkCaptureScreen(
 
                             if (processingCapture) return true
 
+                            val cleanPath = urlString.substringBefore("?")
+                            if (cleanPath.endsWith(".pkg", ignoreCase = true)) {
+                                handleCapturedUrl(urlString)
+                                return true
+                            }
+
                             if (urlString.contains("filekeeper.net", ignoreCase = true)) {
                                 currentDisplayUrl = urlString
                                 return false
-                            }
-
-                            val cleanPath = urlString.substringBefore("?")
-                            if (cleanPath.endsWith(".pkg", ignoreCase = true)) {
-                                currentDisplayUrl = urlString
-                                handleCapturedUrl(urlString)
-                                return true
                             }
 
                             if (!isDomainPermitted(urlString)) {
