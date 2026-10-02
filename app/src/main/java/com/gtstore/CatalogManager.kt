@@ -8,8 +8,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
 
@@ -74,7 +72,7 @@ class CatalogManager(
             )
         }
 
-        AppLogger.log("[CatalogManager] PKG lido com sucesso. Gravando no catálogo...")
+        AppLogger.log("[CatalogManager] PKG lido com sucesso. Gravando ou atualizando no catálogo...")
         return saveRemotePkg(
             remote = remote,
             sourceUrl = "",
@@ -129,7 +127,7 @@ class CatalogManager(
             )
         }
 
-        AppLogger.log("[CatalogManager] PKG reconhecido. Salvando item capturado...")
+        AppLogger.log("[CatalogManager] PKG reconhecido. Atualizando link e capa do item...")
         return saveRemotePkg(
             remote = remote,
             sourceUrl = normalizedSource,
@@ -138,7 +136,7 @@ class CatalogManager(
     }
 
     // ========================================================
-    // SALVAMENTO CENTRAL
+    // SALVAMENTO / ATUALIZAÇÃO CENTRAL
     // ========================================================
 
     private fun saveRemotePkg(
@@ -164,7 +162,15 @@ class CatalogManager(
             }
 
         if (existing != null) {
-            AppLogger.log("[CatalogManager] Atualizando item existente: ${existing.title} (Índice: ${existing.indexString})")
+            AppLogger.log("[CatalogManager] Atualizando link e capa de: ${existing.title} (Índice: ${existing.indexString})")
+            
+            // Define o nome do arquivo de ícone
+            val iconName = if (existing.iconFile.isNotBlank()) {
+                existing.iconFile
+            } else {
+                iconFileName(existing.catalogIndex)
+            }
+
             val updated =
                 existing.copy(
                     url = remote.url,
@@ -182,7 +188,8 @@ class CatalogManager(
                         },
                     size = remote.size,
                     digest = remote.digest,
-                    digestMatches = remote.digestMatches
+                    digestMatches = remote.digestMatches,
+                    iconFile = iconName
                 )
 
             val updatedItems =
@@ -194,16 +201,25 @@ class CatalogManager(
                     }
                 }
 
+            // Grava os dados do catálogo
             saveItems(updatedItems)
-            saveIcon(updated.catalogIndex, remote.icon)
+
+            // Salva / Sobrescreve a nova capa obtida do PKG
+            if (remote.icon != null && remote.icon.isNotEmpty()) {
+                saveIcon(existing.catalogIndex, remote.icon)
+                AppLogger.log("[CatalogManager] Capa atualizada com sucesso para o índice ${existing.indexString}")
+            } else {
+                AppLogger.log("[CatalogManager] Nenhum ícone novo retornado pelo PKG. Capa anterior mantida.")
+            }
 
             return OperationResult(
                 true,
-                "URL atualizada para [${updated.type}] ${updated.title}. Índice ${existing.indexString} preservado.",
+                "Link e capa atualizados com sucesso para [${updated.type}] ${updated.title}.",
                 updated
             )
         }
 
+        // Caso seja um novo registro
         val newIndex = nextIndex()
         val itemType = classify(remote.category)
         val formattedTitle =
@@ -346,7 +362,7 @@ class CatalogManager(
     }
 
     // ========================================================
-    // ÍCONES E RECUPERAÇÃO VIA PSN (TMDB)
+    // ÍCONES E RECUPERAÇÃO EM MASSA
     // ========================================================
 
     fun getIcon(
@@ -357,7 +373,7 @@ class CatalogManager(
 
         val file = File(context.filesDir, "$ICON_DIR/${item.iconFile}")
         return try {
-            if (file.exists()) {
+            if (file.exists() && file.length() > 0L) {
                 val bytes = file.readBytes()
                 iconCache.put(item.iconFile, bytes)
                 bytes
@@ -382,77 +398,37 @@ class CatalogManager(
         val total = pendentes.size
         var recuperados = 0
 
-        AppLogger.log("[CatalogManager] Iniciando recuperação de $total ícones faltantes via TMDB...")
+        AppLogger.log("[CatalogManager] Iniciando recuperação de $total ícones via RemotePkgReader...")
 
         pendentes.forEachIndexed { index, item ->
             withContext(Dispatchers.Main) {
                 onProgress(index + 1, total, item.title)
             }
 
-            if (item.contentId.isNotBlank()) {
-                val iconFile = File(directory, item.iconFile)
-                val baixou = downloadIconFromPsn(item.contentId, iconFile)
+            val iconFile = File(directory, item.iconFile)
+            var sucesso = false
 
-                if (baixou) {
-                    recuperados++
-                    try {
-                        val bytes = iconFile.readBytes()
-                        iconCache.put(item.iconFile, bytes)
-                    } catch (_: Exception) {}
-                    AppLogger.log("[CatalogManager] Ícone restaurado: ${item.iconFile} para ${item.title}")
+            if (item.url.isNotBlank()) {
+                try {
+                    val remote = RemotePkgReader.read(context, item.url)
+                    if (remote?.icon != null && remote.icon.isNotEmpty()) {
+                        iconFile.writeBytes(remote.icon)
+                        iconCache.put(item.iconFile, remote.icon)
+                        sucesso = true
+                        AppLogger.log("[CatalogManager] Capa baixada com sucesso do PKG: ${item.title}")
+                    }
+                } catch (e: Exception) {
+                    AppLogger.log("[CatalogManager] Falha ao extrair capa de ${item.title}: ${e.message}")
                 }
+            }
+
+            if (sucesso) {
+                recuperados++
             }
         }
 
-        AppLogger.log("[CatalogManager] Recuperação concluída: $recuperados/$total recuperados com sucesso.")
+        AppLogger.log("[CatalogManager] Recuperação concluída: $recuperados/$total capas salvas.")
         recuperados
-    }
-
-    private fun downloadIconFromPsn(contentId: String, destFile: File): Boolean {
-        // Extrai o padrão CUSA (ex: EP9000-CUSA13323_00-GHOSTSHIP0000000 -> CUSA13323_00)
-        val cusaMatch = Regex("CUSA\\d{5}_00").find(contentId)?.value
-
-        val urlsParaTentar = mutableListOf<String>()
-        if (cusaMatch != null) {
-            urlsParaTentar.add("https://tmdb.np.dl.playstation.net/tmdb2/${cusaMatch}/icon0.png")
-        }
-        // Tentativa secundária com o contentId caso não siga o formato CUSA clássico
-        urlsParaTentar.add("https://tmdb.np.dl.playstation.net/tmdb2/${contentId}/icon0.png")
-
-        for (urlString in urlsParaTentar) {
-            var connection: HttpURLConnection? = null
-            try {
-                val url = URL(urlString)
-                connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = 6000
-                connection.readTimeout = 6000
-                connection.instanceFollowRedirects = true
-
-                // User-Agent oficial simulando consola PlayStation 4 para contornar HTTP 403 Forbidden
-                connection.setRequestProperty(
-                    "User-Agent",
-                    "Mozilla/5.0 (PlayStation 4 9.00) AppleWebKit/605.1.15 (KHTML, like Gecko)"
-                )
-                connection.setRequestProperty("Accept", "image/png,image/*;q=0.8")
-
-                if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                    connection.inputStream.use { input ->
-                        FileOutputStream(destFile).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                    if (destFile.exists() && destFile.length() > 0L) {
-                        return true
-                    }
-                }
-            } catch (e: Exception) {
-                AppLogger.log("[CatalogManager] Falha ao consultar ($urlString): ${e.message}")
-            } finally {
-                connection?.disconnect()
-            }
-        }
-
-        return false
     }
 
     // ========================================================
@@ -558,6 +534,8 @@ class CatalogManager(
     private fun saveIcon(catalogIndex: Int, icon: ByteArray?) {
         if (icon == null || icon.isEmpty()) return
         val fileName = iconFileName(catalogIndex)
+        
+        // Atualiza a LruCache imediatamente
         iconCache.put(fileName, icon)
         try {
             val directory = File(context.filesDir, ICON_DIR)
