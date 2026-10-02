@@ -2,6 +2,7 @@ package com.gtstore
 
 import android.annotation.SuppressLint
 import android.net.Uri
+import android.os.Message
 import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
@@ -89,12 +90,14 @@ fun PkgLinkCaptureScreen(
         val isCommonCdn = host.contains("filekeeper") || 
                           host.contains("dlproxy") || 
                           host.contains("akirabox") ||
-                          host.contains("mocha")
+                          host.contains("mocha") ||
+                          host.contains("workers.dev") ||
+                          host.contains("mediafire") ||
+                          host.contains("1fichier")
 
         return isSource || isAllowed || isCommonCdn
     }
 
-    // Função que calcula e salta exatamente para a ANTEPENÚLTIMA página do SuperPSX
     fun voltarParaAntepenultimaSuperPsx(view: WebView) {
         val history = view.copyBackForwardList()
         val currentIndex = history.currentIndex
@@ -102,16 +105,14 @@ fun PkgLinkCaptureScreen(
         var countSuperPsx = 0
         var targetStep = 0
 
-        // Varre o histórico de trás para frente procurando páginas do superpsx.com
         for (i in currentIndex - 1 downTo 0) {
             val item = history.getItemAtIndex(i)
             val itemUrl = item.url.lowercase()
 
             if (itemUrl.contains("superpsx.com") && !itemUrl.endsWith(".pkg")) {
                 countSuperPsx++
-                // 1 = penúltima | 2 = ANTEPENÚLTIMA
                 if (countSuperPsx == 2) {
-                    targetStep = i - currentIndex // resulta num salto negativo (ex: -2, -3)
+                    targetStep = i - currentIndex
                     break
                 }
             }
@@ -146,22 +147,17 @@ fun PkgLinkCaptureScreen(
         val guessedFileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
         val finalFileName = guessedFileName.trim().ifBlank { "download.pkg" }
 
-        // Identifica com precisão a página em que o usuário estava ao disparar o download
         val webViewUrl = view?.url?.trim() ?: ""
         val pageWhereDownloadTriggered = when {
-            // Se o WebView já estiver com uma URL válida e não for o próprio link direto .pkg
             webViewUrl.isNotBlank() && !webViewUrl.substringBefore("?").endsWith(".pkg", ignoreCase = true) -> webViewUrl
-            // Senão, pega a última URL que foi renderizada na tela
             currentDisplayUrl.isNotBlank() && !currentDisplayUrl.substringBefore("?").endsWith(".pkg", ignoreCase = true) -> currentDisplayUrl
-            // Fallback caso nada mais esteja disponível
             else -> sourceUrl
         }
 
-        status = "PKG capturado! Gravando link e voltando à antepenúltima página..."
-        AppLogger.log("[PkgLinkCaptureScreen] Download disparado a partir da página: $pageWhereDownloadTriggered")
-        AppLogger.log("[PkgLinkCaptureScreen] Link direto capturado: $url")
+        status = "PKG capturado! Gravando link e retornando..."
+        AppLogger.log("[PkgLinkCaptureScreen] Página de origem: $pageWhereDownloadTriggered")
+        AppLogger.log("[PkgLinkCaptureScreen] Link direto real: $url")
 
-        // 1. Notifica o CatalogManager enviando a página real onde o download foi gerado
         onCaptured(
             PkgCaptureResult(
                 sourceUrl = pageWhereDownloadTriggered,
@@ -170,10 +166,9 @@ fun PkgLinkCaptureScreen(
             )
         )
 
-        // 2. Executa o salto para a antepenúltima página do SuperPSX
         view?.postDelayed({
             voltarParaAntepenultimaSuperPsx(view)
-            status = "Retornado à antepenúltima página do SuperPSX! Pronto para o próximo link."
+            status = "Pronto para o próximo link."
             processingCapture = false
         }, 1000)
     }
@@ -267,14 +262,41 @@ fun PkgLinkCaptureScreen(
                     settings.databaseEnabled = true
                     settings.loadsImagesAutomatically = true
                     settings.javaScriptCanOpenWindowsAutomatically = true
-                    settings.setSupportMultipleWindows(false)
+                    // Permite múltiplas janelas para contornar target="_blank"
+                    settings.setSupportMultipleWindows(true)
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
                     val cookieManager = CookieManager.getInstance()
                     cookieManager.setAcceptCookie(true)
                     cookieManager.setAcceptThirdPartyCookies(this, true)
 
-                    webChromeClient = WebChromeClient()
+                    webChromeClient = object : WebChromeClient() {
+                        // Trata popups e links com target="_blank" abrindo na mesma WebView
+                        override fun onCreateWindow(
+                            view: WebView?,
+                            isDialog: Boolean,
+                            isUserGesture: Boolean,
+                            resultMsg: Message?
+                        ): Boolean {
+                            val transport = resultMsg?.obj as? WebView.WebViewTransport
+                            val tempWebView = WebView(context).apply {
+                                webViewClient = object : WebViewClient() {
+                                    override fun shouldOverrideUrlLoading(
+                                        innerView: WebView,
+                                        request: WebResourceRequest
+                                    ): Boolean {
+                                        val targetUrl = request.url.toString()
+                                        // Redireciona o popup para o navegador principal
+                                        browser?.loadUrl(targetUrl)
+                                        return true
+                                    }
+                                }
+                            }
+                            transport?.webView = tempWebView
+                            resultMsg?.sendToTarget()
+                            return true
+                        }
+                    }
 
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
@@ -286,17 +308,23 @@ fun PkgLinkCaptureScreen(
                             if (processingCapture) return true
 
                             val cleanPath = urlString.substringBefore("?")
+                            val host = request.url.host?.lowercase() ?: ""
+
+                            // 1. SE FOR PÁGINA DO FILEKEEPER: deixa navegar normalmente para rodar timer e tokens
+                            if (host.contains("filekeeper.net")) {
+                                currentDisplayUrl = urlString
+                                return false
+                            }
+
+                            // 2. SE FOR O ARQUIVO BINÁRIO REAL (fora do domínio do site do filekeeper)
                             if (cleanPath.endsWith(".pkg", ignoreCase = true)) {
                                 handleCapturedUrl(urlString)
                                 return true
                             }
 
-                            if (urlString.contains("filekeeper.net", ignoreCase = true)) {
-                                currentDisplayUrl = urlString
-                                return false
-                            }
-
+                            // 3. SE FOR CDN CONHECIDA (ex: dlproxy): deixa carregar para disparar o download
                             if (!isDomainPermitted(urlString)) {
+                                AppLogger.log("[PkgLinkCaptureScreen] Bloqueado redirecionamento para: $urlString")
                                 return true
                             }
 
@@ -309,10 +337,9 @@ fun PkgLinkCaptureScreen(
                             canGoBack = view.canGoBack()
 
                             if (!processingCapture) {
-                                status = "Página carregada. Tentando clicar no verificador..."
+                                status = "Página carregada."
                             }
 
-                            // Script de clique automático na caixa "Não sou um robô"
                             val autoClickScript = """
                                 (function() {
                                     const selectors = [
@@ -350,12 +377,8 @@ fun PkgLinkCaptureScreen(
                                 })();
                             """.trimIndent()
 
-                            // Aguarda 600ms para renderização dos componentes dinâmicos
                             view.postDelayed({
                                 view.evaluateJavascript(autoClickScript, null)
-                                if (!processingCapture) {
-                                    status = "Página pronta. Clique no link desejado."
-                                }
                             }, 600)
                         }
                     }
