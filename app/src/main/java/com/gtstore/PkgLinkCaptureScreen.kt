@@ -53,9 +53,8 @@ fun PkgLinkCaptureScreen(
     onCancel: () -> Unit
 ) {
     var currentDisplayUrl by remember { mutableStateOf(sourceUrl) }
-    var currentPageUrl by remember { mutableStateOf(sourceUrl) }
-    var status by remember { mutableStateOf("Aguardando início do download do PKG...") }
-    var captured by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("Navegue até o download desejado.") }
+    var processingCapture by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
     var browser by remember { mutableStateOf<WebView?>(null) }
 
@@ -95,28 +94,78 @@ fun PkgLinkCaptureScreen(
         return isSource || isAllowed || isCommonCdn
     }
 
+    // Função que calcula e salta exatamente para a ANTEPENÚLTIMA página do SuperPSX
+    fun voltarParaAntepenultimaSuperPsx(view: WebView) {
+        val history = view.copyBackForwardList()
+        val currentIndex = history.currentIndex
+
+        var countSuperPsx = 0
+        var targetStep = 0
+
+        // Varre o histórico de trás para frente procurando páginas do superpsx.com
+        for (i in currentIndex - 1 downTo 0) {
+            val item = history.getItemAtIndex(i)
+            val itemUrl = item.url.lowercase()
+
+            if (itemUrl.contains("superpsx.com") && !itemUrl.endsWith(".pkg")) {
+                countSuperPsx++
+                // 1 = penúltima | 2 = ANTEPENÚLTIMA
+                if (countSuperPsx == 2) {
+                    targetStep = i - currentIndex // resulta num salto negativo (ex: -2, -3)
+                    break
+                }
+            }
+        }
+
+        if (targetStep < 0) {
+            AppLogger.log("[PkgLinkCaptureScreen] Saltando $targetStep passos para a antepenúltima página SuperPSX.")
+            view.goBackOrForward(targetStep)
+        } else {
+            // Caso você tenha aberto direto na postagem e não existam 2 páginas antes,
+            // ele volta o máximo que puder ou recarrega a URL de entrada
+            if (view.canGoBack()) {
+                view.goBack()
+            } else {
+                view.loadUrl(sourceUrl)
+            }
+        }
+    }
+
     fun handleCapturedUrl(url: String, contentDisposition: String? = null, mimeType: String? = null) {
-        if (captured) return
+        if (processingCapture) return
+        processingCapture = true
 
         val isHttp = url.startsWith("http://", ignoreCase = true)
         val isHttps = url.startsWith("https://", ignoreCase = true)
+        if (!isHttp && !isHttps) {
+            processingCapture = false
+            return
+        }
 
-        if (!isHttp && !isHttps) return
+        val view = browser
+        view?.stopLoading()
 
         val guessedFileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
         val finalFileName = guessedFileName.trim().ifBlank { "download.pkg" }
 
-        captured = true
-        status = "Link PKG capturado. Validando arquivo..."
+        status = "PKG capturado! Voltando para a antepenúltima página..."
         AppLogger.log("[PkgLinkCaptureScreen] Link capturado com sucesso: $url")
 
+        // 1. Notifica o CatalogManager para validar e registrar o PKG sem fechar a tela[span_0](start_span)[span_0](end_span)
         onCaptured(
             PkgCaptureResult(
-                sourceUrl = currentPageUrl.ifBlank { sourceUrl },
+                sourceUrl = sourceUrl,
                 directUrl = url,
                 fileName = finalFileName
             )
         )
+
+        // 2. Executa o salto para a antepenúltima página do SuperPSX
+        view?.postDelayed({
+            voltarParaAntepenultimaSuperPsx(view)
+            status = "Retornado à antepenúltima página do SuperPSX! Pronto para o próximo link."
+            processingCapture = false
+        }, 1000)
     }
 
     Column(
@@ -136,7 +185,10 @@ fun PkgLinkCaptureScreen(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(text = "CAPTURA DE LINK", color = TextWhite)
-                Text(text = status, color = if (captured) GreenLed else TextMuted)
+                Text(
+                    text = status, 
+                    color = if (processingCapture) GreenLed else TextMuted
+                )
 
                 if (currentDisplayUrl.isNotBlank()) {
                     Text(
@@ -185,7 +237,7 @@ fun PkgLinkCaptureScreen(
                     contentColor = Color.White
                 )
             ) {
-                Text(text = "CANCELAR")
+                Text(text = "CONCLUIR / SAIR")
             }
         }
 
@@ -221,14 +273,13 @@ fun PkgLinkCaptureScreen(
                         ): Boolean {
                             val urlString = request.url.toString()
 
-                            // 1. Qualquer URL do domínio filekeeper.net NUNCA é o binário direto;
-                            // ela deve sempre carregar na página para gerar a sessão e redirecionar para dlproxy.uk.
+                            if (processingCapture) return true
+
                             if (urlString.contains("filekeeper.net", ignoreCase = true)) {
                                 currentDisplayUrl = urlString
                                 return false
                             }
 
-                            // 2. Intercepta URLs .pkg diretas que NÃO sejam da página intermediária do Filekeeper
                             val cleanPath = urlString.substringBefore("?")
                             if (cleanPath.endsWith(".pkg", ignoreCase = true)) {
                                 currentDisplayUrl = urlString
@@ -236,7 +287,6 @@ fun PkgLinkCaptureScreen(
                                 return true
                             }
 
-                            // 3. Bloqueio de popups e domínios não autorizados
                             if (!isDomainPermitted(urlString)) {
                                 return true
                             }
@@ -245,28 +295,11 @@ fun PkgLinkCaptureScreen(
                             return false
                         }
 
-                        override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
-                            super.onPageStarted(view, url, favicon)
-
-                            val isNotIntermediate = !url.contains("filekeeper.net", ignoreCase = true)
-                            if (isNotIntermediate && !url.substringBefore("?").endsWith(".pkg", ignoreCase = true) && !isDomainPermitted(url)) {
-                                view.stopLoading()
-                                if (currentPageUrl.isNotBlank() && view.url != currentPageUrl) {
-                                    view.loadUrl(currentPageUrl)
-                                }
-                            }
-                        }
-
                         override fun onPageFinished(view: WebView, url: String) {
                             currentDisplayUrl = url
                             canGoBack = view.canGoBack()
-
-                            if (!url.substringBefore("?").endsWith(".pkg", ignoreCase = true) && isDomainPermitted(url)) {
-                                currentPageUrl = url
-                            }
-
-                            if (!captured) {
-                                status = "Página carregada. Clique para gerar ou iniciar o download."
+                            if (!processingCapture) {
+                                status = "Página pronta. Clique no link desejado."
                             }
                         }
                     }
