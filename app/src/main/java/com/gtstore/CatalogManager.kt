@@ -1,6 +1,7 @@
 package com.gtstore
 
 import android.content.Context
+import android.os.Environment
 import android.util.LruCache
 import org.json.JSONArray
 import org.json.JSONObject
@@ -199,7 +200,6 @@ class CatalogManager(
             )
         }
 
-        // NOVO ITEM
         val newIndex = nextIndex()
         val itemType = classify(remote.category)
         val formattedTitle =
@@ -239,7 +239,79 @@ class CatalogManager(
     }
 
     // ========================================================
-    // CONSULTAS OTIMIZADAS COM MEMORY CACHE
+    // BACKUP E RESTAURAÇÃO
+    // ========================================================
+
+    fun exportCatalogBackup(): String {
+        return try {
+            val rawItems = prefs.getString(KEY_ITEMS, "[]") ?: "[]"
+            val nextIdx = prefs.getInt(KEY_NEXT_INDEX, 1)
+
+            val backupObject = JSONObject().apply {
+                put("version", 1)
+                put("next_index", nextIdx)
+                put("items", JSONArray(rawItems))
+            }
+
+            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "logs")
+            if (!dir.exists()) dir.mkdirs()
+
+            val backupFile = File(dir, "gtstore_catalog_backup.json")
+            backupFile.writeText(backupObject.toString(2))
+
+            AppLogger.log("[CatalogManager] Backup exportado para: ${backupFile.absolutePath}")
+            "Backup salvo em: Download/logs/gtstore_catalog_backup.json"
+        } catch (e: Exception) {
+            val fallbackDir = File(context.getExternalFilesDir(null), "logs")
+            val fallbackFile = File(fallbackDir, "gtstore_catalog_backup.json")
+            try {
+                val rawItems = prefs.getString(KEY_ITEMS, "[]") ?: "[]"
+                fallbackFile.writeText(rawItems)
+                "Backup salvo em: ${fallbackFile.absolutePath}"
+            } catch (_: Exception) {
+                "Erro ao exportar backup: ${e.message}"
+            }
+        }
+    }
+
+    fun importCatalogBackup(): String {
+        return try {
+            val primaryFile = File(
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "logs"),
+                "gtstore_catalog_backup.json"
+            )
+            val fallbackFile = File(File(context.getExternalFilesDir(null), "logs"), "gtstore_catalog_backup.json")
+
+            val fileToRead = when {
+                primaryFile.exists() -> primaryFile
+                fallbackFile.exists() -> fallbackFile
+                else -> return "Arquivo de backup não encontrado (gtstore_catalog_backup.json)."
+            }
+
+            val content = fileToRead.readText()
+            val backupObject = JSONObject(content)
+
+            val nextIdx = backupObject.optInt("next_index", 1)
+            val itemsArray = backupObject.getJSONArray("items")
+
+            prefs.edit()
+                .putString(KEY_ITEMS, itemsArray.toString())
+                .putInt(KEY_NEXT_INDEX, nextIdx)
+                .apply()
+
+            memoryCache = null
+            getAll()
+
+            AppLogger.log("[CatalogManager] Backup restaurado de: ${fileToRead.absolutePath}")
+            "Catálogo restaurado! (${itemsArray.length()} itens recuperados)"
+        } catch (e: Exception) {
+            AppLogger.log("[CatalogManager] Erro ao restaurar backup: ${e.message}")
+            "Erro ao restaurar backup: ${e.message}"
+        }
+    }
+
+    // ========================================================
+    // CONSULTAS COM CACHE
     // ========================================================
 
     fun getAll(): List<CatalogItem> {
@@ -253,59 +325,39 @@ class CatalogManager(
     fun getByIndex(
         catalogIndex: Int
     ): CatalogItem? {
-        return getAll()
-            .firstOrNull {
-                it.catalogIndex == catalogIndex
-            }
+        return getAll().firstOrNull { it.catalogIndex == catalogIndex }
     }
 
     fun getByContentId(
         contentId: String
     ): CatalogItem? {
-        return getAll()
-            .firstOrNull {
-                it.contentId.equals(
-                    contentId,
-                    ignoreCase = true
-                )
-            }
+        return getAll().firstOrNull { it.contentId.equals(contentId, ignoreCase = true) }
     }
 
     // ========================================================
-    // ÍCONE OTIMIZADO COM LRUCACHE
+    // ÍCONES
     // ========================================================
 
     fun getIcon(
         item: CatalogItem
     ): ByteArray? {
-
-        if (item.iconFile.isBlank()) {
-            return null
-        }
-
+        if (item.iconFile.isBlank()) return null
         iconCache.get(item.iconFile)?.let { return it }
 
-        val file =
-            File(
-                context.filesDir,
-                "$ICON_DIR/${item.iconFile}"
-            )
-
+        val file = File(context.filesDir, "$ICON_DIR/${item.iconFile}")
         return try {
             if (file.exists()) {
                 val bytes = file.readBytes()
                 iconCache.put(item.iconFile, bytes)
                 bytes
-            } else {
-                null
-            }
+            } else null
         } catch (_: Exception) {
             null
         }
     }
 
     // ========================================================
-    // TÍTULO
+    // FORMATAÇÃO E REGRAS
     // ========================================================
 
     private fun formatItemTitle(
@@ -313,57 +365,28 @@ class CatalogManager(
         type: String,
         version: String
     ): String {
-
         val cleanTitle = originalTitle.trim()
-
         return when (type) {
             PkgCatalogItem.TYPE_UPDATE -> {
-                val v =
-                    if (version.isNotBlank()) {
-                        " v$version"
-                    } else {
-                        ""
-                    }
-
-                if (
-                    cleanTitle.contains("update", ignoreCase = true) ||
-                    cleanTitle.contains("patch", ignoreCase = true)
-                ) {
+                val v = if (version.isNotBlank()) " v$version" else ""
+                if (cleanTitle.contains("update", ignoreCase = true) || cleanTitle.contains("patch", ignoreCase = true)) {
                     cleanTitle
                 } else {
                     "$cleanTitle [UPDATE$v]"
                 }
             }
-
             PkgCatalogItem.TYPE_DLC -> {
-                if (cleanTitle.contains("dlc", ignoreCase = true)) {
-                    cleanTitle
-                } else {
-                    "$cleanTitle [DLC]"
-                }
+                if (cleanTitle.contains("dlc", ignoreCase = true)) cleanTitle else "$cleanTitle [DLC]"
             }
-
             else -> cleanTitle
         }
     }
 
-    // ========================================================
-    // CLASSIFICAÇÃO
-    // ========================================================
-
-    private fun normalizeVersion(
-        v: String?
-    ): String {
-        return v
-            ?.trim()
-            ?.removePrefix("0")
-            ?.ifBlank { "0" }
-            ?: "0"
+    private fun normalizeVersion(v: String?): String {
+        return v?.trim()?.removePrefix("0")?.ifBlank { "0" } ?: "0"
     }
 
-    private fun classify(
-        category: String
-    ): String {
+    private fun classify(category: String): String {
         return when (category.trim().lowercase()) {
             "gd", "gda" -> PkgCatalogItem.TYPE_GAME
             "gp", "gpe" -> PkgCatalogItem.TYPE_UPDATE
@@ -372,23 +395,14 @@ class CatalogManager(
         }
     }
 
-    // ========================================================
-    // ÍNDICE
-    // ========================================================
-
     private fun nextIndex(): Int {
         val current = prefs.getInt(KEY_NEXT_INDEX, 1)
         prefs.edit().putInt(KEY_NEXT_INDEX, current + 1).apply()
         return current
     }
 
-    // ========================================================
-    // CARREGAMENTO INTERNO (DISCO)
-    // ========================================================
-
     private fun loadItemsInternal(): List<CatalogItem> {
         val raw = prefs.getString(KEY_ITEMS, null) ?: return emptyList()
-
         return try {
             val array = JSONArray(raw)
             buildList {
@@ -418,15 +432,8 @@ class CatalogManager(
         }
     }
 
-    // ========================================================
-    // SALVAMENTO (DISCO + ATUALIZAÇÃO DA CACHE)
-    // ========================================================
-
-    private fun saveItems(
-        items: List<CatalogItem>
-    ) {
+    private fun saveItems(items: List<CatalogItem>) {
         val array = JSONArray()
-
         items.forEach { item ->
             array.put(
                 JSONObject()
@@ -445,47 +452,27 @@ class CatalogManager(
                     .put("iconFile", item.iconFile)
             )
         }
-
         prefs.edit().putString(KEY_ITEMS, array.toString()).apply()
         memoryCache = items.sortedBy { it.catalogIndex }
     }
 
-    // ========================================================
-    // ÍCONE
-    // ========================================================
-
-    private fun saveIcon(
-        catalogIndex: Int,
-        icon: ByteArray?
-    ) {
+    private fun saveIcon(catalogIndex: Int, icon: ByteArray?) {
         if (icon == null || icon.isEmpty()) return
-
         val fileName = iconFileName(catalogIndex)
         iconCache.put(fileName, icon)
-
         try {
             val directory = File(context.filesDir, ICON_DIR)
-            if (!directory.exists()) {
-                directory.mkdirs()
-            }
+            if (!directory.exists()) directory.mkdirs()
             File(directory, fileName).writeBytes(icon)
         } catch (_: Exception) {
         }
     }
 
-    private fun iconFileName(
-        catalogIndex: Int
-    ): String {
+    private fun iconFileName(catalogIndex: Int): String {
         return "icon_${catalogIndex.toString().padStart(6, '0')}.png"
     }
 
-    // ========================================================
-    // VALIDAÇÃO RESILIENTE DE URL (COM SUPORTE A [ e ])
-    // ========================================================
-
-    private fun isValidUrl(
-        rawUrl: String
-    ): Boolean {
+    private fun isValidUrl(rawUrl: String): Boolean {
         val trimmed = rawUrl.trim()
         val isHttp = trimmed.startsWith("http://", ignoreCase = true)
         val isHttps = trimmed.startsWith("https://", ignoreCase = true)
