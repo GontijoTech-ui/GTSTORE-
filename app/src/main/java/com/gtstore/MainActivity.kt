@@ -5,8 +5,11 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -509,7 +512,6 @@ fun CatalogManagerScreen(
             sourceUrl = captureSourceUrl!!,
             allowedDomains = exceptionsList,
             onCaptured = { captureResult ->
-                // Não anula captureSourceUrl aqui para manter o WebView aberto
                 saving = true
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
@@ -930,7 +932,6 @@ fun RegisteredCatalogScreen(
             sourceUrl = captureSourceUrl!!,
             allowedDomains = exceptionsList,
             onCaptured = { captureResult ->
-                // Não anula captureSourceUrl aqui para manter o WebView aberto
                 updating = true
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
@@ -1109,6 +1110,7 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences("GTSTORE_SETTINGS", Context.MODE_PRIVATE) }
     val catalogManager = remember(context) { CatalogManager(context) }
 
@@ -1116,6 +1118,32 @@ fun SettingsScreen(
         mutableStateOf(prefs.getString("domain_exceptions", "") ?: "")
     }
     var message by remember { mutableStateOf("") }
+
+    var executandoBackup by remember { mutableStateOf(false) }
+    var restaurandoIcones by remember { mutableStateOf(false) }
+    var statusIcones by remember { mutableStateOf("") }
+
+    fun verificarPermissaoArmazenamento(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            true
+        }
+    }
+
+    fun abrirDefinicoesPermissao() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                }
+                context.startActivity(intent)
+            } catch (_: Exception) {
+                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                context.startActivity(intent)
+            }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -1215,7 +1243,7 @@ fun SettingsScreen(
             }
         }
 
-        // Card Backup do Catálogo
+        // Card Backup do Catálogo e Recuperação de Ícones
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1246,9 +1274,21 @@ fun SettingsScreen(
                     ) {
                         Button(
                             onClick = {
-                                val res = catalogManager.exportCatalogBackup()
-                                Toast.makeText(context, res, Toast.LENGTH_LONG).show()
+                                if (!verificarPermissaoArmazenamento()) {
+                                    Toast.makeText(context, "Conceda permissão de armazenamento primeiro!", Toast.LENGTH_LONG).show()
+                                    abrirDefinicoesPermissao()
+                                    return@Button
+                                }
+                                executandoBackup = true
+                                scope.launch {
+                                    val res = withContext(Dispatchers.IO) {
+                                        catalogManager.exportCatalogBackup()
+                                    }
+                                    executandoBackup = false
+                                    Toast.makeText(context, res, Toast.LENGTH_LONG).show()
+                                }
                             },
+                            enabled = !executandoBackup && !restaurandoIcones,
                             modifier = Modifier
                                 .weight(1f)
                                 .height(44.dp),
@@ -1260,17 +1300,72 @@ fun SettingsScreen(
 
                         Button(
                             onClick = {
-                                val res = catalogManager.importCatalogBackup()
-                                Toast.makeText(context, res, Toast.LENGTH_LONG).show()
+                                if (!verificarPermissaoArmazenamento()) {
+                                    Toast.makeText(context, "Conceda permissão de armazenamento primeiro!", Toast.LENGTH_LONG).show()
+                                    abrirDefinicoesPermissao()
+                                    return@Button
+                                }
+                                executandoBackup = true
+                                scope.launch {
+                                    val res = withContext(Dispatchers.IO) {
+                                        catalogManager.importCatalogBackup()
+                                    }
+                                    executandoBackup = false
+                                    Toast.makeText(context, res, Toast.LENGTH_LONG).show()
+                                }
                             },
+                            enabled = !executandoBackup && !restaurandoIcones,
                             modifier = Modifier
                                 .weight(1f)
                                 .height(44.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("RESTAURAR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(if (executandoBackup) "..." else "RESTAURAR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Botão para descarregar capas oficiais via TMDB (CDN Sony)
+                    Button(
+                        onClick = {
+                            if (!restaurandoIcones) {
+                                restaurandoIcones = true
+                                statusIcones = "A verificar capas em falta..."
+                                scope.launch {
+                                    val total = catalogManager.restaurarIconesFaltantes { atual, totalItens, nome ->
+                                        statusIcones = "Recuperando ($atual/$totalItens): $nome"
+                                    }
+                                    restaurandoIcones = false
+                                    statusIcones = "Concluído! $total capas recuperadas."
+                                    Toast.makeText(context, statusIcones, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
+                        enabled = !executandoBackup && !restaurandoIcones,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = if (restaurandoIcones) "A RECUPERAR..." else "RECUPERAR ÍCONES (TMDB)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextWhite
+                        )
+                    }
+
+                    if (statusIcones.isNotBlank()) {
+                        Text(
+                            text = statusIcones,
+                            color = if (restaurandoIcones) Color(0xFF64B5F6) else GreenLed,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
