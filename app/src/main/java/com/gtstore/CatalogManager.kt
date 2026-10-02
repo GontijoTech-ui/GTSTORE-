@@ -8,8 +8,13 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.net.URI
 import java.net.URL
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 class CatalogManager(
     private val context: Context
@@ -154,7 +159,6 @@ class CatalogManager(
             }
 
         if (existing != null) {
-            // Se veio uma página de origem na captura (mesmo que redirecionada), atualiza obrigatoriamente
             val finalSourceUrl = if (sourceUrl.isNotBlank()) {
                 sourceUrl.trim()
             } else {
@@ -197,10 +201,8 @@ class CatalogManager(
                     }
                 }
 
-            // Grava alterações no banco persistente
             saveItems(updatedItems)
 
-            // Atualiza fisicamente a capa caso o PKG contenha icon0.png
             if (remote.icon != null && remote.icon.isNotEmpty()) {
                 saveIcon(existing.catalogIndex, remote.icon)
                 AppLogger.log("[CatalogManager] Capa regravada fisicamente com sucesso para índice ${existing.indexString}")
@@ -213,7 +215,6 @@ class CatalogManager(
             )
         }
 
-        // Caso seja um novo registo
         val newIndex = nextIndex()
         val itemType = classify(remote.category)
         val formattedTitle =
@@ -253,7 +254,7 @@ class CatalogManager(
     }
 
     // ========================================================
-    // BACKUP E RESTAURAÇÃO
+    // BACKUP E RESTAURAÇÃO (JSON SIMPLES)
     // ========================================================
 
     fun exportCatalogBackup(): String {
@@ -328,6 +329,127 @@ class CatalogManager(
         } catch (e: Exception) {
             AppLogger.log("[CatalogManager] Erro ao restaurar backup: ${e.message}")
             "Erro ao restaurar backup: ${e.message}"
+        }
+    }
+
+    // ========================================================
+    // BACKUP E RESTAURAÇÃO COMPLETO EM ZIP (JSON + ÍCONES)
+    // ========================================================
+
+    fun exportCatalogZipBackup(): String {
+        return try {
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val logsDir = File(downloadDir, "logs")
+            if (!logsDir.exists()) logsDir.mkdirs()
+
+            val zipFile = File(logsDir, "gtstore_complete_backup.zip")
+
+            val rawItems = prefs.getString(KEY_ITEMS, "[]") ?: "[]"
+            val nextIdx = prefs.getInt(KEY_NEXT_INDEX, 1)
+            val backupObject = JSONObject().apply {
+                put("version", 1)
+                put("next_index", nextIdx)
+                put("items", JSONArray(rawItems))
+            }
+
+            val iconsDir = File(context.filesDir, ICON_DIR)
+            val iconFiles = iconsDir.listFiles()?.filter { it.isFile && it.length() > 0L } ?: emptyList()
+
+            ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
+                val jsonEntry = ZipEntry("gtstore_catalog_backup.json")
+                zos.putNextEntry(jsonEntry)
+                zos.write(backupObject.toString(2).toByteArray(Charsets.UTF_8))
+                zos.closeEntry()
+
+                val buffer = ByteArray(8192)
+                for (icon in iconFiles) {
+                    val entry = ZipEntry("$ICON_DIR/${icon.name}")
+                    zos.putNextEntry(entry)
+                    FileInputStream(icon).use { fis ->
+                        var len: Int
+                        while (fis.read(buffer).also { len = it } > 0) {
+                            zos.write(buffer, 0, len)
+                        }
+                    }
+                    zos.closeEntry()
+                }
+            }
+
+            AppLogger.log("[CatalogManager] Backup ZIP criado em: ${zipFile.absolutePath} com ${iconFiles.size} capas.")
+            "Backup ZIP salvo em: Download/logs/gtstore_complete_backup.zip (${iconFiles.size} ícones)"
+        } catch (e: Exception) {
+            AppLogger.log("[CatalogManager] Erro ao exportar ZIP: ${e.message}")
+            "Erro ao exportar ZIP: ${e.message}"
+        }
+    }
+
+    fun importCatalogZipBackup(): String {
+        return try {
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val candidateZip = listOf(
+                File(File(downloadDir, "logs"), "gtstore_complete_backup.zip"),
+                File(downloadDir, "gtstore_complete_backup.zip")
+            ).firstOrNull { it.exists() && it.length() > 0L }
+                ?: return "Arquivo gtstore_complete_backup.zip não encontrado em Download/logs/."
+
+            val iconsDir = File(context.filesDir, ICON_DIR)
+            if (!iconsDir.exists()) iconsDir.mkdirs()
+
+            var jsonString: String? = null
+            var totalIconsRestored = 0
+            val buffer = ByteArray(8192)
+
+            ZipInputStream(FileInputStream(candidateZip)).use { zis ->
+                var entry: ZipEntry? = zis.nextEntry
+                while (entry != null) {
+                    val entryName = entry.name
+
+                    if (entryName.endsWith(".json")) {
+                        jsonString = zis.readBytes().toString(Charsets.UTF_8)
+                    } else if (entryName.startsWith("$ICON_DIR/") || entryName.endsWith(".png")) {
+                        val fileName = File(entryName).name
+                        if (fileName.isNotBlank()) {
+                            val outFile = File(iconsDir, fileName)
+                            FileOutputStream(outFile).use { fos ->
+                                var len: Int
+                                while (zis.read(buffer).also { len = it } > 0) {
+                                    fos.write(buffer, 0, len)
+                                }
+                            }
+                            if (outFile.exists() && outFile.length() > 0L) {
+                                try {
+                                    iconCache.put(fileName, outFile.readBytes())
+                                } catch (_: Exception) {}
+                                totalIconsRestored++
+                            }
+                        }
+                    }
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                }
+            }
+
+            if (jsonString.isNullOrBlank()) {
+                return "Erro: O ZIP não possui o arquivo de catálogo JSON."
+            }
+
+            val backupObject = JSONObject(jsonString)
+            val nextIdx = backupObject.optInt("next_index", 1)
+            val itemsArray = backupObject.optJSONArray("items") ?: JSONArray()
+
+            prefs.edit()
+                .putString(KEY_ITEMS, itemsArray.toString())
+                .putInt(KEY_NEXT_INDEX, nextIdx)
+                .apply()
+
+            memoryCache = null
+            getAll()
+
+            AppLogger.log("[CatalogManager] ZIP Restaurado: ${itemsArray.length()} itens e $totalIconsRestored capas.")
+            "Sucesso! ${itemsArray.length()} jogos e $totalIconsRestored capas restaurados do ZIP."
+        } catch (e: Exception) {
+            AppLogger.log("[CatalogManager] Erro ao importar ZIP: ${e.message}")
+            "Erro ao restaurar ZIP: ${e.message}"
         }
     }
 
@@ -522,7 +644,6 @@ class CatalogManager(
             )
         }
         prefs.edit().putString(KEY_ITEMS, array.toString()).apply()
-        // Invalida o cache e ordena para atualizar o Compose imediatamente
         memoryCache = items.sortedBy { it.catalogIndex }
     }
 
@@ -530,7 +651,6 @@ class CatalogManager(
         if (icon == null || icon.isEmpty()) return
         val fileName = iconFileName(catalogIndex)
         
-        // Atualiza a LruCache
         iconCache.put(fileName, icon)
         try {
             val directory = File(context.filesDir, ICON_DIR)
