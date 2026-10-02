@@ -509,10 +509,8 @@ fun CatalogManagerScreen(
             sourceUrl = captureSourceUrl!!,
             allowedDomains = exceptionsList,
             onCaptured = { captureResult ->
-                captureSourceUrl = null
+                // Não anula captureSourceUrl aqui para manter o WebView aberto
                 saving = true
-                message = "Link capturado. Validando PKG..."
-
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
                         try {
@@ -530,9 +528,8 @@ fun CatalogManagerScreen(
                     }
 
                     saving = false
-                    message = result.message
-                    if (result.success) {
-                        url = ""
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
                     }
                 }
             },
@@ -933,10 +930,8 @@ fun RegisteredCatalogScreen(
             sourceUrl = captureSourceUrl!!,
             allowedDomains = exceptionsList,
             onCaptured = { captureResult ->
-                captureSourceUrl = null
+                // Não anula captureSourceUrl aqui para manter o WebView aberto
                 updating = true
-                message = "Atualizando link do PKG..."
-
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
                         try {
@@ -954,10 +949,11 @@ fun RegisteredCatalogScreen(
                     }
 
                     updating = false
-                    message = result.message
-                    if (result.success) {
-                        allItems = withContext(Dispatchers.IO) { catalogManager.getAll() }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
                     }
+
+                    allItems = withContext(Dispatchers.IO) { catalogManager.getAll() }
                 }
             },
             onCancel = { captureSourceUrl = null }
