@@ -121,8 +121,6 @@ fun PkgLinkCaptureScreen(
             AppLogger.log("[PkgLinkCaptureScreen] Saltando $targetStep passos para a antepenúltima página SuperPSX.")
             view.goBackOrForward(targetStep)
         } else {
-            // Caso você tenha aberto direto na postagem e não existam 2 páginas antes,
-            // ele volta o máximo que puder ou recarrega a URL de entrada
             if (view.canGoBack()) {
                 view.goBack()
             } else {
@@ -298,9 +296,56 @@ fun PkgLinkCaptureScreen(
                         override fun onPageFinished(view: WebView, url: String) {
                             currentDisplayUrl = url
                             canGoBack = view.canGoBack()
+
                             if (!processingCapture) {
-                                status = "Página pronta. Clique no link desejado."
+                                status = "Página carregada. Tentando clicar no verificador..."
                             }
+
+                            // Script de clique automático na caixa "Não sou um robô"
+                            val autoClickScript = """
+                                (function() {
+                                    const selectors = [
+                                        '#recaptcha-anchor',
+                                        '#checkbox',
+                                        'input[type="checkbox"]',
+                                        '.cf-turnstile input',
+                                        '.cf-turnstile',
+                                        '#amzn-captcha-verify-button'
+                                    ];
+                                    
+                                    for (let sel of selectors) {
+                                        let el = document.querySelector(sel);
+                                        if (el && el.offsetParent !== null) {
+                                            el.click();
+                                            return;
+                                        }
+                                    }
+
+                                    const iframes = document.querySelectorAll('iframe');
+                                    for (let f of iframes) {
+                                        try {
+                                            let doc = f.contentDocument || f.contentWindow.document;
+                                            if (doc) {
+                                                for (let sel of selectors) {
+                                                    let el = doc.querySelector(sel);
+                                                    if (el) {
+                                                        el.click();
+                                                        return;
+                                                    }
+                                                }
+                                            }
+                                        } catch(e) {}
+                                    }
+                                })();
+                            """.trimIndent()
+
+                            // Aguarda 600ms para renderização dos componentes dinâmicos
+                            view.postDelayed({
+                                view.evaluateJavascript(autoClickScript, null)
+                                if (!processingCapture) {
+                                    status = "Página pronta. Clique no link desejado."
+                                }
+                            }, 600)
                         }
                     }
 
