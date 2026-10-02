@@ -1243,7 +1243,7 @@ fun SettingsScreen(
             }
         }
 
-        // Card Backup do Catálogo e Recuperação de Ícones
+        // Card Backup do Catálogo (ZIP Completo: JSON + Ícones)
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1263,7 +1263,7 @@ fun SettingsScreen(
                     )
 
                     Text(
-                        text = "Exporte todos os jogos já cadastrados para um arquivo JSON em Download/logs/ para não perder os dados durante atualizações ou reinstalações.",
+                        text = "Exporte todos os jogos e capas num único arquivo ZIP para Download/logs/gtstore_complete_backup.zip.",
                         color = TextMuted,
                         fontSize = 12.sp
                     )
@@ -1282,7 +1282,7 @@ fun SettingsScreen(
                                 executandoBackup = true
                                 scope.launch {
                                     val res = withContext(Dispatchers.IO) {
-                                        catalogManager.exportCatalogBackup()
+                                        catalogManager.exportCatalogZipBackup()
                                     }
                                     executandoBackup = false
                                     Toast.makeText(context, res, Toast.LENGTH_LONG).show()
@@ -1292,10 +1292,10 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(44.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222222)),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5)),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("EXPORTAR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("EXPORTAR ZIP", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -1308,7 +1308,7 @@ fun SettingsScreen(
                                 executandoBackup = true
                                 scope.launch {
                                     val res = withContext(Dispatchers.IO) {
-                                        catalogManager.importCatalogBackup()
+                                        catalogManager.importCatalogZipBackup()
                                     }
                                     executandoBackup = false
                                     Toast.makeText(context, res, Toast.LENGTH_LONG).show()
@@ -1318,10 +1318,10 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(44.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text(if (executandoBackup) "..." else "RESTAURAR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(if (executandoBackup) "..." else "RESTAURAR ZIP", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
