@@ -3,9 +3,13 @@ package com.gtstore
 import android.content.Context
 import android.os.Environment
 import android.util.LruCache
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
 
@@ -335,7 +339,7 @@ class CatalogManager(
     }
 
     // ========================================================
-    // ÍCONES
+    // ÍCONES E RECUPERAÇÃO VIA PSN (TMDB)
     // ========================================================
 
     fun getIcon(
@@ -353,6 +357,77 @@ class CatalogManager(
             } else null
         } catch (_: Exception) {
             null
+        }
+    }
+
+    suspend fun restaurarIconesFaltantes(
+        onProgress: (atual: Int, total: Int, itemNome: String) -> Unit = { _, _, _ -> }
+    ): Int = withContext(Dispatchers.IO) {
+        val directory = File(context.filesDir, ICON_DIR)
+        if (!directory.exists()) directory.mkdirs()
+
+        val items = getAll()
+        val pendentes = items.filter { item ->
+            val iconFile = File(directory, item.iconFile)
+            !iconFile.exists() || iconFile.length() == 0L
+        }
+
+        val total = pendentes.size
+        var recuperados = 0
+
+        AppLogger.log("[CatalogManager] Iniciando recuperação de $total ícones faltantes via TMDB...")
+
+        pendentes.forEachIndexed { index, item ->
+            withContext(Dispatchers.Main) {
+                onProgress(index + 1, total, item.title)
+            }
+
+            if (item.contentId.isNotBlank()) {
+                val iconFile = File(directory, item.iconFile)
+                val baixou = downloadIconFromPsn(item.contentId, iconFile)
+
+                if (baixou) {
+                    recuperados++
+                    try {
+                        val bytes = iconFile.readBytes()
+                        iconCache.put(item.iconFile, bytes)
+                    } catch (_: Exception) {}
+                    AppLogger.log("[CatalogManager] Ícone restaurado: ${item.iconFile} para ${item.title}")
+                }
+            }
+        }
+
+        AppLogger.log("[CatalogManager] Recuperação concluída: $recuperados/$total recuperados com sucesso.")
+        recuperados
+    }
+
+    private fun downloadIconFromPsn(contentId: String, destFile: File): Boolean {
+        val iconUrl = "https://tmdb.np.dl.playstation.net/tmdb2/${contentId}_00/icon0.png"
+        var connection: HttpURLConnection? = null
+
+        return try {
+            val url = URL(iconUrl)
+            connection = url.openConnection() as HttpURLConnection
+            connection.connectTimeout = 7000
+            connection.readTimeout = 7000
+            connection.instanceFollowRedirects = true
+
+            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                connection.inputStream.use { input ->
+                    FileOutputStream(destFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                true
+            } else {
+                AppLogger.log("[CatalogManager] TMDB retornou código ${connection.responseCode} para $contentId")
+                false
+            }
+        } catch (e: Exception) {
+            AppLogger.log("[CatalogManager] Erro ao buscar ícone para $contentId: ${e.message}")
+            false
+        } finally {
+            connection?.disconnect()
         }
     }
 
