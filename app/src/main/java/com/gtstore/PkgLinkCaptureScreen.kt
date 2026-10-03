@@ -2,11 +2,11 @@ package com.gtstore
 
 import android.annotation.SuppressLint
 import android.net.Uri
-import android.os.Message
 import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import java.io.ByteArrayInputStream
 
 data class PkgCaptureResult(
     val sourceUrl: String,
@@ -45,12 +46,13 @@ data class PkgCaptureResult(
 private const val BROWSER_USER_AGENT =
     "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
-// Lista negra com as maiores redes de anúncios agressivos e redirecionamentos parasitas
+// Termos comuns em URLs de anúncios agressivos, cassinos e rastreadores
 private val AD_BLOCK_KEYWORDS = listOf(
     "doubleclick", "adservice", "popads", "popcash", "propellerads",
     "adsterra", "exoclick", "bet365", "betano", "blaze", "1xbet",
     "shorte.st", "adf.ly", "ouo.io", "trafficjunky", "syndication",
-    "onclickprediction", "clickadu", "histats", "track", "analytics"
+    "onclickprediction", "clickadu", "histats", "track.", "analytics",
+    "leonbet", "bcgameloop", "adrun", "banner", "cpm", "ads."
 )
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -75,13 +77,11 @@ fun PkgLinkCaptureScreen(
         }
     }
 
-    // Deteta se o link corresponde a publicidade ou a redes parasitárias
     fun isAdOrSpam(url: String): Boolean {
         val lower = url.lowercase()
         return AD_BLOCK_KEYWORDS.any { lower.contains(it) }
     }
 
-    // Função que calcula e salta exatamente para a ANTEPENÚLTIMA página do SuperPSX
     fun voltarParaAntepenultimaSuperPsx(view: WebView) {
         val history = view.copyBackForwardList()
         val currentIndex = history.currentIndex
@@ -95,7 +95,6 @@ fun PkgLinkCaptureScreen(
 
             if (itemUrl.contains("superpsx.com") && !itemUrl.endsWith(".pkg")) {
                 countSuperPsx++
-                // 1 = penúltima | 2 = ANTEPENÚLTIMA
                 if (countSuperPsx == 2) {
                     targetStep = i - currentIndex
                     break
@@ -246,53 +245,31 @@ fun PkgLinkCaptureScreen(
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
                     settings.loadsImagesAutomatically = true
-                    settings.javaScriptCanOpenWindowsAutomatically = false // Bloqueia abertura abusiva de popups
-                    settings.setSupportMultipleWindows(true)
+                    // DESLIGADO para impedir o congelamento com popups parasitas
+                    settings.javaScriptCanOpenWindowsAutomatically = false
+                    settings.setSupportMultipleWindows(false)
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
                     val cookieManager = CookieManager.getInstance()
                     cookieManager.setAcceptCookie(true)
                     cookieManager.setAcceptThirdPartyCookies(this, true)
 
-                    webChromeClient = object : WebChromeClient() {
-                        override fun onCreateWindow(
-                            view: WebView?,
-                            isDialog: Boolean,
-                            isUserGesture: Boolean,
-                            resultMsg: Message?
-                        ): Boolean {
-                            // Se a tentativa de abertura de janela não partiu de um toque intencional do utilizador, descarta
-                            if (!isUserGesture) {
-                                return false
-                            }
-
-                            val transport = resultMsg?.obj as? WebView.WebViewTransport
-                            val tempWebView = WebView(context).apply {
-                                webViewClient = object : WebViewClient() {
-                                    override fun shouldOverrideUrlLoading(
-                                        innerView: WebView,
-                                        request: WebResourceRequest
-                                    ): Boolean {
-                                        val targetUrl = request.url.toString()
-                                        
-                                        // Bloqueia se o popup for propaganda
-                                        if (isAdOrSpam(targetUrl)) {
-                                            AppLogger.log("[PkgLinkCaptureScreen] Popup de propaganda descartado: $targetUrl")
-                                            return true
-                                        }
-
-                                        browser?.loadUrl(targetUrl)
-                                        return true
-                                    }
-                                }
-                            }
-                            transport?.webView = tempWebView
-                            resultMsg?.sendToTarget()
-                            return true
-                        }
-                    }
+                    webChromeClient = WebChromeClient()
 
                     webViewClient = object : WebViewClient() {
+                        // 1. Intercepta e mata requisições de anúncios pela raiz (economiza CPU/RAM e evita congelar)
+                        override fun shouldInterceptRequest(
+                            view: WebView?,
+                            request: WebResourceRequest?
+                        ): WebResourceResponse? {
+                            val reqUrl = request?.url?.toString() ?: ""
+                            if (isAdOrSpam(reqUrl)) {
+                                return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream("".toByteArray()))
+                            }
+                            return super.shouldInterceptRequest(view, request)
+                        }
+
+                        // 2. Controla o redirecionamento
                         override fun shouldOverrideUrlLoading(
                             view: WebView,
                             request: WebResourceRequest
@@ -301,14 +278,12 @@ fun PkgLinkCaptureScreen(
 
                             if (processingCapture) return true
 
-                            // 1. Bloqueia esquemas externos (ex: app store, apps de terceiros)
                             val scheme = request.url.scheme?.lowercase() ?: ""
                             if (scheme != "http" && scheme != "https") {
-                                AppLogger.log("[PkgLinkCaptureScreen] Esquema externo bloqueado: $urlString")
+                                AppLogger.log("[PkgLinkCaptureScreen] Esquema externo evitado: $urlString")
                                 return true
                             }
 
-                            // 2. Bloqueia redes de anúncios e popups conhecidos
                             if (isAdOrSpam(urlString)) {
                                 AppLogger.log("[PkgLinkCaptureScreen] Propaganda bloqueada: $urlString")
                                 return true
@@ -317,7 +292,6 @@ fun PkgLinkCaptureScreen(
                             val cleanPath = urlString.substringBefore("?")
                             val host = request.url.host?.lowercase() ?: ""
 
-                            // 3. Captura se for o arquivo .pkg real fora de páginas web do Filekeeper
                             if (cleanPath.endsWith(".pkg", ignoreCase = true) && !host.contains("filekeeper.net")) {
                                 handleCapturedUrl(urlString)
                                 return true
@@ -335,17 +309,22 @@ fun PkgLinkCaptureScreen(
                                 status = "Página carregada."
                             }
 
-                            // Remove elementos visuais de sobreposição de anúncios e clica em captchas legítimos
-                            val cleanAndClickScript = """
+                            // Script cirúrgico: remove camadas invisíveis e desativa window.open para não travar
+                            val antiAdOverlayScript = """
                                 (function() {
-                                    // Remove iframes e banners com atributos típicos de publicidade
-                                    const adSelectors = [
-                                        'iframe[src*="ad"]', 'iframe[src*="banner"]', 'div[class*="ad-"]', 
-                                        'div[id*="ad-"]', '.adbox', '.ad-overlay', '#popunder'
-                                    ];
-                                    for (let s of adSelectors) {
-                                        document.querySelectorAll(s).forEach(el => el.remove());
-                                    }
+                                    // Bloqueia tentativas de scripts abrirem abas à força
+                                    window.open = function() { return null; };
+
+                                    // Remove iframes suspeitos e camadas transparentes por cima da tela
+                                    const elements = document.querySelectorAll('iframe, div, a');
+                                    elements.forEach(el => {
+                                        const style = window.getComputedStyle(el);
+                                        const zIndex = parseInt(style.zIndex, 10);
+                                        // Detecta divs transparentes que ocupam a tela inteira (clickjack)
+                                        if (zIndex > 1000 && (style.position === 'fixed' || style.position === 'absolute') && style.opacity === '0') {
+                                            el.remove();
+                                        }
+                                    });
 
                                     // Clica no verificador legítimo se disponível
                                     const captchaSelectors = [
@@ -368,7 +347,7 @@ fun PkgLinkCaptureScreen(
                             """.trimIndent()
 
                             view.postDelayed({
-                                view.evaluateJavascript(cleanAndClickScript, null)
+                                view.evaluateJavascript(antiAdOverlayScript, null)
                             }, 500)
                         }
                     }
