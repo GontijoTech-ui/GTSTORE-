@@ -394,7 +394,7 @@ fun Dashboard(
 
         item {
             RedMenuButton(
-                text = "ADMIN (SOLICITAÇÕES PIN)",
+                text = "ADMIN",
                 onClick = { onNavigate(GTStoreScreen.ADMIN) }
             )
         }
@@ -437,7 +437,6 @@ fun GTStoreApp(
             onBack = { currentScreen = GTStoreScreen.DASHBOARD }
         )
         GTStoreScreen.ADMIN -> AdminScreen(
-            httpServer = httpServer,
             onBack = { currentScreen = GTStoreScreen.DASHBOARD }
         )
         GTStoreScreen.CONFIGURACOES -> SettingsScreen(
@@ -1107,7 +1106,6 @@ fun RegisteredCatalogScreen(
                 )
             }
         }
-
     }
 }
 
@@ -1180,7 +1178,6 @@ fun SettingsScreen(
             }
         }
 
-        // Card Exceções de Domínio
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1249,7 +1246,6 @@ fun SettingsScreen(
             }
         }
 
-        // Card Backup do Catálogo (ZIP Completo: JSON + Ícones)
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1333,7 +1329,6 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // Botão para descarregar capas oficiais via TMDB (CDN Sony)
                     Button(
                         onClick = {
                             if (!restaurandoIcones) {
@@ -1377,7 +1372,6 @@ fun SettingsScreen(
             }
         }
 
-        // Card Logs do Sistema
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1643,21 +1637,11 @@ fun ServerScreen(
 
 @Composable
 fun AdminScreen(
-    httpServer: HttpServer,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var pinRequests by remember { mutableStateOf<List<PinRequest>>(emptyList()) }
-
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            val list = httpServer.getPinRequests()
-            if (pinRequests != list) {
-                pinRequests = list
-            }
-            delay(1500)
-        }
-    }
+    // Utiliza diretamente a lista de solicitações ativas do AccessManager
+    val requests = AccessManager.pendingRequests
 
     LazyColumn(
         modifier = Modifier
@@ -1680,8 +1664,8 @@ fun AdminScreen(
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "SOLICITAÇÕES DE PIN",
-                    fontSize = 22.sp,
+                    text = "ADMIN — CONTROLE DE ACESSO PS4",
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextWhite
                 )
@@ -1704,26 +1688,26 @@ fun AdminScreen(
                             modifier = Modifier
                                 .size(10.dp)
                                 .clip(CircleShape)
-                                .background(if (pinRequests.isNotEmpty()) GreenLed else RedLed)
+                                .background(if (requests.isNotEmpty()) GreenLed else RedLed)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (pinRequests.isNotEmpty()) "FILA ATIVA" else "AGUARDANDO SOLICITAÇÕES",
+                            text = if (requests.isNotEmpty()) "SOLICITAÇÕES PENDENTES" else "NENHUMA SOLICITAÇÃO",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (pinRequests.isNotEmpty()) GreenLed else TextMuted
+                            color = if (requests.isNotEmpty()) GreenLed else TextMuted
                         )
                     }
 
                     Text(
-                        text = "Solicitações pendentes: ${pinRequests.size}",
+                        text = "Aparelhos aguardando liberação: ${requests.size}",
                         color = TextWhite,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
 
                     Text(
-                        text = "Validade de cada chave: 10 minutos",
+                        text = "O acesso aprovado permanece liberado por 10 minutos para download.",
                         color = TextMuted,
                         fontSize = 13.sp
                     )
@@ -1731,7 +1715,7 @@ fun AdminScreen(
             }
         }
 
-        if (pinRequests.isEmpty()) {
+        if (requests.isEmpty()) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -1740,7 +1724,7 @@ fun AdminScreen(
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Text(
-                        text = "Nenhuma solicitação no momento...",
+                        text = "Aguardando novos pedidos de acesso vindos do PS4...",
                         modifier = Modifier.padding(20.dp),
                         color = TextMuted,
                         fontSize = 15.sp
@@ -1749,19 +1733,13 @@ fun AdminScreen(
             }
         } else {
             items(
-                items = pinRequests,
-                key = { it.id }
+                items = requests,
+                key = { "${it.consoleId}_${it.gameKey}" }
             ) { req ->
-                val elapsed = System.currentTimeMillis() - req.createdAt
-                val remaining = ((HttpServer.PIN_TIMEOUT_MS - elapsed) / 1000L).coerceAtLeast(0L)
-
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = CardBlack),
-                    border = BorderStroke(
-                        1.dp,
-                        if (req.isExpired) BorderDark else Color(0xFF331114)
-                    ),
+                    border = BorderStroke(1.dp, Color(0xFF0070CC)),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Column(
@@ -1786,12 +1764,12 @@ fun AdminScreen(
                                     modifier = Modifier
                                         .size(8.dp)
                                         .clip(CircleShape)
-                                        .background(if (req.isExpired) RedLed else GreenLed)
+                                        .background(Color(0xFFFF9F0A))
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (req.isExpired) "EXPIRADO" else "${remaining / 60}m ${remaining % 60}s",
-                                    color = if (req.isExpired) RedLed else Color(0xFFFF9F0A),
+                                    text = "AGUARDANDO",
+                                    color = Color(0xFFFF9F0A),
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -1799,7 +1777,7 @@ fun AdminScreen(
                         }
 
                         Text(
-                            text = "Código / CUSA: ${req.gameKey}",
+                            text = "Jogo / CUSA: ${req.gameKey}",
                             fontSize = 13.sp,
                             color = Color(0xFF64B5F6),
                             fontWeight = FontWeight.SemiBold
@@ -1811,27 +1789,39 @@ fun AdminScreen(
                             border = BorderStroke(1.dp, BorderDark),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Row(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 14.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Text(
-                                    text = "PIN:",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextMuted
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "ID CONSOLE PS4:",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextMuted
+                                    )
 
-                                Text(
-                                    text = req.pin,
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 2.sp,
-                                    color = if (req.isExpired) RedLed else GreenLed
-                                )
+                                    Text(
+                                        text = req.consoleId,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFF64B5F6)
+                                    )
+                                }
+
+                                if (req.clientIp.isNotBlank()) {
+                                    Text(
+                                        text = "IP do Console: ${req.clientIp}",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF777777)
+                                    )
+                                }
                             }
                         }
 
@@ -1843,35 +1833,27 @@ fun AdminScreen(
                         ) {
                             Button(
                                 onClick = {
-                                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(
-                                            Intent.EXTRA_TEXT,
-                                            "Seu PIN de download para o jogo *${req.gameTitle}* (${req.gameKey}) na GTSTORE é: *${req.pin}*\n\n⚠️ Válido por 10 minutos."
-                                        )
-                                    }
-                                    context.startActivity(
-                                        Intent.createChooser(sendIntent, "Enviar PIN no WhatsApp")
-                                    )
+                                    AccessManager.approveAccess(req.consoleId, req.gameKey)
+                                    Toast.makeText(context, "Acesso aprovado por 10 minutos!", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier
-                                    .weight(1.3f)
+                                    .weight(1.2f)
                                     .height(46.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
+                                colors = ButtonDefaults.buttonColors(containerColor = GreenLed),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text(
-                                    text = "WHATSAPP",
+                                    text = "APROVAR",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
+                                    fontSize = 12.sp,
+                                    color = Color.Black
                                 )
                             }
 
                             Button(
                                 onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("PIN PS4", req.pin))
-                                    Toast.makeText(context, "PIN copiado!", Toast.LENGTH_SHORT).show()
+                                    AccessManager.rejectAccess(req.consoleId, req.gameKey)
+                                    Toast.makeText(context, "Solicitação recusada.", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier
                                     .weight(1f)
@@ -1880,7 +1862,34 @@ fun AdminScreen(
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text(
-                                    text = "COPIAR",
+                                    text = "RECUSAR",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = TextWhite
+                                )
+                            }
+
+                            Button(
+                                onClick = {
+                                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(
+                                            Intent.EXTRA_TEXT,
+                                            "Olá! O seu acesso para o jogo *${req.gameTitle}* (${req.gameKey}) foi liberado no console *${req.consoleId}*!\n\nVocê tem 10 minutos para iniciar o download/instalação na loja."
+                                        )
+                                    }
+                                    context.startActivity(
+                                        Intent.createChooser(sendIntent, "Notificar Cliente")
+                                    )
+                                },
+                                modifier = Modifier
+                                    .weight(1.2f)
+                                    .height(46.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = "WHATSAPP",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp
                                 )
