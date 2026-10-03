@@ -1108,19 +1108,6 @@ fun RegisteredCatalogScreen(
             }
         }
 
-        item {
-            Button(
-                onClick = onBack,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF141414)),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text("VOLTAR", color = TextWhite, fontWeight = FontWeight.Bold)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-        }
     }
 }
 
@@ -1471,6 +1458,19 @@ fun SettingsScreen(
             }
         }
 
+        item {
+            Button(
+                onClick = onBack,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF141414)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("VOLTAR", color = TextWhite, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
     }
 }
 
