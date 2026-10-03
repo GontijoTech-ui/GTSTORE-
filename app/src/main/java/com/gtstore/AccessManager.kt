@@ -16,21 +16,17 @@ data class AccessBatchRequest(
 )
 
 object AccessManager {
-    // Fila observável de solicitações pendentes para o Compose
     val pendingBatches = mutableStateListOf<AccessBatchRequest>()
-
-    // Mapa de acessos concedidos: Chave = "$consoleId:$gameKey", Valor = Timestamp de Expiração
     private val activeGrants = mutableMapOf<String, Long>()
 
-    // Janela de validade: 15 minutos (15 * 60 * 1000 ms)
+    // Validade de 15 minutos (15 * 60 * 1000 ms)
     private const val EXPIRATION_MS = 15 * 60 * 1000L
 
     @Synchronized
     fun addBatchRequest(batch: AccessBatchRequest) {
-        // Remove solicitações idênticas prévias para não poluir
         pendingBatches.removeAll { it.consoleId == batch.consoleId }
         pendingBatches.add(0, batch)
-        AppLogger.log("[AccessManager] Novo pacote de ${batch.games.size} jogos recebido de ${batch.consoleId}")
+        AppLogger.log("[AccessManager] Novo carrinho com ${batch.games.size} jogos de ${batch.consoleId}")
     }
 
     @Synchronized
@@ -39,23 +35,23 @@ object AccessManager {
         val expiration = System.currentTimeMillis() + EXPIRATION_MS
 
         batch.games.forEach { game ->
-            val key = "${batch.consoleId}:${game.gameKey}"
+            val key = "${batch.consoleId}:${game.gameKey.uppercase()}"
             activeGrants[key] = expiration
         }
 
         pendingBatches.remove(batch)
-        AppLogger.log("[AccessManager] Pacote ${batch.id} APROVADO para ${batch.consoleId} (válido por 15 min)")
+        AppLogger.log("[AccessManager] Pacote aprovado para ${batch.consoleId} (15 min)")
     }
 
     @Synchronized
     fun rejectBatch(batchId: String) {
         pendingBatches.removeAll { it.id == batchId }
-        AppLogger.log("[AccessManager] Pacote $batchId RECUSADO")
+        AppLogger.log("[AccessManager] Pacote recusado: $batchId")
     }
 
     @Synchronized
     fun isAccessApproved(consoleId: String, gameKey: String): Boolean {
-        val key = "$consoleId:$gameKey"
+        val key = "${consoleId}:${gameKey.uppercase()}"
         val expiresAt = activeGrants[key] ?: return false
 
         return if (System.currentTimeMillis() <= expiresAt) {
