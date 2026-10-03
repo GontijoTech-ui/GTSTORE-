@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GTSTORE</title>
+  <title>GTSTORE PS4</title>
   <style>
     :root {
       --bg: #000000;
@@ -22,69 +22,102 @@
     * { box-sizing: border-box; }
     html, body {
       margin: 0; padding: 0; min-height: 100%;
-      background-color: #000000; color: var(--text);
+      background-color: var(--bg); color: var(--text);
       font-family: Arial, Helvetica, sans-serif;
     }
     button, input { font-family: inherit; }
 
+    /* CABEÇALHO COM O CARRINHO NO TOPO */
     .header {
       width: 100%; background: #000000; border-bottom: 1px solid var(--border);
-      padding: 24px 16px 20px; text-align: center;
+      padding: 16px 20px; position: sticky; top: 0; z-index: 100;
+    }
+
+    .header-top {
+      display: flex; justify-content: space-between; align-items: center;
+      max-width: 1400px; margin: 0 auto;
+    }
+
+    .logo-container {
+      display: flex; align-items: center; gap: 12px;
     }
 
     .logo {
-      display: block; width: 220px; max-width: 80%; height: auto;
-      max-height: 120px; object-fit: contain; margin: 0 auto 12px; border-radius: 12px;
+      height: 48px; width: auto; object-fit: contain; border-radius: 6px;
+    }
+
+    .brand-title {
+      font-size: 20px; font-weight: 900; letter-spacing: 1px; color: #fff; margin: 0;
+    }
+
+    /* BOTÃO DO CARRINHO NO TOPO */
+    .btn-top-cart {
+      display: flex; align-items: center; gap: 10px;
+      background: #1a1a1a; border: 1px solid var(--border);
+      color: #fff; padding: 10px 18px; border-radius: 30px;
+      font-weight: 800; font-size: 14px; cursor: pointer; outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .btn-top-cart:hover, .btn-top-cart:focus {
+      background: var(--primary); border-color: var(--primary-hover);
+      box-shadow: 0 0 12px rgba(0, 112, 204, 0.7);
+      outline: 2px solid #fff !important;
+    }
+
+    .cart-badge {
+      background: #e50914; color: #fff; font-size: 12px; font-weight: 900;
+      padding: 2px 8px; border-radius: 12px; min-width: 20px; text-align: center;
     }
 
     .header-controls {
-      display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; margin-top: 6px;
+      display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+      gap: 12px; margin-top: 12px; max-width: 1400px; margin-left: auto; margin-right: auto;
     }
 
     .server-status {
       display: inline-flex; align-items: center; gap: 8px;
-      padding: 6px 14px; border-radius: 20px; background: #141414;
-      border: 1px solid #222; color: var(--muted); font-size: 12px;
+      padding: 5px 12px; border-radius: 20px; background: #141414;
+      border: 1px solid #222; color: var(--muted); font-size: 11px;
     }
 
-    .status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--orange); }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); }
     .status-online .status-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
     .status-offline .status-dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
 
     .ps4-ip-bar {
       display: inline-flex; align-items: center; gap: 8px;
-      padding: 4px 12px; border-radius: 20px; background: #141414;
-      border: 1px solid var(--border); font-size: 12px;
+      padding: 4px 10px; border-radius: 20px; background: #141414;
+      border: 1px solid var(--border); font-size: 11px;
     }
     .ps4-ip-label { font-weight: bold; color: var(--muted); }
     .ps4-ip-input {
-      width: 135px; background: #000; border: 1px solid #333; border-radius: 6px;
-      color: #fff; font-size: 13px; font-weight: bold; text-align: center; padding: 4px 6px; outline: none;
+      width: 125px; background: #000; border: 1px solid #333; border-radius: 6px;
+      color: #fff; font-size: 12px; font-weight: bold; text-align: center; padding: 3px 6px; outline: none;
     }
-    .ps4-ip-input:focus { border-color: var(--primary); box-shadow: 0 0 8px rgba(0, 112, 204, 0.6); }
     .btn-save-ip {
-      border: 0; border-radius: 6px; padding: 5px 12px; background: var(--primary);
+      border: 0; border-radius: 6px; padding: 4px 10px; background: var(--primary);
       color: #fff; font-size: 11px; font-weight: bold; cursor: pointer; outline: none;
     }
-    .btn-save-ip:hover { background: var(--primary-hover); }
 
-    .container { width: 95%; max-width: 1400px; margin: 0 auto; padding: 24px 0 80px; }
-    .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; }
-
+    .container { width: 95%; max-width: 1400px; margin: 0 auto; padding: 20px 0 60px; }
+    
+    .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
     .search {
-      flex: 1; padding: 14px 16px; border: 1px solid var(--border);
+      flex: 1; padding: 12px 16px; border: 1px solid var(--border);
       border-radius: 8px; background: var(--panel); color: var(--text);
-      font-size: 16px; outline: none;
+      font-size: 15px; outline: none;
     }
-    .search:focus { border-color: var(--primary); box-shadow: 0 0 12px rgba(0, 112, 204, 0.7); }
+    .search:focus { border-color: var(--primary); box-shadow: 0 0 10px rgba(0, 112, 204, 0.6); }
 
     .refresh {
-      border: 1px solid var(--border); border-radius: 8px; padding: 14px 20px;
+      border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px;
       background: #151515; color: var(--text); cursor: pointer; font-weight: 700; outline: none;
     }
 
+    /* GRELHA DO CATÁLOGO */
     .catalog {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 20px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px;
     }
 
     .game-card {
@@ -100,152 +133,97 @@
     .cover { width: 100%; height: 100%; object-fit: cover; display: block; }
     .cover-placeholder { color: #555; font-size: 12px; font-weight: bold; text-align: center; }
 
-    .game-content { display: flex; flex-direction: column; flex: 1; margin-top: 12px; }
+    .game-content { display: flex; flex-direction: column; flex: 1; margin-top: 10px; }
     .game-title {
-      margin: 0 0 4px; font-size: 15px; font-weight: 700; line-height: 1.3;
-      height: 38px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
+      margin: 0 0 4px; font-size: 14px; font-weight: 700; line-height: 1.3;
+      height: 36px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
       -webkit-box-orient: vertical; word-break: break-word;
     }
     .game-id { margin: 0 0 10px; color: var(--muted); font-size: 11px; }
 
-    /* BOTÕES DO CARD */
-    .card-actions { display: flex; gap: 6px; }
-    
-    .btn-access {
-      flex: 1; border: 0; border-radius: 6px; padding: 10px;
-      background: var(--primary); color: white; font-size: 12px; font-weight: 800;
-      cursor: pointer; outline: none; text-align: center;
+    /* BOTÃO ÚNICO DE ADICIONAR AO CARRINHO */
+    .btn-cart-action {
+      width: 100%; border: 0; border-radius: 6px; padding: 11px 8px;
+      background: var(--primary); color: #fff; font-size: 12px; font-weight: 800;
+      cursor: pointer; outline: none; text-align: center; transition: background 0.2s;
+    }
+    .btn-cart-action.in-cart {
+      background: #e50914; color: #fff;
     }
 
-    .btn-cart-toggle {
-      border: 0; border-radius: 6px; padding: 10px 14px;
-      background: #252525; color: white; font-size: 12px; font-weight: 800;
-      cursor: pointer; outline: none;
-    }
-    .btn-cart-toggle.active { background: #e50914; color: white; }
-
-    .btn-access:focus, .btn-access:hover,
-    .btn-cart-toggle:focus, .btn-cart-toggle:hover,
-    .btn-install:focus, .btn-install:hover,
-    .btn-sec:focus, .btn-sec:hover,
+    .btn-cart-action:focus, .btn-cart-action:hover,
     .btn-save-ip:focus, .btn-save-ip:hover,
     .refresh:focus, .refresh:hover {
-      outline: 3px solid #ffffff !important;
-      box-shadow: 0 0 14px rgba(255, 255, 255, 0.9) !important;
-      transform: scale(1.02);
-      z-index: 5;
+      outline: 2px solid #ffffff !important;
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.8) !important;
     }
 
-    /* BARRA FIXA DO CARRINHO NO RODAPÉ */
-    .cart-floating-bar {
-      position: fixed; bottom: 0; left: 0; right: 0;
-      background: #0d0d0d; border-top: 2px solid var(--primary);
-      padding: 14px 24px; display: none; justify-content: space-between;
-      align-items: center; z-index: 999; box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.9);
-    }
-    .cart-floating-bar.visible { display: flex; }
-
-    .cart-info { display: flex; align-items: center; gap: 12px; }
-    .cart-badge {
-      background: #e50914; color: white; font-weight: 900;
-      font-size: 13px; padding: 4px 10px; border-radius: 20px;
-    }
-
-    .btn-open-cart {
-      background: var(--green); color: black; border: 0;
-      border-radius: 8px; font-weight: 900; font-size: 14px;
-      padding: 12px 24px; cursor: pointer; outline: none;
-    }
-
-    .view-details {
-      display: none; background: #0a0a0a; border: 1px solid var(--border);
-      border-radius: 14px; padding: 24px; margin-top: 10px;
-    }
-    .view-details.active { display: block; }
-
-    .btn-back {
-      background: #1a1a1a; border: 1px solid var(--border); color: #fff;
-      padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer;
-      margin-bottom: 20px; outline: none;
-    }
-
-    .details-layout { display: flex; gap: 24px; flex-wrap: wrap; }
-    .details-cover { width: 220px; height: 220px; border-radius: 12px; object-fit: cover; }
-    .details-info { flex: 1; min-width: 250px; }
-    .details-title { margin: 0 0 8px; font-size: 22px; }
-    .details-id { color: var(--muted); margin: 0 0 18px; font-size: 13px; }
-
-    .details-actions { display: flex; flex-direction: column; gap: 10px; max-width: 400px; margin-top: 15px; }
-    .btn-install {
-      border: 0; border-radius: 8px; padding: 14px; font-size: 14px;
-      font-weight: 800; cursor: pointer; color: white; outline: none; text-align: center;
-    }
-    .btn-install-game { background: var(--primary); }
-    .btn-install-upd { background: #2f5379; }
-    .btn-install-dlc { background: #633994; }
-
+    /* MODAL DO CARRINHO */
     .overlay {
       position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-      padding: 20px; background: rgba(0, 0, 0, 0.94); z-index: 1000;
+      padding: 16px; background: rgba(0, 0, 0, 0.94); z-index: 1000;
     }
     .overlay.visible { display: flex; }
 
     .modal {
       width: 100%; max-width: 520px; background: #121212; border: 1px solid var(--border);
-      border-radius: 12px; padding: 22px; text-align: center; max-height: 90vh; overflow-y: auto;
+      border-radius: 12px; padding: 20px; text-align: center; max-height: 90vh; overflow-y: auto;
     }
-    .modal h2 { margin-top: 0; font-size: 20px; }
-    .modal p { color: #aaa; font-size: 13px; line-height: 1.4; margin: 8px 0; }
+    .modal h2 { margin: 0 0 8px; font-size: 20px; }
+    .modal p { color: #aaa; font-size: 13px; line-height: 1.4; margin: 6px 0; }
 
     .console-badge {
       background: #000; border: 1px dashed var(--primary); color: #64b5f6;
-      font-family: monospace; font-size: 15px; font-weight: bold;
-      padding: 6px 12px; border-radius: 6px; margin: 8px 0; display: inline-block;
+      font-family: monospace; font-size: 14px; font-weight: bold;
+      padding: 6px 12px; border-radius: 6px; margin: 6px 0; display: inline-block;
     }
 
     .cart-items-preview {
       background: #000; border: 1px solid #222; border-radius: 8px;
-      padding: 10px; margin: 12px 0; max-height: 180px; overflow-y: auto; text-align: left;
+      padding: 8px; margin: 12px 0; max-height: 190px; overflow-y: auto; text-align: left;
     }
     .cart-item-row {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 6px 4px; border-bottom: 1px solid #1a1a1a; font-size: 12px;
+      padding: 8px 6px; border-bottom: 1px solid #1a1a1a; font-size: 13px;
     }
     .cart-item-row:last-child { border-bottom: none; }
+    .btn-remove-item {
+      background: transparent; border: 0; color: #ff453a; font-weight: bold;
+      cursor: pointer; font-size: 14px; padding: 2px 6px;
+    }
 
     .qr-image {
-      width: 140px; height: 140px; object-fit: contain;
-      margin: 6px auto; display: block; border-radius: 8px;
-      background: #fff; padding: 5px;
+      width: 130px; height: 130px; object-fit: contain;
+      margin: 8px auto; display: block; border-radius: 8px;
+      background: #fff; padding: 4px;
     }
 
     .whatsapp-box {
       background: #182c1e; border: 1px solid #35c759; color: #4cd964;
-      padding: 10px; border-radius: 8px; font-weight: bold; font-size: 14px; margin: 8px 0;
+      padding: 8px; border-radius: 8px; font-weight: bold; font-size: 13px; margin: 6px 0;
     }
 
     .time-notice {
       background: #2b1d05; border: 1px solid #ff9f0a; color: #ffbe53;
-      font-size: 12px; padding: 10px; border-radius: 8px; margin: 10px 0; line-height: 1.4;
-      text-align: center; font-weight: bold;
+      font-size: 12px; padding: 8px; border-radius: 8px; margin: 8px 0; font-weight: bold;
     }
 
     .polling-status {
       display: flex; align-items: center; justify-content: center; gap: 8px;
-      font-size: 13px; color: #0088f0; font-weight: bold; margin: 12px 0;
+      font-size: 12px; color: #0088f0; font-weight: bold; margin: 10px 0;
     }
 
-    .modal-buttons { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
+    .modal-buttons { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
     .btn-sec {
-      border: 0; border-radius: 6px; padding: 12px 18px; font-weight: bold;
-      cursor: pointer; outline: none; color: white; background: #262626;
+      border: 0; border-radius: 6px; padding: 12px 16px; font-weight: bold;
+      cursor: pointer; outline: none; color: white; background: #262626; font-size: 13px;
     }
-    .btn-sec-primary { background: var(--primary); }
+    .btn-sec-primary { background: var(--green); color: #000; font-size: 14px; font-weight: 900; }
 
     .notice {
-      display: none; margin-bottom: 18px; padding: 14px 16px; border-radius: 8px;
-      background: #161616; color: #ffffff; font-size: 14px; font-weight: bold;
-      border-left: 4px solid var(--primary); white-space: pre-line;
+      display: none; margin-bottom: 16px; padding: 12px 14px; border-radius: 8px;
+      background: #161616; color: #ffffff; font-size: 13px; font-weight: bold;
+      border-left: 4px solid var(--primary);
     }
     .notice.visible { display: block; }
     .notice.error { border-left-color: var(--red); background: #261012; color: #ff817a; }
@@ -255,7 +233,19 @@
 <body>
 
 <header class="header">
-  <img class="logo" src="/logo.jpg" alt="Logo" onerror="this.style.display='none';">
+  <div class="header-top">
+    <div class="logo-container">
+      <img class="logo" src="/logo.jpg" alt="Logo" onerror="this.style.display='none';">
+      <h1 class="brand-title">GTSTORE</h1>
+    </div>
+
+    <!-- BOTÃO DE CARRINHO NO TOPO -->
+    <button id="btn-top-cart" class="btn-top-cart" type="button">
+      <span>🛒 CARRINHO</span>
+      <span id="top-cart-badge" class="cart-badge">0</span>
+    </button>
+  </div>
+
   <div class="header-controls">
     <div id="server-status" class="server-status">
       <span class="status-dot"></span>
@@ -272,69 +262,44 @@
 <main class="container">
   <div id="notice" class="notice"></div>
 
-  <div id="view-catalog">
-    <div class="toolbar">
-      <input id="search" class="search" type="text" placeholder="Pesquisar por nome ou CUSA..." autocomplete="off">
-      <button id="refresh" class="refresh" type="button">Atualizar</button>
-    </div>
-    <section id="catalog" class="catalog">
-      <div style="grid-column: 1/-1; text-align: center; color: #777; padding: 30px;">Carregando catálogo...</div>
-    </section>
+  <div class="toolbar">
+    <input id="search" class="search" type="text" placeholder="Pesquisar por nome ou CUSA..." autocomplete="off">
+    <button id="refresh" class="refresh" type="button">Atualizar</button>
   </div>
 
-  <div id="view-details" class="view-details">
-    <button id="btn-back" class="btn-back" type="button">← VOLTAR AO CATÁLOGO</button>
-    <div class="details-layout">
-      <img id="detail-cover" class="details-cover" src="" alt="Capa">
-      <div class="details-info">
-        <h1 id="detail-title" class="details-title">Título do Jogo</h1>
-        <p id="detail-id" class="details-id">CUSA00000</p>
-        <div class="details-actions" id="detail-actions"></div>
-      </div>
-    </div>
-  </div>
+  <section id="catalog" class="catalog">
+    <div style="grid-column: 1/-1; text-align: center; color: #777; padding: 30px;">A carregar catálogo...</div>
+  </section>
 </main>
 
-<!-- BARRA FLUTUANTE DO CARRINHO -->
-<div id="cart-bar" class="cart-floating-bar">
-  <div class="cart-info">
-    <span class="cart-badge" id="cart-count">0</span>
-    <span style="font-weight: bold; font-size: 14px;">Jogos no seu Pacote</span>
-  </div>
-  <button id="btn-show-cart-modal" class="btn-open-cart" type="button">
-    SOLICITAR PACOTE ➔
-  </button>
-</div>
-
-<!-- MODAL DE SOLICITAÇÃO DO CARRINHO / PACOTE -->
+<!-- MODAL DO CARRINHO DE COMPRAS / PACOTE -->
 <div id="cart-overlay" class="overlay">
   <div class="modal">
-    <h2>Solicitação do Pacote</h2>
-    <p>Os seguintes jogos serão autorizados em conjunto para o seu console:</p>
+    <h2>Pacote Escolhido</h2>
+    <p>Estes jogos serão autorizados em conjunto para o seu console:</p>
     
     <div>
-      <span style="font-size: 11px; color: #888;">IDENTIFICAÇÃO DESTE PS4:</span><br>
+      <span style="font-size: 11px; color: #888;">ID DESTE PS4:</span><br>
       <div id="display-console-id" class="console-badge">PS4-CARREGANDO</div>
     </div>
 
-    <!-- Lista de Jogos do Carrinho -->
     <div id="cart-items-list" class="cart-items-preview"></div>
 
-    <button id="btn-req-cart" class="btn-sec btn-sec-primary" type="button" style="width: 100%; margin: 8px 0; padding: 14px;">
-      SOLICITAR MEU ACESSO
+    <button id="btn-submit-cart" class="btn-sec btn-sec-primary" type="button" style="width: 100%; margin: 8px 0; padding: 14px;">
+      SUBMETER PEDIDO AO SERVIDOR
     </button>
 
     <div id="polling-container" style="display: none;" class="polling-status">
       <span class="status-dot" style="background: #0088f0; box-shadow: 0 0 8px #0088f0;"></span>
-      <span>Aguardando aprovação no painel (checa a cada 10s)...</span>
+      <span>Aguardando aprovação no telemóvel (a cada 10s)...</span>
     </div>
 
-    <p style="font-weight: bold; color: #35c759; margin: 10px 0 6px; font-size: 13px;">
-      Ou envie a lista de jogos direto pelo WhatsApp:
+    <p style="font-weight: bold; color: #35c759; margin: 8px 0 4px; font-size: 13px;">
+      Enviar lista de jogos pelo WhatsApp:
     </p>
 
     <a id="link-wa" href="https://w.app/rdilgq" target="_blank">
-      <img class="qr-image" src="/qr.png" alt="QR Code WhatsApp" onerror="this.style.display='none';">
+      <img class="qr-image" src="/qr.png" alt="QR WhatsApp" onerror="this.style.display='none';">
     </a>
 
     <div class="whatsapp-box">
@@ -342,11 +307,11 @@
     </div>
 
     <div class="time-notice">
-      ⏳ <strong>Aviso:</strong> Uma vez liberado no painel, o pacote inteiro permanece ativo por <strong>15 minutos</strong> para iniciar o download/instalação.
+      ⏳ <strong>Janela de Instalação:</strong> Uma vez aprovado, o pacote fica totalmente liberado por <strong>15 minutos</strong>.
     </div>
 
     <div class="modal-buttons">
-      <button id="btn-clear-cart" class="btn-sec" type="button">LIMPAR CARRINHO</button>
+      <button id="btn-clear-cart" class="btn-sec" type="button">LIMPAR</button>
       <button id="btn-close-cart" class="btn-sec" type="button">FECHAR</button>
     </div>
   </div>
@@ -356,15 +321,13 @@
 "use strict";
 
 const isPS4Browser = /PlayStation 4/i.test(navigator.userAgent);
-
 let allPackages = [];
 let games = [];
 let ps4ClientIp = "";
 let isServerOnline = false;
-let selectedGame = null;
 let pollingInterval = null;
 
-// CARRINHO DE JOGOS: Armazena lista de objetos { key, title }
+// Carrinho persistente
 let cart = JSON.parse(localStorage.getItem("ps4_store_cart") || "[]");
 
 function getOrCreateConsoleId() {
@@ -379,66 +342,45 @@ function getOrCreateConsoleId() {
 
 const myConsoleId = getOrCreateConsoleId();
 
+function updateCartTopButton() {
+  const badge = document.getElementById("top-cart-badge");
+  badge.textContent = cart.length;
+}
+
 function saveCart() {
   localStorage.setItem("ps4_store_cart", JSON.stringify(cart));
-  updateCartBar();
+  updateCartTopButton();
 }
 
-function updateCartBar() {
-  const bar = document.getElementById("cart-bar");
-  const count = document.getElementById("cart-count");
-  count.textContent = cart.length;
-
-  if (cart.length > 0) {
-    bar.classList.add("visible");
-  } else {
-    bar.classList.remove("visible");
-  }
-}
-
-function toggleCartItem(game, btn) {
+function toggleCart(game) {
   const index = cart.findIndex(it => it.key === game.key);
   if (index >= 0) {
     cart.splice(index, 1);
-    btn.classList.remove("active");
-    btn.textContent = "+";
     showNotice(`Removido do carrinho: ${game.title}`);
   } else {
-    cart.push({ key: game.key, title: game.title });
-    btn.classList.add("active");
-    btn.textContent = "✓";
+    cart.push({ key: game.key, title: game.title, id: game.id });
     showNotice(`✓ Adicionado ao carrinho: ${game.title}`, "success");
   }
   saveCart();
+  renderCatalog();
 }
 
-function formatSize(bytes) {
-  const value = Number(bytes);
-  if (!Number.isFinite(value) || value < 0) return "Tamanho desconhecido";
-  if (value < 1024) return value + " B";
-  if (value < 1024 * 1024) return (value / 1024).toFixed(2) + " KB";
-  if (value < 1024 * 1024 * 1024) return (value / (1024 * 1024)).toFixed(2) + " MB";
-  return (value / (1024 * 1024 * 1024)).toFixed(2) + " GB";
-}
-
-function applyDeviceAdaptations() {
-  const ipBar = document.querySelector(".ps4-ip-bar");
-  if (!isPS4Browser && ipBar) {
-    ipBar.style.display = "none";
-  }
+function removeFromCart(key) {
+  cart = cart.filter(it => it.key !== key);
+  saveCart();
+  renderCatalog();
+  openCartModal();
 }
 
 function initPs4Ip() {
   const saved = localStorage.getItem("ps4_ip") || "";
-  if (saved) {
-    document.getElementById("ps4-ip").value = saved;
-  }
+  if (saved) document.getElementById("ps4-ip").value = saved;
 }
 
 function savePs4Ip() {
   const ip = document.getElementById("ps4-ip").value.trim();
   if (!ip) {
-    showNotice("Informe o IP do PS4 (ex: 192.168.0.15).", "error");
+    showNotice("Informe o IP do PS4.", "error");
     return;
   }
   localStorage.setItem("ps4_ip", ip);
@@ -446,48 +388,31 @@ function savePs4Ip() {
 }
 
 function getTargetIp() {
-  const fromInput = document.getElementById("ps4-ip").value.trim();
-  const fromStorage = localStorage.getItem("ps4_ip") || "";
-  return fromInput || fromStorage || ps4ClientIp;
+  return document.getElementById("ps4-ip").value.trim() || localStorage.getItem("ps4_ip") || ps4ClientIp;
 }
 
 async function checkStatus() {
   const badge = document.getElementById("server-status");
   const text = document.getElementById("server-status-text");
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2500);
-
   try {
-    const response = await fetch("/api/status", { cache: "no-store", signal: controller.signal });
-    clearTimeout(timeoutId);
-    if (!response.ok) throw new Error();
-    const data = await response.json();
-
+    const res = await fetch("/api/status", { cache: "no-store" });
+    if (!res.ok) throw new Error();
+    const data = await res.json();
     isServerOnline = true;
     badge.className = "server-status status-online";
-    const ip = data.localAddress || "";
     ps4ClientIp = data.clientIp || "";
-    text.textContent = "Servidor Online — " + (ip ? ip + ":" + data.port : "Porta " + data.port);
+    text.textContent = "Servidor Online — " + (data.localAddress ? data.localAddress + ":" + data.port : "Porta " + data.port);
 
     const ipInput = document.getElementById("ps4-ip");
-    if (isPS4Browser && !localStorage.getItem("ps4_ip") && !ipInput.value && ps4ClientIp && ps4ClientIp.startsWith("192.168.")) {
+    if (isPS4Browser && !localStorage.getItem("ps4_ip") && !ipInput.value && ps4ClientIp) {
       ipInput.value = ps4ClientIp;
       localStorage.setItem("ps4_ip", ps4ClientIp);
     }
   } catch (_) {
-    clearTimeout(timeoutId);
     isServerOnline = false;
     badge.className = "server-status status-offline";
     text.textContent = "Servidor Offline";
   }
-}
-
-function normalizeType(pkg) {
-  const type = String(pkg.catalogType || "").toUpperCase();
-  if (type === "GAME") return "GAME";
-  if (type === "UPDATE") return "UPDATE";
-  if (type === "DLC") return "DLC";
-  return "OTHER";
 }
 
 function groupKey(pkg) {
@@ -504,42 +429,28 @@ function groupKey(pkg) {
 function buildCatalog(packages) {
   const groups = new Map();
   for (const pkg of packages) {
-    const type = normalizeType(pkg);
     const key = groupKey(pkg);
-
     if (!groups.has(key)) {
-      groups.set(key, { key, title: "", cover: null, game: null, updates: [], dlcs: [] });
+      groups.set(key, { 
+        id: pkg.id, 
+        key: key, 
+        title: pkg.title || key, 
+        cover: pkg.iconUrl || "" 
+      });
+    } else {
+      const existing = groups.get(key);
+      if (!existing.cover && pkg.iconUrl) existing.cover = pkg.iconUrl;
     }
-    const game = groups.get(key);
-    const title = String(pkg.title || "").trim();
-
-    if (type === "GAME") {
-      game.title = title;
-      if (!game.game) game.game = pkg;
-    } else if (!game.title && title) {
-      game.title = title;
-    }
-
-    if (pkg.iconUrl && (type === "GAME" || !game.cover)) {
-      game.cover = pkg.iconUrl;
-    }
-
-    if (type === "UPDATE") game.updates.push(pkg);
-    else if (type === "DLC") game.dlcs.push(pkg);
-    else if (type !== "GAME" && !game.game) game.game = pkg;
   }
-  const result = Array.from(groups.values());
-  result.sort((a, b) => a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" }));
-  return result;
+  return Array.from(groups.values()).sort((a, b) => a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" }));
 }
 
 function renderCatalog() {
   const container = document.getElementById("catalog");
   const query = document.getElementById("search").value.trim().toLowerCase();
-
   const filtered = games.filter(g => !query || g.title.toLowerCase().includes(query) || g.key.toLowerCase().includes(query));
-  container.innerHTML = "";
 
+  container.innerHTML = "";
   if (!filtered.length) {
     container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #777; padding: 30px;">Nenhum jogo encontrado.</div>';
     return;
@@ -554,45 +465,34 @@ function renderCatalog() {
     if (game.cover) {
       const img = document.createElement("img");
       img.className = "cover"; img.src = game.cover; img.loading = "lazy";
+      img.onerror = () => {
+        coverWrap.innerHTML = `<div class="cover-placeholder">${game.key}</div>`;
+      };
       coverWrap.appendChild(img);
     } else {
-      const pl = document.createElement("div");
-      pl.className = "cover-placeholder"; pl.textContent = game.key;
-      coverWrap.appendChild(pl);
+      coverWrap.innerHTML = `<div class="cover-placeholder">${game.key}</div>`;
     }
 
     const content = document.createElement("div");
     content.className = "game-content";
 
     const title = document.createElement("h2");
-    title.className = "game-title"; title.textContent = game.title || "Jogo";
+    title.className = "game-title"; title.textContent = game.title;
 
     const id = document.createElement("p");
     id.className = "game-id"; id.textContent = game.key;
 
-    const actions = document.createElement("div");
-    actions.className = "card-actions";
-
+    // BOTÃO ÚNICO: ADICIONAR / REMOVER
+    const inCart = cart.some(it => it.key === game.key);
     const btn = document.createElement("button");
-    btn.className = "btn-access";
+    btn.className = "btn-cart-action" + (inCart ? " in-cart" : "");
     btn.type = "button";
-    btn.textContent = "ACESSAR";
-    btn.onclick = () => openGameAccess(game);
-
-    const isInCart = cart.some(it => it.key === game.key);
-    const btnCart = document.createElement("button");
-    btnCart.className = "btn-cart-toggle" + (isInCart ? " active" : "");
-    btnCart.type = "button";
-    btnCart.textContent = isInCart ? "✓" : "+";
-    btnCart.title = "Adicionar ao Carrinho";
-    btnCart.onclick = () => toggleCartItem(game, btnCart);
-
-    actions.appendChild(btn);
-    actions.appendChild(btnCart);
+    btn.textContent = inCart ? "✓ NO CARRINHO (REMOVER)" : "+ ADICIONAR AO CARRINHO";
+    btn.onclick = () => toggleCart(game);
 
     content.appendChild(title);
     content.appendChild(id);
-    content.appendChild(actions);
+    content.appendChild(btn);
 
     card.appendChild(coverWrap);
     card.appendChild(content);
@@ -600,34 +500,35 @@ function renderCatalog() {
   }
 }
 
-// ABRE MODAL DO CARRINHO COM TODOS OS ITENS
+// JANELA DO CARRINHO (AO CLICAR NO ÍCONE DO TOPO)
 function openCartModal() {
   if (cart.length === 0) {
-    showNotice("O carrinho está vazio! Clique no '+' dos jogos para adicionar.");
+    showNotice("O seu carrinho está vazio! Toque em '+ ADICIONAR AO CARRINHO' nos jogos.");
     return;
   }
 
   document.getElementById("display-console-id").textContent = myConsoleId;
-  const listContainer = document.getElementById("cart-items-list");
-  listContainer.innerHTML = "";
+  const list = document.getElementById("cart-items-list");
+  list.innerHTML = "";
 
-  let waTextLines = [];
-
+  const waLines = [];
   cart.forEach((item, index) => {
     const row = document.createElement("div");
     row.className = "cart-item-row";
-    row.innerHTML = `<span><strong>${index + 1}.</strong> ${item.title}</span><span style="color: #64b5f6;">${item.key}</span>`;
-    listContainer.appendChild(row);
-
-    waTextLines.push(`${index + 1}. ${item.title} (${item.key})`);
+    row.innerHTML = `
+      <span><strong>${index + 1}.</strong> ${item.title} (${item.key})</span>
+      <button class="btn-remove-item" onclick="removeFromCart('${item.key}')">✕</button>
+    `;
+    list.appendChild(row);
+    waLines.push(`${index + 1}. ${item.title} (${item.key})`);
   });
 
-  const btnReq = document.getElementById("btn-req-cart");
-  btnReq.disabled = false;
-  btnReq.textContent = `SOLICITAR ACESSO (${cart.length} JOGOS)`;
+  const btnSubmit = document.getElementById("btn-submit-cart");
+  btnSubmit.disabled = false;
+  btnSubmit.textContent = `SUBMETER PEDIDO (${cart.length} JOGOS)`;
   document.getElementById("polling-container").style.display = "none";
 
-  const fullMsg = `Olá! Solicito liberação de acesso para o pacote de jogos:\n\n${waTextLines.join("\n")}\n\nID do meu Console: ${myConsoleId}`;
+  const fullMsg = `Olá! Solicito liberação de acesso para o pacote de jogos:\n\n${waLines.join("\n")}\n\nID do meu Console: ${myConsoleId}`;
   document.getElementById("link-wa").href = `https://wa.me/5564992259727?text=${encodeURIComponent(fullMsg)}`;
 
   document.getElementById("cart-overlay").classList.add("visible");
@@ -635,18 +536,16 @@ function openCartModal() {
 }
 
 function closeCartModal() {
-  if (pollingInterval) {
-    clearInterval(pollingInterval);
-    pollingInterval = null;
-  }
+  if (pollingInterval) clearInterval(pollingInterval);
+  pollingInterval = null;
   document.getElementById("cart-overlay").classList.remove("visible");
 }
 
-async function requestCartAccess() {
+async function submitCart() {
   if (cart.length === 0) return;
-  const btn = document.getElementById("btn-req-cart");
+  const btn = document.getElementById("btn-submit-cart");
   btn.disabled = true;
-  btn.textContent = "SOLICITANDO...";
+  btn.textContent = "A SUBMETER...";
 
   try {
     const res = await fetch("/api/request-cart-access", {
@@ -655,30 +554,29 @@ async function requestCartAccess() {
       body: JSON.stringify({
         consoleId: myConsoleId,
         games: cart.map(it => ({ gameKey: it.key, title: it.title })),
-        ip: getTargetIp()
+        clientIp: getTargetIp()
       })
     });
     const data = await res.json();
     if (data.success) {
-      btn.textContent = "✓ SOLICITAÇÃO ENVIADA!";
+      btn.textContent = "✓ PEDIDO ENVIADO!";
       document.getElementById("polling-container").style.display = "flex";
-      showNotice("✓ Solicitação do pacote enviada! Aguarde a aprovação no painel.", "success");
+      showNotice("✓ Pedido enviado com sucesso! Aguarde a aprovação no telemóvel.", "success");
       startPollingCart();
     } else {
       btn.disabled = false;
-      btn.textContent = "SOLICITAR MEU ACESSO";
-      showNotice("Falha ao registrar solicitação.", "error");
+      btn.textContent = "SUBMETER PEDIDO";
+      showNotice("Erro ao submeter pedido.", "error");
     }
   } catch (_) {
     btn.disabled = false;
-    btn.textContent = "SOLICITAR MEU ACESSO";
-    showNotice("Erro ao conectar com o app no celular.", "error");
+    btn.textContent = "SUBMETER PEDIDO";
+    showNotice("Falha ao comunicar com o servidor.", "error");
   }
 }
 
 function startPollingCart() {
   if (pollingInterval) clearInterval(pollingInterval);
-  // Checagem periódica estritamente a cada 10 segundos
   pollingInterval = setInterval(checkCartStatus, 10000);
 }
 
@@ -692,7 +590,7 @@ async function checkCartStatus() {
     const data = await res.json();
     if (data.approved) {
       closeCartModal();
-      showNotice("✓ Pacote aprovado com sucesso! Acesso liberado por 15 minutos.", "success");
+      showNotice("✓ Pacote aprovado! Acesso liberado por 15 minutos.", "success");
       cart = [];
       saveCart();
       renderCatalog();
@@ -700,138 +598,11 @@ async function checkCartStatus() {
   } catch (_) {}
 }
 
-async function openGameAccess(game) {
-  selectedGame = game;
-  // Checa se o jogo individual já está liberado pela autorização de 15 minutos
-  try {
-    const res = await fetch(`/api/check-access?consoleId=${encodeURIComponent(myConsoleId)}&gameKey=${encodeURIComponent(game.key)}`, {
-      cache: "no-store"
-    });
-    const data = await res.json();
-    if (data.approved) {
-      showGameDetails(game);
-      return;
-    }
-  } catch (_) {}
-
-  // Se não estiver liberado, adiciona ao carrinho e abre o modal do pacote
-  if (!cart.some(it => it.key === game.key)) {
-    cart.push({ key: game.key, title: game.title });
-    saveCart();
-  }
-  openCartModal();
-}
-
-function triggerBrowserDownload(pkg) {
-  window.open(`/download?id=${pkg.id}&consoleId=${encodeURIComponent(myConsoleId)}`, "_blank");
-  showNotice(`Iniciando download de: ${pkg.title || "PKG"}`, "success");
-}
-
-function showGameDetails(game) {
-  document.getElementById("view-catalog").style.display = "none";
-  const detailsView = document.getElementById("view-details");
-  detailsView.classList.add("active");
-
-  document.getElementById("detail-title").textContent = game.title;
-  document.getElementById("detail-id").textContent = game.key;
-  document.getElementById("detail-cover").src = game.cover || "";
-
-  const actions = document.getElementById("detail-actions");
-  actions.innerHTML = "";
-
-  const actionText = isPS4Browser ? "INSTALAR" : "BAIXAR";
-
-  if (game.game) {
-    const btn = document.createElement("button");
-    btn.className = "btn-install btn-install-game";
-    btn.textContent = `${actionText} JOGO BASE (${formatSize(game.game.size)})`;
-    btn.onclick = () => {
-      if (isPS4Browser) triggerInstall(game.game, btn);
-      else triggerBrowserDownload(game.game);
-    };
-    actions.appendChild(btn);
-  }
-
-  if (game.updates.length) {
-    const btn = document.createElement("button");
-    btn.className = "btn-install btn-install-upd";
-    btn.textContent = game.updates.length > 1 
-      ? `ATUALIZAÇÕES (${game.updates.length})` 
-      : `${actionText} UPDATE (${formatSize(game.updates[0].size)})`;
-    btn.onclick = () => {
-      if (game.updates.length === 1) {
-        if (isPS4Browser) triggerInstall(game.updates[0], btn);
-        else triggerBrowserDownload(game.updates[0]);
-      } else {
-        openPackageModal("Atualizações — " + game.title, game.updates);
-      }
-    };
-    actions.appendChild(btn);
-  }
-
-  if (game.dlcs.length) {
-    const btn = document.createElement("button");
-    btn.className = "btn-install btn-install-dlc";
-    btn.textContent = `DLCs DISPONÍVEIS (${game.dlcs.length})`;
-    btn.onclick = () => openPackageModal("DLCs — " + game.title, game.dlcs);
-    actions.appendChild(btn);
-  }
-}
-
-function backToCatalog() {
-  document.getElementById("view-details").classList.remove("active");
-  document.getElementById("view-catalog").style.display = "block";
-  selectedGame = null;
-}
-
-async function triggerInstall(pkg, button) {
-  if (!isServerOnline) {
-    showNotice("Servidor Offline! Verifique o app no celular.", "error");
-    return;
-  }
-
-  const targetIp = getTargetIp();
-  if (!targetIp) {
-    showNotice("Por favor, digite o IP do seu PS4 na barra no topo antes de instalar!", "error");
-    document.getElementById("ps4-ip").focus();
-    return;
-  }
-
-  button.disabled = true;
-  const original = button.textContent;
-  button.textContent = "ENVIANDO...";
-  showNotice("Enviando comando para o PS4 (" + targetIp + ")...");
-
-  try {
-    const res = await fetch("/api/install-dpi", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pkgId: pkg.id, ip: targetIp, consoleId: myConsoleId })
-    });
-    const data = await res.json();
-    if (data.success) {
-      button.textContent = "INICIADO!";
-      showNotice("✓ Instalação iniciada! Verifique as notificações do PS4.", "success");
-    } else {
-      button.textContent = "FALHA";
-      showNotice("✗ " + (data.error || "Erro ao iniciar instalação."), "error");
-    }
-  } catch (_) {
-    button.textContent = "ERRO";
-    showNotice("Falha ao comunicar com o servidor.", "error");
-  } finally {
-    setTimeout(() => {
-      button.disabled = false;
-      button.textContent = original;
-    }, 5000);
-  }
-}
-
 function showNotice(msg, type = "") {
   const el = document.getElementById("notice");
   el.textContent = msg;
   el.className = "notice visible " + type;
-  setTimeout(() => el.classList.remove("visible"), 6000);
+  setTimeout(() => el.classList.remove("visible"), 5000);
 }
 
 async function loadPackages() {
@@ -841,15 +612,14 @@ async function loadPackages() {
     allPackages = data.packages || [];
     games = buildCatalog(allPackages);
     renderCatalog();
-    updateCartBar();
+    updateCartTopButton();
   } catch (_) {}
 }
 
 document.getElementById("search").addEventListener("input", renderCatalog);
 document.getElementById("refresh").addEventListener("click", () => { checkStatus(); loadPackages(); });
-document.getElementById("btn-back").addEventListener("click", backToCatalog);
-document.getElementById("btn-show-cart-modal").addEventListener("click", openCartModal);
-document.getElementById("btn-req-cart").addEventListener("click", requestCartAccess);
+document.getElementById("btn-top-cart").addEventListener("click", openCartModal);
+document.getElementById("btn-submit-cart").addEventListener("click", submitCart);
 document.getElementById("btn-close-cart").addEventListener("click", closeCartModal);
 document.getElementById("btn-clear-cart").addEventListener("click", () => {
   cart = [];
@@ -862,11 +632,11 @@ document.getElementById("btn-save-ip").addEventListener("click", savePs4Ip);
 document.getElementById("ps4-ip").addEventListener("change", savePs4Ip);
 
 document.addEventListener("DOMContentLoaded", async () => {
-  applyDeviceAdaptations();
   if (isPS4Browser) initPs4Ip();
+  updateCartTopButton();
   await checkStatus();
   await loadPackages();
-  setInterval(checkStatus, 4000);
+  setInterval(checkStatus, 5000);
 });
 </script>
 </body>
