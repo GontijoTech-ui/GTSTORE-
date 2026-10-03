@@ -2,43 +2,55 @@ package com.gtstore
 
 import androidx.compose.runtime.mutableStateListOf
 
-data class AccessRequestItem(
-    val consoleId: String,
+data class RequestedGame(
     val gameKey: String,
-    val gameTitle: String,
+    val title: String
+)
+
+data class AccessBatchRequest(
+    val id: String = "${System.currentTimeMillis()}_${(100..999).random()}",
+    val consoleId: String,
+    val games: List<RequestedGame>,
     val clientIp: String,
     val requestedAt: Long = System.currentTimeMillis()
 )
 
 object AccessManager {
-    // Lista observável pelo Jetpack Compose para atualizar o painel na hora
-    val pendingRequests = mutableStateListOf<AccessRequestItem>()
+    // Fila observável de solicitações pendentes para o Compose
+    val pendingBatches = mutableStateListOf<AccessBatchRequest>()
 
-    // Mapa de aprovações ativas: chave "consoleId:gameKey" -> expiração em milissegundos
+    // Mapa de acessos concedidos: Chave = "$consoleId:$gameKey", Valor = Timestamp de Expiração
     private val activeGrants = mutableMapOf<String, Long>()
 
-    // Janela de validade: 10 minutos
-    private const val EXPIRATION_MS = 10 * 60 * 1000L
+    // Janela de validade: 15 minutos (15 * 60 * 1000 ms)
+    private const val EXPIRATION_MS = 15 * 60 * 1000L
 
     @Synchronized
-    fun addRequest(req: AccessRequestItem) {
-        pendingRequests.removeAll { it.consoleId == req.consoleId && it.gameKey == req.gameKey }
-        pendingRequests.add(0, req)
-        AppLogger.log("[AccessManager] Nova solicitação: ${req.gameTitle} (${req.gameKey}) por ${req.consoleId}")
+    fun addBatchRequest(batch: AccessBatchRequest) {
+        // Remove solicitações idênticas prévias para não poluir
+        pendingBatches.removeAll { it.consoleId == batch.consoleId }
+        pendingBatches.add(0, batch)
+        AppLogger.log("[AccessManager] Novo pacote de ${batch.games.size} jogos recebido de ${batch.consoleId}")
     }
 
     @Synchronized
-    fun approveAccess(consoleId: String, gameKey: String) {
-        val key = "$consoleId:$gameKey"
-        activeGrants[key] = System.currentTimeMillis() + EXPIRATION_MS
-        pendingRequests.removeAll { it.consoleId == consoleId && it.gameKey == gameKey }
-        AppLogger.log("[AccessManager] Acesso APROVADO para $key (válido por 10 min)")
+    fun approveBatch(batchId: String) {
+        val batch = pendingBatches.find { it.id == batchId } ?: return
+        val expiration = System.currentTimeMillis() + EXPIRATION_MS
+
+        batch.games.forEach { game ->
+            val key = "${batch.consoleId}:${game.gameKey}"
+            activeGrants[key] = expiration
+        }
+
+        pendingBatches.remove(batch)
+        AppLogger.log("[AccessManager] Pacote ${batch.id} APROVADO para ${batch.consoleId} (válido por 15 min)")
     }
 
     @Synchronized
-    fun rejectAccess(consoleId: String, gameKey: String) {
-        pendingRequests.removeAll { it.consoleId == consoleId && it.gameKey == gameKey }
-        AppLogger.log("[AccessManager] Solicitação RECUSADA para $consoleId:$gameKey")
+    fun rejectBatch(batchId: String) {
+        pendingBatches.removeAll { it.id == batchId }
+        AppLogger.log("[AccessManager] Pacote $batchId RECUSADO")
     }
 
     @Synchronized
@@ -50,8 +62,13 @@ object AccessManager {
             true
         } else {
             activeGrants.remove(key)
-            AppLogger.log("[AccessManager] Acesso expirou para $key")
             false
         }
+    }
+
+    @Synchronized
+    fun areAllGamesApproved(consoleId: String, gameKeys: List<String>): Boolean {
+        if (gameKeys.isEmpty()) return false
+        return gameKeys.all { isAccessApproved(consoleId, it) }
     }
 }
