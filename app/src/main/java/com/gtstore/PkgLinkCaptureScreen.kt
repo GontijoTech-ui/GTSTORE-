@@ -1,7 +1,6 @@
 package com.gtstore
 
 import android.annotation.SuppressLint
-import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
@@ -44,13 +43,12 @@ data class PkgCaptureResult(
 private const val BROWSER_USER_AGENT =
     "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
-// Domínios conhecidos de redes parasitárias que tentam desviar a navegação
 private val AD_BLOCK_KEYWORDS = listOf(
     "doubleclick", "adservice", "popads", "popcash", "propellerads",
     "adsterra", "exoclick", "bet365", "betano", "blaze", "1xbet",
     "shorte.st", "adf.ly", "ouo.io", "trafficjunky", "syndication",
     "onclickprediction", "clickadu", "histats", "track.", "leonbet",
-    "bcgameloop"
+    "bcgameloop", "zzztrack", "mob-trk", "rollerads"
 )
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -62,6 +60,8 @@ fun PkgLinkCaptureScreen(
     onCancel: () -> Unit
 ) {
     var currentDisplayUrl by remember { mutableStateOf(sourceUrl) }
+    // Armazena a última página web legítima onde o usuário realmente navegou
+    var lastValidWebPageUrl by remember { mutableStateOf(sourceUrl) }
     var status by remember { mutableStateOf("Navegue até o download desejado.") }
     var processingCapture by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
@@ -80,7 +80,15 @@ fun PkgLinkCaptureScreen(
         return AD_BLOCK_KEYWORDS.any { lower.contains(it) }
     }
 
-    // Salta para a antepenúltima página do SuperPSX
+    // Identifica se é uma página web navegável (e não o arquivo binário direto)
+    fun isHtmlWebPage(url: String): Boolean {
+        val clean = url.substringBefore("?").lowercase()
+        return !clean.endsWith(".pkg") && 
+               !clean.endsWith(".bin") && 
+               !isAdOrSpam(url) && 
+               (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true))
+    }
+
     fun voltarParaAntepenultimaSuperPsx(view: WebView) {
         val history = view.copyBackForwardList()
         val currentIndex = history.currentIndex
@@ -130,10 +138,10 @@ fun PkgLinkCaptureScreen(
         val guessedFileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
         val finalFileName = guessedFileName.trim().ifBlank { "download.pkg" }
 
-        val webViewUrl = view?.url?.trim() ?: ""
+        // A página de atualização é com certeza a última página HTML válida exibida
         val pageWhereDownloadTriggered = when {
-            webViewUrl.isNotBlank() && !webViewUrl.substringBefore("?").endsWith(".pkg", ignoreCase = true) -> webViewUrl
-            currentDisplayUrl.isNotBlank() && !currentDisplayUrl.substringBefore("?").endsWith(".pkg", ignoreCase = true) -> currentDisplayUrl
+            isHtmlWebPage(lastValidWebPageUrl) -> lastValidWebPageUrl
+            view?.url != null && isHtmlWebPage(view.url!!) -> view.url!!
             else -> sourceUrl
         }
 
@@ -244,9 +252,7 @@ fun PkgLinkCaptureScreen(
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
                     settings.loadsImagesAutomatically = true
-                    
-                    // Não abre popups em novas abas (evita travamentos)
-                    settings.setSupportMultipleWindows(false)
+                    settings.setSupportMultipleWindows(false) // Mantém a estabilidade sem travar
                     settings.javaScriptCanOpenWindowsAutomatically = false
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
@@ -266,13 +272,11 @@ fun PkgLinkCaptureScreen(
                             if (processingCapture) return true
 
                             val scheme = request.url.scheme?.lowercase() ?: ""
-                            // Ignora chamadas para abrir apps externos (Play Store, etc.)
                             if (scheme != "http" && scheme != "https") {
-                                AppLogger.log("[PkgLinkCaptureScreen] Esquema externo bloqueado: $urlString")
+                                AppLogger.log("[PkgLinkCaptureScreen] Esquema externo evitado: $urlString")
                                 return true
                             }
 
-                            // Bloqueia se o destino de navegação for rede de anúncios
                             if (isAdOrSpam(urlString)) {
                                 AppLogger.log("[PkgLinkCaptureScreen] Propaganda bloqueada: $urlString")
                                 return true
@@ -281,22 +285,29 @@ fun PkgLinkCaptureScreen(
                             val cleanPath = urlString.substringBefore("?")
                             val host = request.url.host?.lowercase() ?: ""
 
-                            // Captura imediata se for o arquivo .pkg real fora da página web do Filekeeper
+                            // Se for o arquivo .pkg real fora de páginas web do Filekeeper, captura na hora
                             if (cleanPath.endsWith(".pkg", ignoreCase = true) && !host.contains("filekeeper.net")) {
                                 handleCapturedUrl(urlString)
                                 return true
                             }
 
                             currentDisplayUrl = urlString
+                            if (isHtmlWebPage(urlString)) {
+                                lastValidWebPageUrl = urlString
+                            }
+
                             return false
                         }
 
                         override fun onPageFinished(view: WebView, url: String) {
                             currentDisplayUrl = url
+                            if (isHtmlWebPage(url)) {
+                                lastValidWebPageUrl = url
+                            }
                             canGoBack = view.canGoBack()
 
                             if (!processingCapture) {
-                                status = "Página carregada. Conclua a verificação e avance."
+                                status = "Página pronta. Clique no download."
                             }
                         }
                     }
