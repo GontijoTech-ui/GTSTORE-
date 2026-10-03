@@ -1,6 +1,7 @@
 package com.gtstore
 
 import android.annotation.SuppressLint
+import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
@@ -31,9 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 
 data class PkgCaptureResult(
@@ -43,15 +42,8 @@ data class PkgCaptureResult(
 )
 
 private const val BROWSER_USER_AGENT =
-    "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-
-private val AD_BLOCK_KEYWORDS = listOf(
-    "doubleclick", "adservice", "popads", "popcash", "propellerads",
-    "adsterra", "exoclick", "bet365", "betano", "blaze", "1xbet",
-    "shorte.st", "adf.ly", "ouo.io", "trafficjunky", "syndication",
-    "onclickprediction", "clickadu", "histats", "track.", "leonbet",
-    "bcgameloop", "zzztrack", "mob-trk", "rollerads"
-)
+    "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -59,19 +51,32 @@ fun PkgLinkCaptureScreen(
     sourceUrl: String,
     allowedDomains: List<String> = emptyList(),
     onCaptured: (PkgCaptureResult) -> Unit,
+    onProcessingComplete: () -> Unit,
     onCancel: () -> Unit
 ) {
     var currentDisplayUrl by remember { mutableStateOf(sourceUrl) }
+    var currentPageUrl by remember { mutableStateOf(sourceUrl) }
 
-    // 1º Toque: URL da página para onde o WebView deve retornar
-    var returnTargetUrl by remember { mutableStateOf<String?>(null) }
-    // 2º Toque: URL da página onde o download é acionado (para updates)
-    var originUpdateUrl by remember { mutableStateOf<String?>(null) }
+    var returnPageUrl by remember { mutableStateOf("") }
+    var originPageUrl by remember { mutableStateOf("") }
 
-    var status by remember { mutableStateOf("1º Toque: Marque a página de RETORNO quando estiver nela.") }
-    var processingCapture by remember { mutableStateOf(false) }
+    var status by remember {
+        mutableStateOf("Aguardando início do download do PKG...")
+    }
+
+    var captured by remember { mutableStateOf(false) }
+    var processing by remember { mutableStateOf(false) }
+
     var canGoBack by remember { mutableStateOf(false) }
     var browser by remember { mutableStateOf<WebView?>(null) }
+
+    val sourceHost = remember(sourceUrl) {
+        try {
+            Uri.parse(sourceUrl).host?.lowercase() ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+    }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -81,63 +86,189 @@ fun PkgLinkCaptureScreen(
         }
     }
 
-    fun isAdOrSpam(url: String): Boolean {
-        val lower = url.lowercase()
-        return AD_BLOCK_KEYWORDS.any { lower.contains(it) }
+    fun isDomainPermitted(url: String): Boolean {
+        val host = try {
+            Uri.parse(url).host?.lowercase() ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+
+        if (host.isBlank()) return true
+
+        val isSource =
+            sourceHost.isNotEmpty() &&
+                    (
+                            host.contains(sourceHost) ||
+                                    sourceHost.contains(host)
+                            )
+
+        val isAllowed = allowedDomains.any { domain ->
+            domain.isNotBlank() &&
+                    host.contains(domain.trim().lowercase())
+        }
+
+        val isCommonCdn =
+            host.contains("filekeeper") ||
+                    host.contains("dlproxy") ||
+                    host.contains("akirabox") ||
+                    host.contains("mocha")
+
+        return isSource || isAllowed || isCommonCdn
     }
 
-    fun handleCapturedUrl(url: String, contentDisposition: String? = null, mimeType: String? = null) {
-        if (processingCapture) return
-        processingCapture = true
+    fun getCurrentBrowserUrl(): String {
+        val webViewUrl = browser?.url?.trim().orEmpty()
 
-        val isHttp = url.startsWith("http://", ignoreCase = true)
-        val isHttps = url.startsWith("https://", ignoreCase = true)
-        if (!isHttp && !isHttps) {
-            processingCapture = false
+        return when {
+            webViewUrl.isNotBlank() -> webViewUrl
+            currentPageUrl.isNotBlank() -> currentPageUrl
+            currentDisplayUrl.isNotBlank() -> currentDisplayUrl
+            else -> sourceUrl
+        }
+    }
+
+    fun saveReturnPage() {
+        val url = getCurrentBrowserUrl()
+
+        if (url.isBlank()) {
+            status = "Não foi possível salvar a página de retorno."
             return
         }
 
-        val view = browser
-        view?.stopLoading()
+        returnPageUrl = url
 
-        val guessedFileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
-        val finalFileName = guessedFileName.trim().ifBlank { "download.pkg" }
+        status = "Página de retorno salva."
 
-        // A origem será a definida no 2º toque (ou fallback da página atual)
-        val pageWhereDownloadTriggered = originUpdateUrl 
-            ?: view?.url 
-            ?: currentDisplayUrl
+        AppLogger.log(
+            "[PkgLinkCaptureScreen] Página de RETORNO salva: $returnPageUrl"
+        )
+    }
 
-        status = "PKG capturado! Gravando e retornando à página salva..."
-        AppLogger.log("[PkgLinkCaptureScreen] Origem para atualizações: $pageWhereDownloadTriggered")
-        AppLogger.log("[PkgLinkCaptureScreen] Link direto capturado: $url")
+    fun saveOriginPage() {
+        val url = getCurrentBrowserUrl()
 
-        // 1. Notifica o CatalogManager para processar o PKG em background
+        if (url.isBlank()) {
+            status = "Não foi possível salvar a página de origem."
+            return
+        }
+
+        originPageUrl = url
+
+        status = "Página de origem salva."
+
+        AppLogger.log(
+            "[PkgLinkCaptureScreen] Página de ORIGEM salva: $originPageUrl"
+        )
+    }
+
+    fun handleCapturedUrl(
+        url: String,
+        contentDisposition: String? = null,
+        mimeType: String? = null
+    ) {
+        if (captured || processing) return
+
+        val isHttp =
+            url.startsWith("http://", ignoreCase = true)
+
+        val isHttps =
+            url.startsWith("https://", ignoreCase = true)
+
+        if (!isHttp && !isHttps) return
+
+        val guessedFileName =
+            URLUtil.guessFileName(
+                url,
+                contentDisposition,
+                mimeType
+            )
+
+        val finalFileName =
+            guessedFileName
+                .trim()
+                .ifBlank {
+                    "download.pkg"
+                }
+
+        /*
+         * A página de origem deve ser aquela salva explicitamente
+         * pelo segundo clique.
+         *
+         * Caso o usuário não tenha salvo uma origem, mantemos
+         * o comportamento antigo como fallback.
+         */
+        val finalSourceUrl =
+            originPageUrl
+                .trim()
+                .ifBlank {
+                    currentPageUrl
+                        .trim()
+                        .ifBlank {
+                            sourceUrl
+                        }
+                }
+
+        captured = true
+        processing = true
+
+        status = "Link PKG capturado. Processando..."
+
+        AppLogger.log(
+            "[PkgLinkCaptureScreen] Link capturado com sucesso: $url"
+        )
+
+        AppLogger.log(
+            "[PkgLinkCaptureScreen] Página de origem utilizada: $finalSourceUrl"
+        )
+
+        AppLogger.log(
+            "[PkgLinkCaptureScreen] Página de retorno: ${returnPageUrl.ifBlank { "(não definida)" }}"
+        )
+
         onCaptured(
             PkgCaptureResult(
-                sourceUrl = pageWhereDownloadTriggered,
+                sourceUrl = finalSourceUrl,
                 directUrl = url,
                 fileName = finalFileName
             )
         )
+    }
 
-        // 2. Não fecha o WebView: apenas carrega a página de retorno cadastrada
-        view?.postDelayed({
-            val target = returnTargetUrl
-            if (!target.isNullOrBlank()) {
-                AppLogger.log("[PkgLinkCaptureScreen] Retornando para página cadastrada: $target")
-                view.loadUrl(target)
-            } else if (view.canGoBack()) {
-                view.goBack()
-            } else {
-                view.loadUrl(sourceUrl)
+    fun finishProcessingAndReturn() {
+        if (!processing) return
+
+        val targetUrl = returnPageUrl.trim()
+
+        if (targetUrl.isBlank()) {
+            processing = false
+            captured = false
+
+            status =
+                "Processamento concluído. Nenhuma página de retorno foi definida."
+
+            AppLogger.log(
+                "[PkgLinkCaptureScreen] Processamento concluído sem página de retorno."
+            )
+
+            return
+        }
+
+        status = "Processamento concluído. Voltando à página..."
+
+        AppLogger.log(
+            "[PkgLinkCaptureScreen] Navegando para página de retorno: $targetUrl"
+        )
+
+        val view = browser
+
+        if (view != null) {
+            view.post {
+                view.loadUrl(targetUrl)
             }
+        }
 
-            // Reseta apenas a origem do arquivo para o próximo download, mantendo o retorno se quiser
-            originUpdateUrl = null
-            status = "Pronto para o próximo jogo! Origem resetada."
-            processingCapture = false
-        }, 1200)
+        processing = false
+        captured = false
     }
 
     Column(
@@ -147,120 +278,120 @@ fun PkgLinkCaptureScreen(
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Painel Superior de Status e Indicadores
+
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = CardBlack),
-            border = BorderStroke(width = 1.dp, color = BorderDark)
+            colors = CardDefaults.cardColors(
+                containerColor = CardBlack
+            ),
+            border = BorderStroke(
+                width = 1.dp,
+                color = BorderDark
+            )
         ) {
+
             Column(
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(text = "CAPTURA CONTÍNUA", color = TextWhite, fontWeight = FontWeight.Bold)
-                    Text(
-                        text = when {
-                            originUpdateUrl != null -> "PASSO 2/2: PRONTO P/ DOWNLOAD"
-                            returnTargetUrl != null -> "PASSO 1/2: RETORNO FIXADO"
-                            else -> "AGUARDANDO CONFIGURAÇÃO"
-                        },
-                        color = if (originUpdateUrl != null) GreenLed else Color(0xFFFFB300),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
 
                 Text(
-                    text = status, 
-                    color = if (processingCapture) GreenLed else TextMuted,
-                    fontSize = 13.sp
+                    text = "CAPTURA DE LINK",
+                    color = TextWhite
                 )
 
-                if (returnTargetUrl != null) {
+                Text(
+                    text = status,
+                    color = when {
+                        processing -> Color(0xFFFFC107)
+                        captured -> GreenLed
+                        else -> TextMuted
+                    }
+                )
+
+                if (currentDisplayUrl.isNotBlank()) {
                     Text(
-                        text = "Voltar para: ${returnTargetUrl!!}",
-                        color = Color(0xFFFFB300),
-                        maxLines = 1,
-                        fontSize = 11.sp
+                        text = currentDisplayUrl,
+                        color = Color(0xFF64B5F6),
+                        maxLines = 1
                     )
                 }
-                if (originUpdateUrl != null) {
+
+                if (returnPageUrl.isNotBlank()) {
                     Text(
-                        text = "Origem update: ${originUpdateUrl!!}",
+                        text = "Retorno salvo",
                         color = GreenLed,
-                        maxLines = 1,
-                        fontSize = 11.sp
+                        maxLines = 1
+                    )
+                }
+
+                if (originPageUrl.isNotBlank()) {
+                    Text(
+                        text = "Origem salva",
+                        color = GreenLed,
+                        maxLines = 1
                     )
                 }
             }
         }
 
-        // Barra de Ações: Botão Duplo Inteligente, Voltar e Concluir
+        /*
+         * Botão de duas etapas:
+         *
+         * 1º clique -> salva retorno
+         * 2º clique -> salva origem
+         */
+        Button(
+            onClick = {
+                if (returnPageUrl.isBlank()) {
+                    saveReturnPage()
+                } else if (originPageUrl.isBlank()) {
+                    saveOriginPage()
+                }
+            },
+            enabled = !processing && originPageUrl.isBlank(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF303030),
+                disabledContainerColor = Color(0xFF181818),
+                contentColor = Color.White,
+                disabledContentColor = Color(0xFF666666)
+            )
+        ) {
+            Text(
+                text = when {
+                    returnPageUrl.isBlank() ->
+                        "SALVAR PÁGINA DE RETORNO"
+
+                    originPageUrl.isBlank() ->
+                        "SALVAR PÁGINA DE ORIGEM"
+
+                    else ->
+                        "PÁGINAS SALVAS"
+                }
+            )
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(46.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .height(48.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Botão com comportamento de 2 fases
-            Button(
-                onClick = {
-                    val current = browser?.url?.trim() ?: currentDisplayUrl.trim()
-                    if (current.isNotBlank()) {
-                        if (returnTargetUrl == null) {
-                            // 1º Toque: Cadastra o ponto de retorno
-                            returnTargetUrl = current
-                            status = "Retorno cadastrado! Agora navegue até o download e dê o 2º toque."
-                            AppLogger.log("[PkgLinkCaptureScreen] Retorno definido: $current")
-                        } else if (originUpdateUrl == null) {
-                            // 2º Toque: Cadastra a página de origem da atualização
-                            originUpdateUrl = current
-                            status = "Origem salva! Pode clicar no botão de download do PKG."
-                            AppLogger.log("[PkgLinkCaptureScreen] Origem definida: $current")
-                        } else {
-                            // Toque extra: permite atualizar a origem se mudou de ideia
-                            originUpdateUrl = current
-                            status = "Origem atualizada! Clique no botão de download do PKG."
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .weight(1.4f)
-                    .fillMaxSize(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = when {
-                        originUpdateUrl != null -> Color(0xFF1B5E20) // Verde
-                        returnTargetUrl != null -> Color(0xFFE65100) // Laranja
-                        else -> Color(0xFF1565C0) // Azul
-                    },
-                    contentColor = Color.White
-                )
-            ) {
-                Text(
-                    text = when {
-                        originUpdateUrl != null -> "2º ORIGEM SALVA ✔"
-                        returnTargetUrl != null -> "2º SALVAR ORIGEM"
-                        else -> "1º DEFINIR RETORNO"
-                    },
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
 
             Button(
                 onClick = {
                     val view = browser
+
                     if (view != null && view.canGoBack()) {
                         view.goBack()
                     }
                 },
-                enabled = canGoBack,
+                enabled = canGoBack && !processing,
                 modifier = Modifier
-                    .weight(0.8f)
+                    .weight(1f)
                     .fillMaxSize(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF303030),
@@ -269,106 +400,263 @@ fun PkgLinkCaptureScreen(
                     disabledContentColor = Color(0xFF666666)
                 )
             ) {
-                Text(text = "VOLTAR", fontSize = 11.sp)
+                Text(
+                    text = "VOLTAR PÁGINA"
+                )
             }
 
             Button(
                 onClick = onCancel,
+                enabled = !processing,
                 modifier = Modifier
-                    .weight(0.8f)
+                    .weight(1f)
                     .fillMaxSize(),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF424242),
-                    contentColor = Color.White
+                    containerColor = Color(0xFF303030),
+                    disabledContainerColor = Color(0xFF181818),
+                    contentColor = Color.White,
+                    disabledContentColor = Color(0xFF666666)
                 )
             ) {
-                Text(text = "CONCLUIR", fontSize = 11.sp)
+                Text(
+                    text = "CANCELAR"
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(2.dp))
+        Spacer(
+            modifier = Modifier.height(2.dp)
+        )
 
         AndroidView(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
+
             factory = { context ->
+
                 WebView(context).apply {
+
                     browser = this
 
-                    settings.userAgentString = BROWSER_USER_AGENT
+                    settings.userAgentString =
+                        BROWSER_USER_AGENT
+
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
                     settings.loadsImagesAutomatically = true
-                    settings.javaScriptCanOpenWindowsAutomatically = false
+                    settings.javaScriptCanOpenWindowsAutomatically = true
                     settings.setSupportMultipleWindows(false)
-                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
-                    val cookieManager = CookieManager.getInstance()
+                    settings.mixedContentMode =
+                        WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+
+                    val cookieManager =
+                        CookieManager.getInstance()
+
                     cookieManager.setAcceptCookie(true)
-                    cookieManager.setAcceptThirdPartyCookies(this, true)
 
-                    webChromeClient = WebChromeClient()
+                    cookieManager.setAcceptThirdPartyCookies(
+                        this,
+                        true
+                    )
 
-                    webViewClient = object : WebViewClient() {
-                        override fun shouldOverrideUrlLoading(
-                            view: WebView,
-                            request: WebResourceRequest
-                        ): Boolean {
-                            val urlString = request.url.toString()
+                    webChromeClient =
+                        WebChromeClient()
 
-                            if (processingCapture) return true
+                    webViewClient =
+                        object : WebViewClient() {
 
-                            val scheme = request.url.scheme?.lowercase() ?: ""
-                            if (scheme != "http" && scheme != "https") {
-                                AppLogger.log("[PkgLinkCaptureScreen] Esquema externo evitado: $urlString")
-                                return true
+                            override fun shouldOverrideUrlLoading(
+                                view: WebView,
+                                request: WebResourceRequest
+                            ): Boolean {
+
+                                val urlString =
+                                    request.url.toString()
+
+                                /*
+                                 * Filekeeper nunca é tratado como
+                                 * binário direto.
+                                 */
+                                if (
+                                    urlString.contains(
+                                        "filekeeper.net",
+                                        ignoreCase = true
+                                    )
+                                ) {
+                                    currentDisplayUrl =
+                                        urlString
+
+                                    return false
+                                }
+
+                                /*
+                                 * Captura direta de PKG.
+                                 */
+                                val cleanPath =
+                                    urlString.substringBefore("?")
+
+                                if (
+                                    cleanPath.endsWith(
+                                        ".pkg",
+                                        ignoreCase = true
+                                    )
+                                ) {
+
+                                    currentDisplayUrl =
+                                        urlString
+
+                                    handleCapturedUrl(
+                                        urlString
+                                    )
+
+                                    return true
+                                }
+
+                                /*
+                                 * Bloqueio de popups/domínios
+                                 * não autorizados.
+                                 */
+                                if (
+                                    !isDomainPermitted(
+                                        urlString
+                                    )
+                                ) {
+                                    return true
+                                }
+
+                                currentDisplayUrl =
+                                    urlString
+
+                                return false
                             }
 
-                            if (isAdOrSpam(urlString)) {
-                                AppLogger.log("[PkgLinkCaptureScreen] Propaganda bloqueada: $urlString")
-                                return true
+                            override fun onPageStarted(
+                                view: WebView,
+                                url: String,
+                                favicon: android.graphics.Bitmap?
+                            ) {
+
+                                super.onPageStarted(
+                                    view,
+                                    url,
+                                    favicon
+                                )
+
+                                val isNotIntermediate =
+                                    !url.contains(
+                                        "filekeeper.net",
+                                        ignoreCase = true
+                                    )
+
+                                val isPkg =
+                                    url.substringBefore("?")
+                                        .endsWith(
+                                            ".pkg",
+                                            ignoreCase = true
+                                        )
+
+                                if (
+                                    isNotIntermediate &&
+                                    !isPkg &&
+                                    !isDomainPermitted(url)
+                                ) {
+
+                                    view.stopLoading()
+
+                                    if (
+                                        currentPageUrl.isNotBlank() &&
+                                        view.url != currentPageUrl
+                                    ) {
+                                        view.loadUrl(
+                                            currentPageUrl
+                                        )
+                                    }
+                                }
                             }
 
-                            val cleanPath = urlString.substringBefore("?")
-                            val host = request.url.host?.lowercase() ?: ""
+                            override fun onPageFinished(
+                                view: WebView,
+                                url: String
+                            ) {
 
-                            if (cleanPath.endsWith(".pkg", ignoreCase = true) && !host.contains("filekeeper.net")) {
-                                handleCapturedUrl(urlString)
-                                return true
-                            }
+                                super.onPageFinished(
+                                    view,
+                                    url
+                                )
 
-                            currentDisplayUrl = urlString
-                            return false
-                        }
+                                currentDisplayUrl =
+                                    url
 
-                        override fun onPageFinished(view: WebView, url: String) {
-                            currentDisplayUrl = url
-                            canGoBack = view.canGoBack()
+                                canGoBack =
+                                    view.canGoBack()
 
-                            if (!processingCapture) {
-                                if (returnTargetUrl == null) {
-                                    status = "1º Toque: Clique em '1º DEFINIR RETORNO' na página base."
-                                } else if (originUpdateUrl == null) {
-                                    status = "Navegue ao download e clique em '2º SALVAR ORIGEM'."
+                                val isPkg =
+                                    url.substringBefore("?")
+                                        .endsWith(
+                                            ".pkg",
+                                            ignoreCase = true
+                                        )
+
+                                if (
+                                    !isPkg &&
+                                    isDomainPermitted(url)
+                                ) {
+                                    currentPageUrl =
+                                        url
+                                }
+
+                                if (
+                                    !captured &&
+                                    !processing
+                                ) {
+                                    status =
+                                        "Página carregada. Clique para gerar ou iniciar o download."
                                 }
                             }
                         }
-                    }
 
-                    setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
-                        AppLogger.log("[PkgLinkCaptureScreen] DownloadListener disparado: $url")
-                        handleCapturedUrl(url, contentDisposition, mimeType)
+                    setDownloadListener {
+                            url,
+                            userAgent,
+                            contentDisposition,
+                            mimeType,
+                            contentLength ->
+
+                        AppLogger.log(
+                            "[PkgLinkCaptureScreen] DownloadListener disparado: $url"
+                        )
+
+                        handleCapturedUrl(
+                            url = url,
+                            contentDisposition = contentDisposition,
+                            mimeType = mimeType
+                        )
                     }
 
                     loadUrl(sourceUrl)
                 }
             },
+
             update = { view ->
+
                 browser = view
-                canGoBack = view.canGoBack()
+
+                canGoBack =
+                    view.canGoBack()
             }
         )
     }
+
+    /*
+     * O callback de conclusão precisa ser disparado pelo
+     * responsável pelo processamento do CatalogManager.
+     *
+     * Este bloco não é executado automaticamente aqui.
+     *
+     * A tela recebe a conclusão através da função abaixo,
+     * que será conectada nos dois chamadores.
+     */
 }
