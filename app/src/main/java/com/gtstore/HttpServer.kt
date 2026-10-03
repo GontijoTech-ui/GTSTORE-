@@ -249,20 +249,35 @@ class HttpServer(
     }
 
     private fun handleStaticFiles(uri: String): Response {
-        val cleanPath = if (uri == "/" || uri.isBlank()) "web/index.html" else "web" + uri
-        return try {
-            val stream: InputStream = context.assets.open(cleanPath)
-            val mime = when {
-                cleanPath.endsWith(".html") -> "text/html; charset=utf-8"
-                cleanPath.endsWith(".js") -> "application/javascript"
-                cleanPath.endsWith(".css") -> "text/css"
-                cleanPath.endsWith(".jpg") || cleanPath.endsWith(".jpeg") -> "image/jpeg"
-                cleanPath.endsWith(".png") -> "image/png"
-                else -> MIME_PLAINTEXT
-            }
-            newChunkedResponse(Response.Status.OK, mime, stream)
+        // Normaliza a URI retirando parâmetros e barras extras
+        val cleanUri = uri.substringBefore("?").trim().removePrefix("/")
+        val targetFile = if (cleanUri.isBlank() || cleanUri == "/") "index.html" else cleanUri
+
+        val stream: InputStream = try {
+            // 1ª Prioridade: Abre diretamente a partir da raiz de assets/ (onde está o index.html)
+            context.assets.open(targetFile)
         } catch (_: Exception) {
-            newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "404 Not Found")
+            try {
+                // 2ª Opção: Tenta encontrar dentro da subpasta web/ caso exista
+                context.assets.open("web/$targetFile")
+            } catch (_: Exception) {
+                return newFixedLengthResponse(
+                    Response.Status.NOT_FOUND,
+                    MIME_PLAINTEXT,
+                    "404 Not Found: $targetFile"
+                )
+            }
         }
+
+        val mime = when {
+            targetFile.endsWith(".html", ignoreCase = true) -> "text/html; charset=utf-8"
+            targetFile.endsWith(".js", ignoreCase = true) -> "application/javascript"
+            targetFile.endsWith(".css", ignoreCase = true) -> "text/css"
+            targetFile.endsWith(".jpg", ignoreCase = true) || targetFile.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
+            targetFile.endsWith(".png", ignoreCase = true) -> "image/png"
+            else -> MIME_PLAINTEXT
+        }
+
+        return newChunkedResponse(Response.Status.OK, mime, stream)
     }
 }
