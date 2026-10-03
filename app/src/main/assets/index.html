@@ -51,7 +51,6 @@
     .status-online .status-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
     .status-offline .status-dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
 
-    /* BARRA DO IP DO PS4 */
     .ps4-ip-bar {
       display: inline-flex; align-items: center; gap: 8px;
       padding: 4px 12px; border-radius: 20px; background: #141414;
@@ -69,7 +68,7 @@
     }
     .btn-save-ip:hover { background: var(--primary-hover); }
 
-    .container { width: 95%; max-width: 1400px; margin: 0 auto; padding: 24px 0 60px; }
+    .container { width: 95%; max-width: 1400px; margin: 0 auto; padding: 24px 0 80px; }
     .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; }
 
     .search {
@@ -91,6 +90,7 @@
     .game-card {
       display: flex; flex-direction: column; background: var(--panel-card);
       border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+      position: relative;
     }
 
     .cover-wrap {
@@ -106,23 +106,55 @@
       height: 38px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
       -webkit-box-orient: vertical; word-break: break-word;
     }
-    .game-id { margin: 0 0 12px; color: var(--muted); font-size: 11px; }
+    .game-id { margin: 0 0 10px; color: var(--muted); font-size: 11px; }
 
+    /* BOTÕES DO CARD */
+    .card-actions { display: flex; gap: 6px; }
+    
     .btn-access {
-      width: 100%; border: 0; border-radius: 6px; padding: 12px;
-      background: var(--primary); color: white; font-size: 13px; font-weight: 800;
+      flex: 1; border: 0; border-radius: 6px; padding: 10px;
+      background: var(--primary); color: white; font-size: 12px; font-weight: 800;
       cursor: pointer; outline: none; text-align: center;
     }
 
+    .btn-cart-toggle {
+      border: 0; border-radius: 6px; padding: 10px 14px;
+      background: #252525; color: white; font-size: 12px; font-weight: 800;
+      cursor: pointer; outline: none;
+    }
+    .btn-cart-toggle.active { background: #e50914; color: white; }
+
     .btn-access:focus, .btn-access:hover,
+    .btn-cart-toggle:focus, .btn-cart-toggle:hover,
     .btn-install:focus, .btn-install:hover,
     .btn-sec:focus, .btn-sec:hover,
     .btn-save-ip:focus, .btn-save-ip:hover,
     .refresh:focus, .refresh:hover {
       outline: 3px solid #ffffff !important;
       box-shadow: 0 0 14px rgba(255, 255, 255, 0.9) !important;
-      transform: scale(1.03);
+      transform: scale(1.02);
       z-index: 5;
+    }
+
+    /* BARRA FIXA DO CARRINHO NO RODAPÉ */
+    .cart-floating-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #0d0d0d; border-top: 2px solid var(--primary);
+      padding: 14px 24px; display: none; justify-content: space-between;
+      align-items: center; z-index: 999; box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.9);
+    }
+    .cart-floating-bar.visible { display: flex; }
+
+    .cart-info { display: flex; align-items: center; gap: 12px; }
+    .cart-badge {
+      background: #e50914; color: white; font-weight: 900;
+      font-size: 13px; padding: 4px 10px; border-radius: 20px;
+    }
+
+    .btn-open-cart {
+      background: var(--green); color: black; border: 0;
+      border-radius: 8px; font-weight: 900; font-size: 14px;
+      padding: 12px 24px; cursor: pointer; outline: none;
     }
 
     .view-details {
@@ -154,13 +186,13 @@
 
     .overlay {
       position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-      padding: 20px; background: rgba(0, 0, 0, 0.92); z-index: 1000;
+      padding: 20px; background: rgba(0, 0, 0, 0.94); z-index: 1000;
     }
     .overlay.visible { display: flex; }
 
     .modal {
-      width: 100%; max-width: 480px; background: #121212; border: 1px solid var(--border);
-      border-radius: 12px; padding: 22px; text-align: center;
+      width: 100%; max-width: 520px; background: #121212; border: 1px solid var(--border);
+      border-radius: 12px; padding: 22px; text-align: center; max-height: 90vh; overflow-y: auto;
     }
     .modal h2 { margin-top: 0; font-size: 20px; }
     .modal p { color: #aaa; font-size: 13px; line-height: 1.4; margin: 8px 0; }
@@ -171,27 +203,25 @@
       padding: 6px 12px; border-radius: 6px; margin: 8px 0; display: inline-block;
     }
 
-    .modal-grid-container {
-      max-width: 1100px; max-height: 88vh; display: flex; flex-direction: column; text-align: left;
+    .cart-items-preview {
+      background: #000; border: 1px solid #222; border-radius: 8px;
+      padding: 10px; margin: 12px 0; max-height: 180px; overflow-y: auto; text-align: left;
     }
-
-    .dlc-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-      gap: 16px; margin: 18px 0; overflow-y: auto; max-height: 60vh; padding-right: 6px;
+    .cart-item-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 4px; border-bottom: 1px solid #1a1a1a; font-size: 12px;
     }
-
-    .dlc-grid::-webkit-scrollbar { width: 8px; }
-    .dlc-grid::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 4px; }
+    .cart-item-row:last-child { border-bottom: none; }
 
     .qr-image {
-      width: 145px; height: 145px; object-fit: contain;
+      width: 140px; height: 140px; object-fit: contain;
       margin: 6px auto; display: block; border-radius: 8px;
       background: #fff; padding: 5px;
     }
 
     .whatsapp-box {
       background: #182c1e; border: 1px solid #35c759; color: #4cd964;
-      padding: 10px; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px 0;
+      padding: 10px; border-radius: 8px; font-weight: bold; font-size: 14px; margin: 8px 0;
     }
 
     .time-notice {
@@ -265,18 +295,32 @@
   </div>
 </main>
 
-<!-- MODAL DE SOLICITAÇÃO E APROVAÇÃO -->
-<div id="access-overlay" class="overlay">
+<!-- BARRA FLUTUANTE DO CARRINHO -->
+<div id="cart-bar" class="cart-floating-bar">
+  <div class="cart-info">
+    <span class="cart-badge" id="cart-count">0</span>
+    <span style="font-weight: bold; font-size: 14px;">Jogos no seu Pacote</span>
+  </div>
+  <button id="btn-show-cart-modal" class="btn-open-cart" type="button">
+    SOLICITAR PACOTE ➔
+  </button>
+</div>
+
+<!-- MODAL DE SOLICITAÇÃO DO CARRINHO / PACOTE -->
+<div id="cart-overlay" class="overlay">
   <div class="modal">
-    <h2>Solicitação de Acesso</h2>
-    <p id="access-game-info" style="color: #0088f0; font-weight: bold; margin-bottom: 8px;"></p>
+    <h2>Solicitação do Pacote</h2>
+    <p>Os seguintes jogos serão autorizados em conjunto para o seu console:</p>
     
     <div>
       <span style="font-size: 11px; color: #888;">IDENTIFICAÇÃO DESTE PS4:</span><br>
       <div id="display-console-id" class="console-badge">PS4-CARREGANDO</div>
     </div>
 
-    <button id="btn-req-access" class="btn-sec btn-sec-primary" type="button" style="width: 100%; margin: 10px 0;">
+    <!-- Lista de Jogos do Carrinho -->
+    <div id="cart-items-list" class="cart-items-preview"></div>
+
+    <button id="btn-req-cart" class="btn-sec btn-sec-primary" type="button" style="width: 100%; margin: 8px 0; padding: 14px;">
       SOLICITAR MEU ACESSO
     </button>
 
@@ -286,7 +330,7 @@
     </div>
 
     <p style="font-weight: bold; color: #35c759; margin: 10px 0 6px; font-size: 13px;">
-      Ou envie a solicitação direto pelo WhatsApp:
+      Ou envie a lista de jogos direto pelo WhatsApp:
     </p>
 
     <a id="link-wa" href="https://w.app/rdilgq" target="_blank">
@@ -298,20 +342,13 @@
     </div>
 
     <div class="time-notice">
-      ⏳ <strong>Aviso:</strong> Uma vez liberado no painel, o acesso permanece ativo por <strong>10 minutos</strong> para iniciar o download/instalação.
+      ⏳ <strong>Aviso:</strong> Uma vez liberado no painel, o pacote inteiro permanece ativo por <strong>15 minutos</strong> para iniciar o download/instalação.
     </div>
 
     <div class="modal-buttons">
-      <button id="btn-cancel-access" class="btn-sec" type="button">VOLTAR</button>
+      <button id="btn-clear-cart" class="btn-sec" type="button">LIMPAR CARRINHO</button>
+      <button id="btn-close-cart" class="btn-sec" type="button">FECHAR</button>
     </div>
-  </div>
-</div>
-
-<div id="dlc-overlay" class="overlay">
-  <div class="modal modal-grid-container">
-    <h2 id="dlc-modal-title" style="margin-bottom: 4px;">Pacotes</h2>
-    <div id="dlc-list" class="dlc-grid"></div>
-    <button id="dlc-close" class="btn-sec" type="button" style="width: 100%; margin-top: auto;">FECHAR</button>
   </div>
 </div>
 
@@ -327,7 +364,9 @@ let isServerOnline = false;
 let selectedGame = null;
 let pollingInterval = null;
 
-// GERA OU RECUPERA IDENTIFICAÇÃO EXCLUSIVA DESTE CONSOLE
+// CARRINHO DE JOGOS: Armazena lista de objetos { key, title }
+let cart = JSON.parse(localStorage.getItem("ps4_store_cart") || "[]");
+
 function getOrCreateConsoleId() {
   let cid = localStorage.getItem("ps4_store_cid");
   if (!cid) {
@@ -339,6 +378,39 @@ function getOrCreateConsoleId() {
 }
 
 const myConsoleId = getOrCreateConsoleId();
+
+function saveCart() {
+  localStorage.setItem("ps4_store_cart", JSON.stringify(cart));
+  updateCartBar();
+}
+
+function updateCartBar() {
+  const bar = document.getElementById("cart-bar");
+  const count = document.getElementById("cart-count");
+  count.textContent = cart.length;
+
+  if (cart.length > 0) {
+    bar.classList.add("visible");
+  } else {
+    bar.classList.remove("visible");
+  }
+}
+
+function toggleCartItem(game, btn) {
+  const index = cart.findIndex(it => it.key === game.key);
+  if (index >= 0) {
+    cart.splice(index, 1);
+    btn.classList.remove("active");
+    btn.textContent = "+";
+    showNotice(`Removido do carrinho: ${game.title}`);
+  } else {
+    cart.push({ key: game.key, title: game.title });
+    btn.classList.add("active");
+    btn.textContent = "✓";
+    showNotice(`✓ Adicionado ao carrinho: ${game.title}`, "success");
+  }
+  saveCart();
+}
 
 function formatSize(bytes) {
   const value = Number(bytes);
@@ -498,15 +570,29 @@ function renderCatalog() {
     const id = document.createElement("p");
     id.className = "game-id"; id.textContent = game.key;
 
+    const actions = document.createElement("div");
+    actions.className = "card-actions";
+
     const btn = document.createElement("button");
     btn.className = "btn-access";
     btn.type = "button";
     btn.textContent = "ACESSAR";
-    btn.onclick = () => openAccessModal(game);
+    btn.onclick = () => openGameAccess(game);
+
+    const isInCart = cart.some(it => it.key === game.key);
+    const btnCart = document.createElement("button");
+    btnCart.className = "btn-cart-toggle" + (isInCart ? " active" : "");
+    btnCart.type = "button";
+    btnCart.textContent = isInCart ? "✓" : "+";
+    btnCart.title = "Adicionar ao Carrinho";
+    btnCart.onclick = () => toggleCartItem(game, btnCart);
+
+    actions.appendChild(btn);
+    actions.appendChild(btnCart);
 
     content.appendChild(title);
     content.appendChild(id);
-    content.appendChild(btn);
+    content.appendChild(actions);
 
     card.appendChild(coverWrap);
     card.appendChild(content);
@@ -514,45 +600,61 @@ function renderCatalog() {
   }
 }
 
-function openAccessModal(game) {
-  selectedGame = game;
-  document.getElementById("access-game-info").textContent = game.title + " (" + game.key + ")";
+// ABRE MODAL DO CARRINHO COM TODOS OS ITENS
+function openCartModal() {
+  if (cart.length === 0) {
+    showNotice("O carrinho está vazio! Clique no '+' dos jogos para adicionar.");
+    return;
+  }
+
   document.getElementById("display-console-id").textContent = myConsoleId;
-  
-  const btnReq = document.getElementById("btn-req-access");
+  const listContainer = document.getElementById("cart-items-list");
+  listContainer.innerHTML = "";
+
+  let waTextLines = [];
+
+  cart.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "cart-item-row";
+    row.innerHTML = `<span><strong>${index + 1}.</strong> ${item.title}</span><span style="color: #64b5f6;">${item.key}</span>`;
+    listContainer.appendChild(row);
+
+    waTextLines.push(`${index + 1}. ${item.title} (${item.key})`);
+  });
+
+  const btnReq = document.getElementById("btn-req-cart");
   btnReq.disabled = false;
-  btnReq.textContent = "SOLICITAR MEU ACESSO";
+  btnReq.textContent = `SOLICITAR ACESSO (${cart.length} JOGOS)`;
   document.getElementById("polling-container").style.display = "none";
 
-  const msg = encodeURIComponent(`Olá! Solicito liberação de acesso para o jogo ${game.title} (${game.key}). ID do meu Console: ${myConsoleId}`);
-  document.getElementById("link-wa").href = `https://wa.me/5564992259727?text=${msg}`;
+  const fullMsg = `Olá! Solicito liberação de acesso para o pacote de jogos:\n\n${waTextLines.join("\n")}\n\nID do meu Console: ${myConsoleId}`;
+  document.getElementById("link-wa").href = `https://wa.me/5564992259727?text=${encodeURIComponent(fullMsg)}`;
 
-  document.getElementById("access-overlay").classList.add("visible");
-  checkAccessStatus();
+  document.getElementById("cart-overlay").classList.add("visible");
+  checkCartStatus();
 }
 
-function closeAccessModal() {
+function closeCartModal() {
   if (pollingInterval) {
     clearInterval(pollingInterval);
     pollingInterval = null;
   }
-  document.getElementById("access-overlay").classList.remove("visible");
+  document.getElementById("cart-overlay").classList.remove("visible");
 }
 
-async function requestAccess() {
-  if (!selectedGame) return;
-  const btn = document.getElementById("btn-req-access");
+async function requestCartAccess() {
+  if (cart.length === 0) return;
+  const btn = document.getElementById("btn-req-cart");
   btn.disabled = true;
   btn.textContent = "SOLICITANDO...";
 
   try {
-    const res = await fetch("/api/request-access", {
+    const res = await fetch("/api/request-cart-access", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         consoleId: myConsoleId,
-        gameKey: selectedGame.key,
-        title: selectedGame.title,
+        games: cart.map(it => ({ gameKey: it.key, title: it.title })),
         ip: getTargetIp()
       })
     });
@@ -560,8 +662,8 @@ async function requestAccess() {
     if (data.success) {
       btn.textContent = "✓ SOLICITAÇÃO ENVIADA!";
       document.getElementById("polling-container").style.display = "flex";
-      showNotice("✓ Solicitação enviada! Chame no WhatsApp ou aguarde aprovação.", "success");
-      startPollingAccess();
+      showNotice("✓ Solicitação do pacote enviada! Aguarde a aprovação no painel.", "success");
+      startPollingCart();
     } else {
       btn.disabled = false;
       btn.textContent = "SOLICITAR MEU ACESSO";
@@ -574,25 +676,50 @@ async function requestAccess() {
   }
 }
 
-function startPollingAccess() {
+function startPollingCart() {
   if (pollingInterval) clearInterval(pollingInterval);
-  // Polling estritamente configurado para 10 segundos
-  pollingInterval = setInterval(checkAccessStatus, 10000);
+  // Checagem periódica estritamente a cada 10 segundos
+  pollingInterval = setInterval(checkCartStatus, 10000);
 }
 
-async function checkAccessStatus() {
-  if (!selectedGame) return;
+async function checkCartStatus() {
+  if (cart.length === 0) return;
   try {
-    const res = await fetch(`/api/check-access?consoleId=${encodeURIComponent(myConsoleId)}&gameKey=${encodeURIComponent(selectedGame.key)}`, {
+    const keysParam = cart.map(it => it.key).join(",");
+    const res = await fetch(`/api/check-access?consoleId=${encodeURIComponent(myConsoleId)}&gameKeys=${encodeURIComponent(keysParam)}`, {
       cache: "no-store"
     });
     const data = await res.json();
     if (data.approved) {
-      closeAccessModal();
-      showNotice("✓ Acesso liberado pelo administrador!", "success");
-      showGameDetails(selectedGame);
+      closeCartModal();
+      showNotice("✓ Pacote aprovado com sucesso! Acesso liberado por 15 minutos.", "success");
+      cart = [];
+      saveCart();
+      renderCatalog();
     }
   } catch (_) {}
+}
+
+async function openGameAccess(game) {
+  selectedGame = game;
+  // Checa se o jogo individual já está liberado pela autorização de 15 minutos
+  try {
+    const res = await fetch(`/api/check-access?consoleId=${encodeURIComponent(myConsoleId)}&gameKey=${encodeURIComponent(game.key)}`, {
+      cache: "no-store"
+    });
+    const data = await res.json();
+    if (data.approved) {
+      showGameDetails(game);
+      return;
+    }
+  } catch (_) {}
+
+  // Se não estiver liberado, adiciona ao carrinho e abre o modal do pacote
+  if (!cart.some(it => it.key === game.key)) {
+    cart.push({ key: game.key, title: game.title });
+    saveCart();
+  }
+  openCartModal();
 }
 
 function triggerBrowserDownload(pkg) {
@@ -700,67 +827,6 @@ async function triggerInstall(pkg, button) {
   }
 }
 
-function openPackageModal(title, list) {
-  document.getElementById("dlc-modal-title").textContent = title;
-  const container = document.getElementById("dlc-list");
-  container.innerHTML = "";
-
-  const fallbackCover = selectedGame ? selectedGame.cover : null;
-
-  for (const item of list) {
-    const card = document.createElement("article");
-    card.className = "game-card";
-
-    const coverWrap = document.createElement("div");
-    coverWrap.className = "cover-wrap";
-    
-    const coverSrc = item.iconUrl || fallbackCover;
-    if (coverSrc) {
-      const img = document.createElement("img");
-      img.className = "cover";
-      img.src = coverSrc;
-      img.loading = "lazy";
-      coverWrap.appendChild(img);
-    } else {
-      const pl = document.createElement("div");
-      pl.className = "cover-placeholder";
-      pl.textContent = item.contentId ? item.contentId.substring(0, 9) : "PKG";
-      coverWrap.appendChild(pl);
-    }
-
-    const content = document.createElement("div");
-    content.className = "game-content";
-
-    const itemTitle = document.createElement("h2");
-    itemTitle.className = "game-title";
-    itemTitle.textContent = item.title || "Pacote";
-
-    const sizeLabel = document.createElement("p");
-    sizeLabel.className = "game-id";
-    sizeLabel.style.color = "#64b5f6";
-    sizeLabel.style.fontWeight = "bold";
-    sizeLabel.textContent = formatSize(item.size);
-
-    const btn = document.createElement("button");
-    btn.className = "btn-access";
-    btn.type = "button";
-    btn.textContent = isPS4Browser ? "INSTALAR" : "BAIXAR";
-    btn.onclick = () => {
-      if (isPS4Browser) triggerInstall(item, btn);
-      else triggerBrowserDownload(item);
-    };
-
-    content.appendChild(itemTitle);
-    content.appendChild(sizeLabel);
-    content.appendChild(btn);
-
-    card.appendChild(coverWrap);
-    card.appendChild(content);
-    container.appendChild(card);
-  }
-  document.getElementById("dlc-overlay").classList.add("visible");
-}
-
 function showNotice(msg, type = "") {
   const el = document.getElementById("notice");
   el.textContent = msg;
@@ -775,15 +841,23 @@ async function loadPackages() {
     allPackages = data.packages || [];
     games = buildCatalog(allPackages);
     renderCatalog();
+    updateCartBar();
   } catch (_) {}
 }
 
 document.getElementById("search").addEventListener("input", renderCatalog);
 document.getElementById("refresh").addEventListener("click", () => { checkStatus(); loadPackages(); });
 document.getElementById("btn-back").addEventListener("click", backToCatalog);
-document.getElementById("btn-req-access").addEventListener("click", requestAccess);
-document.getElementById("btn-cancel-access").addEventListener("click", closeAccessModal);
-document.getElementById("dlc-close").addEventListener("click", () => document.getElementById("dlc-overlay").classList.remove("visible"));
+document.getElementById("btn-show-cart-modal").addEventListener("click", openCartModal);
+document.getElementById("btn-req-cart").addEventListener("click", requestCartAccess);
+document.getElementById("btn-close-cart").addEventListener("click", closeCartModal);
+document.getElementById("btn-clear-cart").addEventListener("click", () => {
+  cart = [];
+  saveCart();
+  closeCartModal();
+  renderCatalog();
+  showNotice("Carrinho limpo!");
+});
 document.getElementById("btn-save-ip").addEventListener("click", savePs4Ip);
 document.getElementById("ps4-ip").addEventListener("change", savePs4Ip);
 
