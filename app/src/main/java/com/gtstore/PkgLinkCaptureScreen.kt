@@ -184,9 +184,6 @@ fun PkgLinkCaptureScreen(
      * ========================================================
      * URL ATUAL
      * ========================================================
-     *
-     * Quando o usuário pressiona um dos botões, damos
-     * prioridade à URL efetivamente carregada no WebView.
      */
 
     fun getCurrentBrowserUrl(): String {
@@ -214,9 +211,6 @@ fun PkgLinkCaptureScreen(
      * ========================================================
      * PRIMEIRO CLIQUE
      * ========================================================
-     *
-     * Salva a página para a qual o WebView deverá voltar
-     * depois que o processamento do PKG terminar.
      */
 
     fun saveReturnPage() {
@@ -245,9 +239,6 @@ fun PkgLinkCaptureScreen(
      * ========================================================
      * SEGUNDO CLIQUE
      * ========================================================
-     *
-     * Salva a página que será enviada ao CatalogManager
-     * como sourceUrl.
      */
 
     fun saveOriginPage() {
@@ -276,21 +267,6 @@ fun PkgLinkCaptureScreen(
      * ========================================================
      * FINALIZAÇÃO DO PROCESSAMENTO
      * ========================================================
-     *
-     * Esta função só é chamada pelo onComplete fornecido
-     * ao callback onCaptured.
-     *
-     * Portanto:
-     *
-     * captura PKG
-     *      ↓
-     * CatalogManager processa
-     *      ↓
-     * CatalogManager termina
-     *      ↓
-     * onComplete()
-     *      ↓
-     * WebView volta para returnPageUrl
      */
 
     fun finishProcessingAndReturn() {
@@ -304,19 +280,25 @@ fun PkgLinkCaptureScreen(
 
         /*
          * Não existe página de retorno salva.
-         *
-         * Nesse caso simplesmente libera a tela novamente.
          */
         if (targetUrl.isBlank()) {
             processing = false
             captured = false
 
+            /*
+             * Reseta as duas etapas para permitir
+             * uma nova captura.
+             */
+            returnPageUrl = ""
+            originPageUrl = ""
+
             status =
-                "Processamento concluído."
+                "Aguardando início do download do PKG..."
 
             AppLogger.log(
                 "[PkgLinkCaptureScreen] " +
-                        "Processamento concluído sem página de retorno."
+                        "Processamento concluído sem página de retorno. " +
+                        "Estado da captura resetado."
             )
 
             return
@@ -340,13 +322,21 @@ fun PkgLinkCaptureScreen(
         }
 
         /*
-         * Libera uma nova captura depois que o processamento
-         * terminou.
+         * Libera uma nova captura.
          *
-         * O WebView NÃO é destruído.
+         * O WebView continua aberto.
+         *
+         * As páginas salvas são apagadas para que
+         * o botão volte ao estado inicial.
          */
         processing = false
         captured = false
+
+        returnPageUrl = ""
+        originPageUrl = ""
+
+        status =
+            "Aguardando início do download do PKG..."
     }
 
     /*
@@ -399,8 +389,8 @@ fun PkgLinkCaptureScreen(
                 }
 
         /*
-         * A origem é obrigatoriamente a página salva no
-         * segundo clique quando ela existir.
+         * A origem é obrigatoriamente a página salva
+         * no segundo clique quando ela existir.
          *
          * O fallback mantém o comportamento anterior
          * caso o usuário não tenha salvo uma origem.
@@ -450,7 +440,7 @@ fun PkgLinkCaptureScreen(
         /*
          * O processamento real acontece no chamador.
          *
-         * Quando ele terminar, deverá chamar onComplete().
+         * Quando terminar, deverá chamar onComplete().
          */
         onCaptured(
             result,
@@ -558,15 +548,6 @@ fun PkgLinkCaptureScreen(
          * ====================================================
          * BOTÃO DE DUAS ETAPAS
          * ====================================================
-         *
-         * 1º clique:
-         *     SALVAR PÁGINA DE RETORNO
-         *
-         * 2º clique:
-         *     SALVAR PÁGINA DE ORIGEM
-         *
-         * Depois disso:
-         *     PÁGINAS SALVAS
          */
 
         Button(
