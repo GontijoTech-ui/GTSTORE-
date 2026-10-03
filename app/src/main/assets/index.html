@@ -1,315 +1,318 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GTSTORE</title>
-    <style>
-        :root {
-            --bg: #000000;
-            --panel: #0d0d0d;
-            --panel-card: #121212;
-            --border: #222222;
-            --primary: #0070cc;
-            --primary-hover: #0088f0;
-            --text: #ffffff;
-            --muted: #888888;
-            --green: #35c759;
-            --orange: #ff9f0a;
-            --red: #ff453a;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GTSTORE</title>
+  <style>
+    :root {
+      --bg: #000000;
+      --panel: #0d0d0d;
+      --panel-card: #121212;
+      --border: #222222;
+      --primary: #0070cc;
+      --primary-hover: #0088f0;
+      --text: #ffffff;
+      --muted: #888888;
+      --green: #35c759;
+      --orange: #ff9f0a;
+      --red: #ff453a;
+    }
 
-        * { box-sizing: border-box; }
-        html, body {
-            margin: 0; padding: 0; min-height: 100%;
-            background-color: #000000; color: var(--text);
-            font-family: Arial, Helvetica, sans-serif;
-        }
-        button, input { font-family: inherit; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; min-height: 100%;
+      background-color: #000000; color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    button, input { font-family: inherit; }
 
-        .header {
-            width: 100%; background: #000000; border-bottom: 1px solid var(--border);
-            padding: 24px 16px 20px; text-align: center;
-        }
+    .header {
+      width: 100%; background: #000000; border-bottom: 1px solid var(--border);
+      padding: 24px 16px 20px; text-align: center;
+    }
 
-        .logo {
-            display: block; width: 220px; max-width: 80%; height: auto;
-            max-height: 120px; object-fit: contain; margin: 0 auto 12px; border-radius: 12px;
-        }
+    .logo {
+      display: block; width: 220px; max-width: 80%; height: auto;
+      max-height: 120px; object-fit: contain; margin: 0 auto 12px; border-radius: 12px;
+    }
 
-        .header-controls {
-            display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; margin-top: 6px;
-        }
+    .header-controls {
+      display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; margin-top: 6px;
+    }
 
-        .server-status {
-            display: inline-flex; align-items: center; gap: 8px;
-            padding: 6px 14px; border-radius: 20px; background: #141414;
-            border: 1px solid #222; color: var(--muted); font-size: 12px;
-        }
+    .server-status {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px; border-radius: 20px; background: #141414;
+      border: 1px solid #222; color: var(--muted); font-size: 12px;
+    }
 
-        .status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--orange); }
-        .status-online .status-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
-        .status-offline .status-dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
+    .status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--orange); }
+    .status-online .status-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .status-offline .status-dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
 
-        /* BARRA DO IP DO PS4 */
-        .ps4-ip-bar {
-            display: inline-flex; align-items: center; gap: 8px;
-            padding: 4px 12px; border-radius: 20px; background: #141414;
-            border: 1px solid var(--border); font-size: 12px;
-        }
-        .ps4-ip-label { font-weight: bold; color: var(--muted); }
-        .ps4-ip-input {
-            width: 135px; background: #000; border: 1px solid #333; border-radius: 6px;
-            color: #fff; font-size: 13px; font-weight: bold; text-align: center; padding: 4px 6px; outline: none;
-        }
-        .ps4-ip-input:focus { border-color: var(--primary); box-shadow: 0 0 8px rgba(0, 112, 204, 0.6); }
-        .btn-save-ip {
-            border: 0; border-radius: 6px; padding: 5px 12px; background: var(--primary);
-            color: #fff; font-size: 11px; font-weight: bold; cursor: pointer; outline: none;
-        }
-        .btn-save-ip:hover { background: var(--primary-hover); }
+    /* BARRA DO IP DO PS4 */
+    .ps4-ip-bar {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 4px 12px; border-radius: 20px; background: #141414;
+      border: 1px solid var(--border); font-size: 12px;
+    }
+    .ps4-ip-label { font-weight: bold; color: var(--muted); }
+    .ps4-ip-input {
+      width: 135px; background: #000; border: 1px solid #333; border-radius: 6px;
+      color: #fff; font-size: 13px; font-weight: bold; text-align: center; padding: 4px 6px; outline: none;
+    }
+    .ps4-ip-input:focus { border-color: var(--primary); box-shadow: 0 0 8px rgba(0, 112, 204, 0.6); }
+    .btn-save-ip {
+      border: 0; border-radius: 6px; padding: 5px 12px; background: var(--primary);
+      color: #fff; font-size: 11px; font-weight: bold; cursor: pointer; outline: none;
+    }
+    .btn-save-ip:hover { background: var(--primary-hover); }
 
-        .container { width: 95%; max-width: 1400px; margin: 0 auto; padding: 24px 0 60px; }
-        .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; }
+    .container { width: 95%; max-width: 1400px; margin: 0 auto; padding: 24px 0 60px; }
+    .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; }
 
-        .search {
-            flex: 1; padding: 14px 16px; border: 1px solid var(--border);
-            border-radius: 8px; background: var(--panel); color: var(--text);
-            font-size: 16px; outline: none;
-        }
-        .search:focus { border-color: var(--primary); box-shadow: 0 0 12px rgba(0, 112, 204, 0.7); }
+    .search {
+      flex: 1; padding: 14px 16px; border: 1px solid var(--border);
+      border-radius: 8px; background: var(--panel); color: var(--text);
+      font-size: 16px; outline: none;
+    }
+    .search:focus { border-color: var(--primary); box-shadow: 0 0 12px rgba(0, 112, 204, 0.7); }
 
-        .refresh {
-            border: 1px solid var(--border); border-radius: 8px; padding: 14px 20px;
-            background: #151515; color: var(--text); cursor: pointer; font-weight: 700; outline: none;
-        }
+    .refresh {
+      border: 1px solid var(--border); border-radius: 8px; padding: 14px 20px;
+      background: #151515; color: var(--text); cursor: pointer; font-weight: 700; outline: none;
+    }
 
-        .catalog {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 20px;
-        }
+    .catalog {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 20px;
+    }
 
-        .game-card {
-            display: flex; flex-direction: column; background: var(--panel-card);
-            border: 1px solid var(--border); border-radius: 10px; padding: 12px;
-        }
+    .game-card {
+      display: flex; flex-direction: column; background: var(--panel-card);
+      border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+    }
 
-        .cover-wrap {
-            width: 100%; aspect-ratio: 1 / 1; background: #050505; border-radius: 8px;
-            overflow: hidden; display: flex; align-items: center; justify-content: center;
-        }
-        .cover { width: 100%; height: 100%; object-fit: cover; display: block; }
-        .cover-placeholder { color: #555; font-size: 12px; font-weight: bold; text-align: center; }
+    .cover-wrap {
+      width: 100%; aspect-ratio: 1 / 1; background: #050505; border-radius: 8px;
+      overflow: hidden; display: flex; align-items: center; justify-content: center;
+    }
+    .cover { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .cover-placeholder { color: #555; font-size: 12px; font-weight: bold; text-align: center; }
 
-        .game-content { display: flex; flex-direction: column; flex: 1; margin-top: 12px; }
-        .game-title {
-            margin: 0 0 4px; font-size: 15px; font-weight: 700; line-height: 1.3;
-            height: 38px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical; word-break: break-word;
-        }
-        .game-id { margin: 0 0 12px; color: var(--muted); font-size: 11px; }
+    .game-content { display: flex; flex-direction: column; flex: 1; margin-top: 12px; }
+    .game-title {
+      margin: 0 0 4px; font-size: 15px; font-weight: 700; line-height: 1.3;
+      height: 38px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; word-break: break-word;
+    }
+    .game-id { margin: 0 0 12px; color: var(--muted); font-size: 11px; }
 
-        .btn-access {
-            width: 100%; border: 0; border-radius: 6px; padding: 12px;
-            background: var(--primary); color: white; font-size: 13px; font-weight: 800;
-            cursor: pointer; outline: none; text-align: center;
-        }
+    .btn-access {
+      width: 100%; border: 0; border-radius: 6px; padding: 12px;
+      background: var(--primary); color: white; font-size: 13px; font-weight: 800;
+      cursor: pointer; outline: none; text-align: center;
+    }
 
-        .btn-access:focus, .btn-access:hover,
-        .btn-install:focus, .btn-install:hover,
-        .btn-sec:focus, .btn-sec:hover,
-        .btn-save-ip:focus, .btn-save-ip:hover,
-        .refresh:focus, .refresh:hover {
-            outline: 3px solid #ffffff !important;
-            box-shadow: 0 0 14px rgba(255, 255, 255, 0.9) !important;
-            transform: scale(1.03);
-            z-index: 5;
-        }
+    .btn-access:focus, .btn-access:hover,
+    .btn-install:focus, .btn-install:hover,
+    .btn-sec:focus, .btn-sec:hover,
+    .btn-save-ip:focus, .btn-save-ip:hover,
+    .refresh:focus, .refresh:hover {
+      outline: 3px solid #ffffff !important;
+      box-shadow: 0 0 14px rgba(255, 255, 255, 0.9) !important;
+      transform: scale(1.03);
+      z-index: 5;
+    }
 
-        .view-details {
-            display: none; background: #0a0a0a; border: 1px solid var(--border);
-            border-radius: 14px; padding: 24px; margin-top: 10px;
-        }
-        .view-details.active { display: block; }
+    .view-details {
+      display: none; background: #0a0a0a; border: 1px solid var(--border);
+      border-radius: 14px; padding: 24px; margin-top: 10px;
+    }
+    .view-details.active { display: block; }
 
-        .btn-back {
-            background: #1a1a1a; border: 1px solid var(--border); color: #fff;
-            padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer;
-            margin-bottom: 20px; outline: none;
-        }
+    .btn-back {
+      background: #1a1a1a; border: 1px solid var(--border); color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer;
+      margin-bottom: 20px; outline: none;
+    }
 
-        .details-layout { display: flex; gap: 24px; flex-wrap: wrap; }
-        .details-cover { width: 220px; height: 220px; border-radius: 12px; object-fit: cover; }
-        .details-info { flex: 1; min-width: 250px; }
-        .details-title { margin: 0 0 8px; font-size: 22px; }
-        .details-id { color: var(--muted); margin: 0 0 18px; font-size: 13px; }
+    .details-layout { display: flex; gap: 24px; flex-wrap: wrap; }
+    .details-cover { width: 220px; height: 220px; border-radius: 12px; object-fit: cover; }
+    .details-info { flex: 1; min-width: 250px; }
+    .details-title { margin: 0 0 8px; font-size: 22px; }
+    .details-id { color: var(--muted); margin: 0 0 18px; font-size: 13px; }
 
-        .details-actions { display: flex; flex-direction: column; gap: 10px; max-width: 400px; margin-top: 15px; }
-        .btn-install {
-            border: 0; border-radius: 8px; padding: 14px; font-size: 14px;
-            font-weight: 800; cursor: pointer; color: white; outline: none; text-align: center;
-        }
-        .btn-install-game { background: var(--primary); }
-        .btn-install-upd { background: #2f5379; }
-        .btn-install-dlc { background: #633994; }
+    .details-actions { display: flex; flex-direction: column; gap: 10px; max-width: 400px; margin-top: 15px; }
+    .btn-install {
+      border: 0; border-radius: 8px; padding: 14px; font-size: 14px;
+      font-weight: 800; cursor: pointer; color: white; outline: none; text-align: center;
+    }
+    .btn-install-game { background: var(--primary); }
+    .btn-install-upd { background: #2f5379; }
+    .btn-install-dlc { background: #633994; }
 
-        .overlay {
-            position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-            padding: 20px; background: rgba(0, 0, 0, 0.92); z-index: 1000;
-        }
-        .overlay.visible { display: flex; }
+    .overlay {
+      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+      padding: 20px; background: rgba(0, 0, 0, 0.92); z-index: 1000;
+    }
+    .overlay.visible { display: flex; }
 
-        .modal {
-            width: 100%; max-width: 480px; background: #121212; border: 1px solid var(--border);
-            border-radius: 12px; padding: 22px; text-align: center;
-        }
-        .modal h2 { margin-top: 0; font-size: 20px; }
-        .modal p { color: #aaa; font-size: 13px; line-height: 1.4; margin: 8px 0; }
+    .modal {
+      width: 100%; max-width: 480px; background: #121212; border: 1px solid var(--border);
+      border-radius: 12px; padding: 22px; text-align: center;
+    }
+    .modal h2 { margin-top: 0; font-size: 20px; }
+    .modal p { color: #aaa; font-size: 13px; line-height: 1.4; margin: 8px 0; }
 
-        /* GRADE DE DLCS */
-        .modal-grid-container {
-            max-width: 1100px;
-            max-height: 88vh;
-            display: flex;
-            flex-direction: column;
-            text-align: left;
-        }
+    .console-badge {
+      background: #000; border: 1px dashed var(--primary); color: #64b5f6;
+      font-family: monospace; font-size: 15px; font-weight: bold;
+      padding: 6px 12px; border-radius: 6px; margin: 8px 0; display: inline-block;
+    }
 
-        .dlc-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-            gap: 16px;
-            margin: 18px 0;
-            overflow-y: auto;
-            max-height: 60vh;
-            padding-right: 6px;
-        }
+    .modal-grid-container {
+      max-width: 1100px; max-height: 88vh; display: flex; flex-direction: column; text-align: left;
+    }
 
-        .dlc-grid::-webkit-scrollbar { width: 8px; }
-        .dlc-grid::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 4px; }
+    .dlc-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 16px; margin: 18px 0; overflow-y: auto; max-height: 60vh; padding-right: 6px;
+    }
 
-        .qr-image {
-            width: 145px; height: 145px; object-fit: contain;
-            margin: 6px auto; display: block; border-radius: 8px;
-            background: #fff; padding: 5px;
-        }
+    .dlc-grid::-webkit-scrollbar { width: 8px; }
+    .dlc-grid::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 4px; }
 
-        .whatsapp-box {
-            background: #182c1e; border: 1px solid #35c759; color: #4cd964;
-            padding: 10px; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px 0;
-        }
+    .qr-image {
+      width: 145px; height: 145px; object-fit: contain;
+      margin: 6px auto; display: block; border-radius: 8px;
+      background: #fff; padding: 5px;
+    }
 
-        .time-notice {
-            background: #2b1d05; border: 1px solid #ff9f0a; color: #ffbe53;
-            font-size: 12px; padding: 10px; border-radius: 8px; margin: 10px 0; line-height: 1.4;
-            text-align: center; font-weight: bold;
-        }
+    .whatsapp-box {
+      background: #182c1e; border: 1px solid #35c759; color: #4cd964;
+      padding: 10px; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px 0;
+    }
 
-        .pin-input {
-            width: 180px; letter-spacing: 6px; text-align: center; font-size: 24px;
-            font-weight: bold; padding: 10px; border-radius: 8px; border: 2px solid var(--primary);
-            background: #000; color: #fff; margin: 12px auto; display: block; outline: none;
-        }
+    .time-notice {
+      background: #2b1d05; border: 1px solid #ff9f0a; color: #ffbe53;
+      font-size: 12px; padding: 10px; border-radius: 8px; margin: 10px 0; line-height: 1.4;
+      text-align: center; font-weight: bold;
+    }
 
-        .modal-buttons { display: flex; gap: 10px; justify-content: center; margin-top: 12px; }
-        .btn-sec {
-            border: 0; border-radius: 6px; padding: 12px 18px; font-weight: bold;
-            cursor: pointer; outline: none; color: white; background: #262626;
-        }
-        .btn-sec-primary { background: var(--primary); }
+    .polling-status {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      font-size: 13px; color: #0088f0; font-weight: bold; margin: 12px 0;
+    }
 
-        .notice {
-            display: none; margin-bottom: 18px; padding: 14px 16px; border-radius: 8px;
-            background: #161616; color: #ffffff; font-size: 14px; font-weight: bold;
-            border-left: 4px solid var(--primary); white-space: pre-line;
-        }
-        .notice.visible { display: block; }
-        .notice.error { border-left-color: var(--red); background: #261012; color: #ff817a; }
-        .notice.success { border-left-color: var(--green); background: #0e2013; color: #4cd964; }
-    </style>
+    .modal-buttons { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
+    .btn-sec {
+      border: 0; border-radius: 6px; padding: 12px 18px; font-weight: bold;
+      cursor: pointer; outline: none; color: white; background: #262626;
+    }
+    .btn-sec-primary { background: var(--primary); }
+
+    .notice {
+      display: none; margin-bottom: 18px; padding: 14px 16px; border-radius: 8px;
+      background: #161616; color: #ffffff; font-size: 14px; font-weight: bold;
+      border-left: 4px solid var(--primary); white-space: pre-line;
+    }
+    .notice.visible { display: block; }
+    .notice.error { border-left-color: var(--red); background: #261012; color: #ff817a; }
+    .notice.success { border-left-color: var(--green); background: #0e2013; color: #4cd964; }
+  </style>
 </head>
 <body>
 
 <header class="header">
-    <img class="logo" src="/logo.jpg" alt="Logo" onerror="this.style.display='none';">
-    <div class="header-controls">
-        <div id="server-status" class="server-status">
-            <span class="status-dot"></span>
-            <span id="server-status-text">A verificar servidor...</span>
-        </div>
-        <div class="ps4-ip-bar">
-            <span class="ps4-ip-label">🎮 IP PS4:</span>
-            <input id="ps4-ip" class="ps4-ip-input" type="text" placeholder="192.168.0.X" autocomplete="off">
-            <button id="btn-save-ip" class="btn-save-ip" type="button">SALVAR</button>
-        </div>
+  <img class="logo" src="/logo.jpg" alt="Logo" onerror="this.style.display='none';">
+  <div class="header-controls">
+    <div id="server-status" class="server-status">
+      <span class="status-dot"></span>
+      <span id="server-status-text">A verificar servidor...</span>
     </div>
+    <div class="ps4-ip-bar">
+      <span class="ps4-ip-label">🎮 IP PS4:</span>
+      <input id="ps4-ip" class="ps4-ip-input" type="text" placeholder="192.168.0.X" autocomplete="off">
+      <button id="btn-save-ip" class="btn-save-ip" type="button">SALVAR</button>
+    </div>
+  </div>
 </header>
 
 <main class="container">
-    <div id="notice" class="notice"></div>
+  <div id="notice" class="notice"></div>
 
-    <div id="view-catalog">
-        <div class="toolbar">
-            <input id="search" class="search" type="text" placeholder="Pesquisar por nome ou CUSA..." autocomplete="off">
-            <button id="refresh" class="refresh" type="button">Atualizar</button>
-        </div>
-        <section id="catalog" class="catalog">
-            <div style="grid-column: 1/-1; text-align: center; color: #777; padding: 30px;">Carregando catálogo...</div>
-        </section>
+  <div id="view-catalog">
+    <div class="toolbar">
+      <input id="search" class="search" type="text" placeholder="Pesquisar por nome ou CUSA..." autocomplete="off">
+      <button id="refresh" class="refresh" type="button">Atualizar</button>
     </div>
+    <section id="catalog" class="catalog">
+      <div style="grid-column: 1/-1; text-align: center; color: #777; padding: 30px;">Carregando catálogo...</div>
+    </section>
+  </div>
 
-    <div id="view-details" class="view-details">
-        <button id="btn-back" class="btn-back" type="button">← VOLTAR AO CATÁLOGO</button>
-        <div class="details-layout">
-            <img id="detail-cover" class="details-cover" src="" alt="Capa">
-            <div class="details-info">
-                <h1 id="detail-title" class="details-title">Título do Jogo</h1>
-                <p id="detail-id" class="details-id">CUSA00000</p>
-                <div class="details-actions" id="detail-actions"></div>
-            </div>
-        </div>
+  <div id="view-details" class="view-details">
+    <button id="btn-back" class="btn-back" type="button">← VOLTAR AO CATÁLOGO</button>
+    <div class="details-layout">
+      <img id="detail-cover" class="details-cover" src="" alt="Capa">
+      <div class="details-info">
+        <h1 id="detail-title" class="details-title">Título do Jogo</h1>
+        <p id="detail-id" class="details-id">CUSA00000</p>
+        <div class="details-actions" id="detail-actions"></div>
+      </div>
     </div>
+  </div>
 </main>
 
-<div id="pin-overlay" class="overlay">
-    <div class="modal">
-        <h2>Acesso Protegido</h2>
-        <p id="pin-modal-game-info" style="color: #0088f0; font-weight: bold; margin-bottom: 12px;"></p>
-
-        <button id="btn-req-pin" class="btn-sec btn-sec-primary" type="button" style="width: 100%; margin-bottom: 12px;">
-            SOLICITAR PIN
-        </button>
-
-        <p style="font-weight: bold; color: #35c759; margin: 10px 0 6px; font-size: 14px;">
-            Chame no WhatsApp após solicitar o PIN:
-        </p>
-
-        <a href="https://w.app/rdilgq" target="_blank">
-            <img class="qr-image" src="/qr.png" alt="QR Code WhatsApp" onerror="this.style.display='none';">
-        </a>
-
-        <div class="whatsapp-box">
-            WhatsApp: (64) 99225-9727
-        </div>
-
-        <div class="time-notice">
-            ⏳ <strong>Aviso:</strong> Após a emissão do PIN, você tem <strong>10 minutos</strong> para iniciar o download. Após esse prazo, o PIN se torna inválido.
-        </div>
-
-        <input id="pin-input" class="pin-input" type="tel" maxlength="6" placeholder="000000" autocomplete="off">
-
-        <div class="modal-buttons">
-            <button id="btn-cancel-pin" class="btn-sec" type="button">VOLTAR</button>
-            <button id="btn-confirm-pin" class="btn-sec btn-sec-primary" type="button">CONFIRMAR PIN</button>
-        </div>
+<!-- MODAL DE SOLICITAÇÃO E APROVAÇÃO -->
+<div id="access-overlay" class="overlay">
+  <div class="modal">
+    <h2>Solicitação de Acesso</h2>
+    <p id="access-game-info" style="color: #0088f0; font-weight: bold; margin-bottom: 8px;"></p>
+    
+    <div>
+      <span style="font-size: 11px; color: #888;">IDENTIFICAÇÃO DESTE PS4:</span><br>
+      <div id="display-console-id" class="console-badge">PS4-CARREGANDO</div>
     </div>
+
+    <button id="btn-req-access" class="btn-sec btn-sec-primary" type="button" style="width: 100%; margin: 10px 0;">
+      SOLICITAR MEU ACESSO
+    </button>
+
+    <div id="polling-container" style="display: none;" class="polling-status">
+      <span class="status-dot" style="background: #0088f0; box-shadow: 0 0 8px #0088f0;"></span>
+      <span>Aguardando aprovação no painel (checa a cada 10s)...</span>
+    </div>
+
+    <p style="font-weight: bold; color: #35c759; margin: 10px 0 6px; font-size: 13px;">
+      Ou envie a solicitação direto pelo WhatsApp:
+    </p>
+
+    <a id="link-wa" href="https://w.app/rdilgq" target="_blank">
+      <img class="qr-image" src="/qr.png" alt="QR Code WhatsApp" onerror="this.style.display='none';">
+    </a>
+
+    <div class="whatsapp-box">
+      WhatsApp: (64) 99225-9727
+    </div>
+
+    <div class="time-notice">
+      ⏳ <strong>Aviso:</strong> Uma vez liberado no painel, o acesso permanece ativo por <strong>10 minutos</strong> para iniciar o download/instalação.
+    </div>
+
+    <div class="modal-buttons">
+      <button id="btn-cancel-access" class="btn-sec" type="button">VOLTAR</button>
+    </div>
+  </div>
 </div>
 
 <div id="dlc-overlay" class="overlay">
-    <div class="modal modal-grid-container">
-        <h2 id="dlc-modal-title" style="margin-bottom: 4px;">Pacotes</h2>
-        <div id="dlc-list" class="dlc-grid"></div>
-        <button id="dlc-close" class="btn-sec" type="button" style="width: 100%; margin-top: auto;">FECHAR</button>
-    </div>
+  <div class="modal modal-grid-container">
+    <h2 id="dlc-modal-title" style="margin-bottom: 4px;">Pacotes</h2>
+    <div id="dlc-list" class="dlc-grid"></div>
+    <button id="dlc-close" class="btn-sec" type="button" style="width: 100%; margin-top: auto;">FECHAR</button>
+  </div>
 </div>
 
 <script>
@@ -322,448 +325,474 @@ let games = [];
 let ps4ClientIp = "";
 let isServerOnline = false;
 let selectedGame = null;
+let pollingInterval = null;
+
+// GERA OU RECUPERA IDENTIFICAÇÃO EXCLUSIVA DESTE CONSOLE
+function getOrCreateConsoleId() {
+  let cid = localStorage.getItem("ps4_store_cid");
+  if (!cid) {
+    const part = () => Math.random().toString(36).substring(2, 6).toUpperCase();
+    cid = "PS4-" + part() + "-" + part();
+    localStorage.setItem("ps4_store_cid", cid);
+  }
+  return cid;
+}
+
+const myConsoleId = getOrCreateConsoleId();
 
 function formatSize(bytes) {
-    const value = Number(bytes);
-    if (!Number.isFinite(value) || value < 0) return "Tamanho desconhecido";
-    if (value < 1024) return value + " B";
-    if (value < 1024 * 1024) return (value / 1024).toFixed(2) + " KB";
-    if (value < 1024 * 1024 * 1024) return (value / (1024 * 1024)).toFixed(2) + " MB";
-    return (value / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value < 0) return "Tamanho desconhecido";
+  if (value < 1024) return value + " B";
+  if (value < 1024 * 1024) return (value / 1024).toFixed(2) + " KB";
+  if (value < 1024 * 1024 * 1024) return (value / (1024 * 1024)).toFixed(2) + " MB";
+  return (value / (1024 * 1024 * 1024)).toFixed(2) + " GB";
 }
 
 function applyDeviceAdaptations() {
-    const ipBar = document.querySelector(".ps4-ip-bar");
-    if (!isPS4Browser && ipBar) {
-        ipBar.style.display = "none";
-    }
+  const ipBar = document.querySelector(".ps4-ip-bar");
+  if (!isPS4Browser && ipBar) {
+    ipBar.style.display = "none";
+  }
 }
 
 function initPs4Ip() {
-    const saved = localStorage.getItem("ps4_ip") || "";
-    if (saved) {
-        document.getElementById("ps4-ip").value = saved;
-    }
+  const saved = localStorage.getItem("ps4_ip") || "";
+  if (saved) {
+    document.getElementById("ps4-ip").value = saved;
+  }
 }
 
 function savePs4Ip() {
-    const ip = document.getElementById("ps4-ip").value.trim();
-    if (!ip) {
-        showNotice("Informe o IP do PS4 (ex: 192.168.0.15).", "error");
-        return;
-    }
-    localStorage.setItem("ps4_ip", ip);
-    showNotice("✓ IP do PS4 salvo: " + ip, "success");
+  const ip = document.getElementById("ps4-ip").value.trim();
+  if (!ip) {
+    showNotice("Informe o IP do PS4 (ex: 192.168.0.15).", "error");
+    return;
+  }
+  localStorage.setItem("ps4_ip", ip);
+  showNotice("✓ IP do PS4 salvo: " + ip, "success");
 }
 
 function getTargetIp() {
-    const fromInput = document.getElementById("ps4-ip").value.trim();
-    const fromStorage = localStorage.getItem("ps4_ip") || "";
-    return fromInput || fromStorage || ps4ClientIp;
+  const fromInput = document.getElementById("ps4-ip").value.trim();
+  const fromStorage = localStorage.getItem("ps4_ip") || "";
+  return fromInput || fromStorage || ps4ClientIp;
 }
 
 async function checkStatus() {
-    const badge = document.getElementById("server-status");
-    const text = document.getElementById("server-status-text");
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+  const badge = document.getElementById("server-status");
+  const text = document.getElementById("server-status-text");
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-    try {
-        const response = await fetch("/api/status", { cache: "no-store", signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (!response.ok) throw new Error();
-        const data = await response.json();
+  try {
+    const response = await fetch("/api/status", { cache: "no-store", signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error();
+    const data = await response.json();
 
-        isServerOnline = true;
-        badge.className = "server-status status-online";
-        const ip = data.localAddress || "";
-        ps4ClientIp = data.clientIp || "";
-        text.textContent = "Servidor Online — " + (ip ? ip + ":" + data.port : "Porta " + data.port);
+    isServerOnline = true;
+    badge.className = "server-status status-online";
+    const ip = data.localAddress || "";
+    ps4ClientIp = data.clientIp || "";
+    text.textContent = "Servidor Online — " + (ip ? ip + ":" + data.port : "Porta " + data.port);
 
-        const ipInput = document.getElementById("ps4-ip");
-        if (isPS4Browser && !localStorage.getItem("ps4_ip") && !ipInput.value && ps4ClientIp && ps4ClientIp.startsWith("192.168.")) {
-            ipInput.value = ps4ClientIp;
-            localStorage.setItem("ps4_ip", ps4ClientIp);
-        }
-    } catch (_) {
-        clearTimeout(timeoutId);
-        isServerOnline = false;
-        badge.className = "server-status status-offline";
-        text.textContent = "Servidor Offline";
+    const ipInput = document.getElementById("ps4-ip");
+    if (isPS4Browser && !localStorage.getItem("ps4_ip") && !ipInput.value && ps4ClientIp && ps4ClientIp.startsWith("192.168.")) {
+      ipInput.value = ps4ClientIp;
+      localStorage.setItem("ps4_ip", ps4ClientIp);
     }
+  } catch (_) {
+    clearTimeout(timeoutId);
+    isServerOnline = false;
+    badge.className = "server-status status-offline";
+    text.textContent = "Servidor Offline";
+  }
 }
 
 function normalizeType(pkg) {
-    const type = String(pkg.catalogType || "").toUpperCase();
-    if (type === "GAME") return "GAME";
-    if (type === "UPDATE") return "UPDATE";
-    if (type === "DLC") return "DLC";
-    return "OTHER";
+  const type = String(pkg.catalogType || "").toUpperCase();
+  if (type === "GAME") return "GAME";
+  if (type === "UPDATE") return "UPDATE";
+  if (type === "DLC") return "DLC";
+  return "OTHER";
 }
 
 function groupKey(pkg) {
-    const contentId = String(pkg.contentId || "").trim().toUpperCase();
-    if (contentId) {
-        const match = contentId.match(/CUSA\d+/i);
-        if (match) return match[0].toUpperCase();
-        const prefix = contentId.split("_00-")[0];
-        if (prefix) return prefix;
-    }
-    return (pkg.title || ("PKG_" + pkg.id)).trim().toUpperCase();
+  const contentId = String(pkg.contentId || "").trim().toUpperCase();
+  if (contentId) {
+    const match = contentId.match(/CUSA\d+/i);
+    if (match) return match[0].toUpperCase();
+    const prefix = contentId.split("_00-")[0];
+    if (prefix) return prefix;
+  }
+  return (pkg.title || ("PKG_" + pkg.id)).trim().toUpperCase();
 }
 
 function buildCatalog(packages) {
-    const groups = new Map();
-    for (const pkg of packages) {
-        const type = normalizeType(pkg);
-        const key = groupKey(pkg);
+  const groups = new Map();
+  for (const pkg of packages) {
+    const type = normalizeType(pkg);
+    const key = groupKey(pkg);
 
-        if (!groups.has(key)) {
-            groups.set(key, { key, title: "", cover: null, game: null, updates: [], dlcs: [] });
-        }
-        const game = groups.get(key);
-        const title = String(pkg.title || "").trim();
-
-        if (type === "GAME") {
-            game.title = title;
-            if (!game.game) game.game = pkg;
-        } else if (!game.title && title) {
-            game.title = title;
-        }
-
-        if (pkg.iconUrl && (type === "GAME" || !game.cover)) {
-            game.cover = pkg.iconUrl;
-        }
-
-        if (type === "UPDATE") game.updates.push(pkg);
-        else if (type === "DLC") game.dlcs.push(pkg);
-        else if (type !== "GAME" && !game.game) game.game = pkg;
+    if (!groups.has(key)) {
+      groups.set(key, { key, title: "", cover: null, game: null, updates: [], dlcs: [] });
     }
-    const result = Array.from(groups.values());
-    result.sort((a, b) => a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" }));
-    return result;
+    const game = groups.get(key);
+    const title = String(pkg.title || "").trim();
+
+    if (type === "GAME") {
+      game.title = title;
+      if (!game.game) game.game = pkg;
+    } else if (!game.title && title) {
+      game.title = title;
+    }
+
+    if (pkg.iconUrl && (type === "GAME" || !game.cover)) {
+      game.cover = pkg.iconUrl;
+    }
+
+    if (type === "UPDATE") game.updates.push(pkg);
+    else if (type === "DLC") game.dlcs.push(pkg);
+    else if (type !== "GAME" && !game.game) game.game = pkg;
+  }
+  const result = Array.from(groups.values());
+  result.sort((a, b) => a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" }));
+  return result;
 }
 
 function renderCatalog() {
-    const container = document.getElementById("catalog");
-    const query = document.getElementById("search").value.trim().toLowerCase();
+  const container = document.getElementById("catalog");
+  const query = document.getElementById("search").value.trim().toLowerCase();
 
-    const filtered = games.filter(g => !query || g.title.toLowerCase().includes(query) || g.key.toLowerCase().includes(query));
-    container.innerHTML = "";
+  const filtered = games.filter(g => !query || g.title.toLowerCase().includes(query) || g.key.toLowerCase().includes(query));
+  container.innerHTML = "";
 
-    if (!filtered.length) {
-        container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #777; padding: 30px;">Nenhum jogo encontrado.</div>';
-        return;
+  if (!filtered.length) {
+    container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #777; padding: 30px;">Nenhum jogo encontrado.</div>';
+    return;
+  }
+
+  for (const game of filtered) {
+    const card = document.createElement("article");
+    card.className = "game-card";
+
+    const coverWrap = document.createElement("div");
+    coverWrap.className = "cover-wrap";
+    if (game.cover) {
+      const img = document.createElement("img");
+      img.className = "cover"; img.src = game.cover; img.loading = "lazy";
+      coverWrap.appendChild(img);
+    } else {
+      const pl = document.createElement("div");
+      pl.className = "cover-placeholder"; pl.textContent = game.key;
+      coverWrap.appendChild(pl);
     }
 
-    for (const game of filtered) {
-        const card = document.createElement("article");
-        card.className = "game-card";
+    const content = document.createElement("div");
+    content.className = "game-content";
 
-        const coverWrap = document.createElement("div");
-        coverWrap.className = "cover-wrap";
-        if (game.cover) {
-            const img = document.createElement("img");
-            img.className = "cover"; img.src = game.cover; img.loading = "lazy";
-            coverWrap.appendChild(img);
-        } else {
-            const pl = document.createElement("div");
-            pl.className = "cover-placeholder"; pl.textContent = game.key;
-            coverWrap.appendChild(pl);
-        }
+    const title = document.createElement("h2");
+    title.className = "game-title"; title.textContent = game.title || "Jogo";
 
-        const content = document.createElement("div");
-        content.className = "game-content";
+    const id = document.createElement("p");
+    id.className = "game-id"; id.textContent = game.key;
 
-        const title = document.createElement("h2");
-        title.className = "game-title"; title.textContent = game.title || "Jogo";
+    const btn = document.createElement("button");
+    btn.className = "btn-access";
+    btn.type = "button";
+    btn.textContent = "ACESSAR";
+    btn.onclick = () => openAccessModal(game);
 
-        const id = document.createElement("p");
-        id.className = "game-id"; id.textContent = game.key;
+    content.appendChild(title);
+    content.appendChild(id);
+    content.appendChild(btn);
 
-        const btn = document.createElement("button");
-        btn.className = "btn-access";
-        btn.type = "button";
-        btn.textContent = "ACESSAR";
-        btn.onclick = () => openPinModal(game);
-
-        content.appendChild(title);
-        content.appendChild(id);
-        content.appendChild(btn);
-
-        card.appendChild(coverWrap);
-        card.appendChild(content);
-        container.appendChild(card);
-    }
+    card.appendChild(coverWrap);
+    card.appendChild(content);
+    container.appendChild(card);
+  }
 }
 
-function openPinModal(game) {
-    selectedGame = game;
-    document.getElementById("pin-modal-game-info").textContent = game.title + " (" + game.key + ")";
-    document.getElementById("pin-input").value = "";
-    const btnReq = document.getElementById("btn-req-pin");
-    btnReq.disabled = false;
-    btnReq.textContent = "SOLICITAR PIN";
-    document.getElementById("pin-overlay").classList.add("visible");
-    document.getElementById("pin-input").focus();
+function openAccessModal(game) {
+  selectedGame = game;
+  document.getElementById("access-game-info").textContent = game.title + " (" + game.key + ")";
+  document.getElementById("display-console-id").textContent = myConsoleId;
+  
+  const btnReq = document.getElementById("btn-req-access");
+  btnReq.disabled = false;
+  btnReq.textContent = "SOLICITAR MEU ACESSO";
+  document.getElementById("polling-container").style.display = "none";
+
+  const msg = encodeURIComponent(`Olá! Solicito liberação de acesso para o jogo ${game.title} (${game.key}). ID do meu Console: ${myConsoleId}`);
+  document.getElementById("link-wa").href = `https://wa.me/5564992259727?text=${msg}`;
+
+  document.getElementById("access-overlay").classList.add("visible");
+  checkAccessStatus();
 }
 
-function closePinModal() {
-    document.getElementById("pin-overlay").classList.remove("visible");
+function closeAccessModal() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+  }
+  document.getElementById("access-overlay").classList.remove("visible");
 }
 
-async function requestPin() {
-    if (!selectedGame) return;
-    const btn = document.getElementById("btn-req-pin");
-    btn.disabled = true;
-    btn.textContent = "SOLICITANDO...";
+async function requestAccess() {
+  if (!selectedGame) return;
+  const btn = document.getElementById("btn-req-access");
+  btn.disabled = true;
+  btn.textContent = "SOLICITANDO...";
 
-    try {
-        const res = await fetch("/api/request-pin", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title: selectedGame.title, gameKey: selectedGame.key })
-        });
-        const data = await res.json();
-        if (data.success) {
-            btn.textContent = "✓ SOLICITAÇÃO ENVIADA!";
-            showNotice("✓ Solicitação enviada! Chame no WhatsApp para receber seu PIN.", "success");
-        } else {
-            btn.disabled = false;
-            btn.textContent = "SOLICITAR PIN";
-            showNotice("Falha ao registrar solicitação no servidor.", "error");
-        }
-    } catch (_) {
-        btn.disabled = false;
-        btn.textContent = "SOLICITAR PIN";
-        showNotice("Erro ao comunicar com o servidor.", "error");
+  try {
+    const res = await fetch("/api/request-access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        consoleId: myConsoleId,
+        gameKey: selectedGame.key,
+        title: selectedGame.title,
+        ip: getTargetIp()
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      btn.textContent = "✓ SOLICITAÇÃO ENVIADA!";
+      document.getElementById("polling-container").style.display = "flex";
+      showNotice("✓ Solicitação enviada! Chame no WhatsApp ou aguarde aprovação.", "success");
+      startPollingAccess();
+    } else {
+      btn.disabled = false;
+      btn.textContent = "SOLICITAR MEU ACESSO";
+      showNotice("Falha ao registrar solicitação.", "error");
     }
+  } catch (_) {
+    btn.disabled = false;
+    btn.textContent = "SOLICITAR MEU ACESSO";
+    showNotice("Erro ao conectar com o app no celular.", "error");
+  }
 }
 
-async function verifyPin() {
-    const pin = document.getElementById("pin-input").value.trim();
-    if (pin.length !== 6) {
-        showNotice("Digite o PIN de 6 dígitos recebido no WhatsApp.", "error");
-        return;
-    }
+function startPollingAccess() {
+  if (pollingInterval) clearInterval(pollingInterval);
+  // Polling estritamente configurado para 10 segundos
+  pollingInterval = setInterval(checkAccessStatus, 10000);
+}
 
-    try {
-        const res = await fetch("/api/verify-pin", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pin: pin, gameKey: selectedGame.key })
-        });
-        const data = await res.json();
-        if (data.valid) {
-            closePinModal();
-            showGameDetails(selectedGame);
-        } else {
-            showNotice(data.message || "PIN inválido ou exclusivo para outro jogo.", "error");
-        }
-    } catch (_) {
-        showNotice("Erro ao validar PIN com o servidor.", "error");
+async function checkAccessStatus() {
+  if (!selectedGame) return;
+  try {
+    const res = await fetch(`/api/check-access?consoleId=${encodeURIComponent(myConsoleId)}&gameKey=${encodeURIComponent(selectedGame.key)}`, {
+      cache: "no-store"
+    });
+    const data = await res.json();
+    if (data.approved) {
+      closeAccessModal();
+      showNotice("✓ Acesso liberado pelo administrador!", "success");
+      showGameDetails(selectedGame);
     }
+  } catch (_) {}
 }
 
 function triggerBrowserDownload(pkg) {
-    window.open(`/download?id=${pkg.id}`, "_blank");
-    showNotice(`Iniciando download de: ${pkg.title || "PKG"}`, "success");
+  window.open(`/download?id=${pkg.id}&consoleId=${encodeURIComponent(myConsoleId)}`, "_blank");
+  showNotice(`Iniciando download de: ${pkg.title || "PKG"}`, "success");
 }
 
 function showGameDetails(game) {
-    document.getElementById("view-catalog").style.display = "none";
-    const detailsView = document.getElementById("view-details");
-    detailsView.classList.add("active");
+  document.getElementById("view-catalog").style.display = "none";
+  const detailsView = document.getElementById("view-details");
+  detailsView.classList.add("active");
 
-    document.getElementById("detail-title").textContent = game.title;
-    document.getElementById("detail-id").textContent = game.key;
-    document.getElementById("detail-cover").src = game.cover || "";
+  document.getElementById("detail-title").textContent = game.title;
+  document.getElementById("detail-id").textContent = game.key;
+  document.getElementById("detail-cover").src = game.cover || "";
 
-    const actions = document.getElementById("detail-actions");
-    actions.innerHTML = "";
+  const actions = document.getElementById("detail-actions");
+  actions.innerHTML = "";
 
-    const actionText = isPS4Browser ? "INSTALAR" : "BAIXAR";
+  const actionText = isPS4Browser ? "INSTALAR" : "BAIXAR";
 
-    if (game.game) {
-        const btn = document.createElement("button");
-        btn.className = "btn-install btn-install-game";
-        btn.textContent = `${actionText} JOGO BASE (${formatSize(game.game.size)})`;
-        btn.onclick = () => {
-            if (isPS4Browser) triggerInstall(game.game, btn);
-            else triggerBrowserDownload(game.game);
-        };
-        actions.appendChild(btn);
-    }
+  if (game.game) {
+    const btn = document.createElement("button");
+    btn.className = "btn-install btn-install-game";
+    btn.textContent = `${actionText} JOGO BASE (${formatSize(game.game.size)})`;
+    btn.onclick = () => {
+      if (isPS4Browser) triggerInstall(game.game, btn);
+      else triggerBrowserDownload(game.game);
+    };
+    actions.appendChild(btn);
+  }
 
-    if (game.updates.length) {
-        const btn = document.createElement("button");
-        btn.className = "btn-install btn-install-upd";
-        btn.textContent = game.updates.length > 1 
-            ? `ATUALIZAÇÕES (${game.updates.length})` 
-            : `${actionText} UPDATE (${formatSize(game.updates[0].size)})`;
-        btn.onclick = () => {
-            if (game.updates.length === 1) {
-                if (isPS4Browser) triggerInstall(game.updates[0], btn);
-                else triggerBrowserDownload(game.updates[0]);
-            } else {
-                openPackageModal("Atualizações — " + game.title, game.updates);
-            }
-        };
-        actions.appendChild(btn);
-    }
+  if (game.updates.length) {
+    const btn = document.createElement("button");
+    btn.className = "btn-install btn-install-upd";
+    btn.textContent = game.updates.length > 1 
+      ? `ATUALIZAÇÕES (${game.updates.length})` 
+      : `${actionText} UPDATE (${formatSize(game.updates[0].size)})`;
+    btn.onclick = () => {
+      if (game.updates.length === 1) {
+        if (isPS4Browser) triggerInstall(game.updates[0], btn);
+        else triggerBrowserDownload(game.updates[0]);
+      } else {
+        openPackageModal("Atualizações — " + game.title, game.updates);
+      }
+    };
+    actions.appendChild(btn);
+  }
 
-    if (game.dlcs.length) {
-        const btn = document.createElement("button");
-        btn.className = "btn-install btn-install-dlc";
-        btn.textContent = `DLCs DISPONÍVEIS (${game.dlcs.length})`;
-        btn.onclick = () => openPackageModal("DLCs — " + game.title, game.dlcs);
-        actions.appendChild(btn);
-    }
+  if (game.dlcs.length) {
+    const btn = document.createElement("button");
+    btn.className = "btn-install btn-install-dlc";
+    btn.textContent = `DLCs DISPONÍVEIS (${game.dlcs.length})`;
+    btn.onclick = () => openPackageModal("DLCs — " + game.title, game.dlcs);
+    actions.appendChild(btn);
+  }
 }
 
 function backToCatalog() {
-    document.getElementById("view-details").classList.remove("active");
-    document.getElementById("view-catalog").style.display = "block";
-    selectedGame = null;
+  document.getElementById("view-details").classList.remove("active");
+  document.getElementById("view-catalog").style.display = "block";
+  selectedGame = null;
 }
 
 async function triggerInstall(pkg, button) {
-    if (!isServerOnline) {
-        showNotice("Servidor Offline! Verifique o app no celular.", "error");
-        return;
-    }
+  if (!isServerOnline) {
+    showNotice("Servidor Offline! Verifique o app no celular.", "error");
+    return;
+  }
 
-    const targetIp = getTargetIp();
-    if (!targetIp) {
-        showNotice("Por favor, digite o IP do seu PS4 na barra no topo antes de instalar!", "error");
-        document.getElementById("ps4-ip").focus();
-        return;
-    }
+  const targetIp = getTargetIp();
+  if (!targetIp) {
+    showNotice("Por favor, digite o IP do seu PS4 na barra no topo antes de instalar!", "error");
+    document.getElementById("ps4-ip").focus();
+    return;
+  }
 
-    button.disabled = true;
-    const original = button.textContent;
-    button.textContent = "ENVIANDO...";
-    showNotice("Enviando comando para o PS4 (" + targetIp + ")...");
+  button.disabled = true;
+  const original = button.textContent;
+  button.textContent = "ENVIANDO...";
+  showNotice("Enviando comando para o PS4 (" + targetIp + ")...");
 
-    try {
-        const res = await fetch("/api/install-dpi", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pkgId: pkg.id, ip: targetIp })
-        });
-        const data = await res.json();
-        if (data.success) {
-            button.textContent = "INICIADO!";
-            showNotice("✓ Instalação iniciada! Verifique as notificações do PS4.", "success");
-        } else {
-            button.textContent = "FALHA";
-            showNotice("✗ " + (data.error || "Erro ao iniciar instalação."), "error");
-        }
-    } catch (_) {
-        button.textContent = "ERRO";
-        showNotice("Falha ao comunicar com o servidor.", "error");
-    } finally {
-        setTimeout(() => {
-            button.disabled = false;
-            button.textContent = original;
-        }, 5000);
+  try {
+    const res = await fetch("/api/install-dpi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pkgId: pkg.id, ip: targetIp, consoleId: myConsoleId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      button.textContent = "INICIADO!";
+      showNotice("✓ Instalação iniciada! Verifique as notificações do PS4.", "success");
+    } else {
+      button.textContent = "FALHA";
+      showNotice("✗ " + (data.error || "Erro ao iniciar instalação."), "error");
     }
+  } catch (_) {
+    button.textContent = "ERRO";
+    showNotice("Falha ao comunicar com o servidor.", "error");
+  } finally {
+    setTimeout(() => {
+      button.disabled = false;
+      button.textContent = original;
+    }, 5000);
+  }
 }
 
 function openPackageModal(title, list) {
-    document.getElementById("dlc-modal-title").textContent = title;
-    const container = document.getElementById("dlc-list");
-    container.innerHTML = "";
+  document.getElementById("dlc-modal-title").textContent = title;
+  const container = document.getElementById("dlc-list");
+  container.innerHTML = "";
 
-    const fallbackCover = selectedGame ? selectedGame.cover : null;
+  const fallbackCover = selectedGame ? selectedGame.cover : null;
 
-    for (const item of list) {
-        const card = document.createElement("article");
-        card.className = "game-card";
+  for (const item of list) {
+    const card = document.createElement("article");
+    card.className = "game-card";
 
-        const coverWrap = document.createElement("div");
-        coverWrap.className = "cover-wrap";
-        
-        const coverSrc = item.iconUrl || fallbackCover;
-        if (coverSrc) {
-            const img = document.createElement("img");
-            img.className = "cover";
-            img.src = coverSrc;
-            img.loading = "lazy";
-            coverWrap.appendChild(img);
-        } else {
-            const pl = document.createElement("div");
-            pl.className = "cover-placeholder";
-            pl.textContent = item.contentId ? item.contentId.substring(0, 9) : "PKG";
-            coverWrap.appendChild(pl);
-        }
-
-        const content = document.createElement("div");
-        content.className = "game-content";
-
-        const itemTitle = document.createElement("h2");
-        itemTitle.className = "game-title";
-        itemTitle.textContent = item.title || "Pacote";
-
-        const sizeLabel = document.createElement("p");
-        sizeLabel.className = "game-id";
-        sizeLabel.style.color = "#64b5f6";
-        sizeLabel.style.fontWeight = "bold";
-        sizeLabel.textContent = formatSize(item.size);
-
-        const btn = document.createElement("button");
-        btn.className = "btn-access";
-        btn.type = "button";
-        btn.textContent = isPS4Browser ? "INSTALAR" : "BAIXAR";
-        btn.onclick = () => {
-            if (isPS4Browser) triggerInstall(item, btn);
-            else triggerBrowserDownload(item);
-        };
-
-        content.appendChild(itemTitle);
-        content.appendChild(sizeLabel);
-        content.appendChild(btn);
-
-        card.appendChild(coverWrap);
-        card.appendChild(content);
-        container.appendChild(card);
+    const coverWrap = document.createElement("div");
+    coverWrap.className = "cover-wrap";
+    
+    const coverSrc = item.iconUrl || fallbackCover;
+    if (coverSrc) {
+      const img = document.createElement("img");
+      img.className = "cover";
+      img.src = coverSrc;
+      img.loading = "lazy";
+      coverWrap.appendChild(img);
+    } else {
+      const pl = document.createElement("div");
+      pl.className = "cover-placeholder";
+      pl.textContent = item.contentId ? item.contentId.substring(0, 9) : "PKG";
+      coverWrap.appendChild(pl);
     }
-    document.getElementById("dlc-overlay").classList.add("visible");
+
+    const content = document.createElement("div");
+    content.className = "game-content";
+
+    const itemTitle = document.createElement("h2");
+    itemTitle.className = "game-title";
+    itemTitle.textContent = item.title || "Pacote";
+
+    const sizeLabel = document.createElement("p");
+    sizeLabel.className = "game-id";
+    sizeLabel.style.color = "#64b5f6";
+    sizeLabel.style.fontWeight = "bold";
+    sizeLabel.textContent = formatSize(item.size);
+
+    const btn = document.createElement("button");
+    btn.className = "btn-access";
+    btn.type = "button";
+    btn.textContent = isPS4Browser ? "INSTALAR" : "BAIXAR";
+    btn.onclick = () => {
+      if (isPS4Browser) triggerInstall(item, btn);
+      else triggerBrowserDownload(item);
+    };
+
+    content.appendChild(itemTitle);
+    content.appendChild(sizeLabel);
+    content.appendChild(btn);
+
+    card.appendChild(coverWrap);
+    card.appendChild(content);
+    container.appendChild(card);
+  }
+  document.getElementById("dlc-overlay").classList.add("visible");
 }
 
 function showNotice(msg, type = "") {
-    const el = document.getElementById("notice");
-    el.textContent = msg;
-    el.className = "notice visible " + type;
-    setTimeout(() => el.classList.remove("visible"), 6000);
+  const el = document.getElementById("notice");
+  el.textContent = msg;
+  el.className = "notice visible " + type;
+  setTimeout(() => el.classList.remove("visible"), 6000);
 }
 
 async function loadPackages() {
-    try {
-        const res = await fetch("/api/packages", { cache: "no-store" });
-        const data = await res.json();
-        allPackages = data.packages || [];
-        games = buildCatalog(allPackages);
-        renderCatalog();
-    } catch (_) {}
+  try {
+    const res = await fetch("/api/packages", { cache: "no-store" });
+    const data = await res.json();
+    allPackages = data.packages || [];
+    games = buildCatalog(allPackages);
+    renderCatalog();
+  } catch (_) {}
 }
 
 document.getElementById("search").addEventListener("input", renderCatalog);
 document.getElementById("refresh").addEventListener("click", () => { checkStatus(); loadPackages(); });
 document.getElementById("btn-back").addEventListener("click", backToCatalog);
-document.getElementById("btn-req-pin").addEventListener("click", requestPin);
-document.getElementById("btn-cancel-pin").addEventListener("click", closePinModal);
-document.getElementById("btn-confirm-pin").addEventListener("click", verifyPin);
+document.getElementById("btn-req-access").addEventListener("click", requestAccess);
+document.getElementById("btn-cancel-access").addEventListener("click", closeAccessModal);
 document.getElementById("dlc-close").addEventListener("click", () => document.getElementById("dlc-overlay").classList.remove("visible"));
 document.getElementById("btn-save-ip").addEventListener("click", savePs4Ip);
 document.getElementById("ps4-ip").addEventListener("change", savePs4Ip);
 
 document.addEventListener("DOMContentLoaded", async () => {
-    applyDeviceAdaptations();
-    if (isPS4Browser) initPs4Ip();
-    await checkStatus();
-    await loadPackages();
-    setInterval(checkStatus, 4000);
+  applyDeviceAdaptations();
+  if (isPS4Browser) initPs4Ip();
+  await checkStatus();
+  await loadPackages();
+  setInterval(checkStatus, 4000);
 });
 </script>
 </body>
