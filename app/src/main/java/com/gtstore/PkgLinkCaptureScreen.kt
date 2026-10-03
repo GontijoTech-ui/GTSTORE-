@@ -6,7 +6,6 @@ import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -35,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import java.io.ByteArrayInputStream
 
 data class PkgCaptureResult(
     val sourceUrl: String,
@@ -46,13 +44,13 @@ data class PkgCaptureResult(
 private const val BROWSER_USER_AGENT =
     "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
-// Termos comuns em URLs de anúncios agressivos, cassinos e rastreadores
+// Domínios conhecidos de redes parasitárias que tentam desviar a navegação
 private val AD_BLOCK_KEYWORDS = listOf(
     "doubleclick", "adservice", "popads", "popcash", "propellerads",
     "adsterra", "exoclick", "bet365", "betano", "blaze", "1xbet",
     "shorte.st", "adf.ly", "ouo.io", "trafficjunky", "syndication",
-    "onclickprediction", "clickadu", "histats", "track.", "analytics",
-    "leonbet", "bcgameloop", "adrun", "banner", "cpm", "ads."
+    "onclickprediction", "clickadu", "histats", "track.", "leonbet",
+    "bcgameloop"
 )
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -82,6 +80,7 @@ fun PkgLinkCaptureScreen(
         return AD_BLOCK_KEYWORDS.any { lower.contains(it) }
     }
 
+    // Salta para a antepenúltima página do SuperPSX
     fun voltarParaAntepenultimaSuperPsx(view: WebView) {
         val history = view.copyBackForwardList()
         val currentIndex = history.currentIndex
@@ -245,9 +244,10 @@ fun PkgLinkCaptureScreen(
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
                     settings.loadsImagesAutomatically = true
-                    // DESLIGADO para impedir o congelamento com popups parasitas
-                    settings.javaScriptCanOpenWindowsAutomatically = false
+                    
+                    // Não abre popups em novas abas (evita travamentos)
                     settings.setSupportMultipleWindows(false)
+                    settings.javaScriptCanOpenWindowsAutomatically = false
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
                     val cookieManager = CookieManager.getInstance()
@@ -257,19 +257,6 @@ fun PkgLinkCaptureScreen(
                     webChromeClient = WebChromeClient()
 
                     webViewClient = object : WebViewClient() {
-                        // 1. Intercepta e mata requisições de anúncios pela raiz (economiza CPU/RAM e evita congelar)
-                        override fun shouldInterceptRequest(
-                            view: WebView?,
-                            request: WebResourceRequest?
-                        ): WebResourceResponse? {
-                            val reqUrl = request?.url?.toString() ?: ""
-                            if (isAdOrSpam(reqUrl)) {
-                                return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream("".toByteArray()))
-                            }
-                            return super.shouldInterceptRequest(view, request)
-                        }
-
-                        // 2. Controla o redirecionamento
                         override fun shouldOverrideUrlLoading(
                             view: WebView,
                             request: WebResourceRequest
@@ -279,11 +266,13 @@ fun PkgLinkCaptureScreen(
                             if (processingCapture) return true
 
                             val scheme = request.url.scheme?.lowercase() ?: ""
+                            // Ignora chamadas para abrir apps externos (Play Store, etc.)
                             if (scheme != "http" && scheme != "https") {
-                                AppLogger.log("[PkgLinkCaptureScreen] Esquema externo evitado: $urlString")
+                                AppLogger.log("[PkgLinkCaptureScreen] Esquema externo bloqueado: $urlString")
                                 return true
                             }
 
+                            // Bloqueia se o destino de navegação for rede de anúncios
                             if (isAdOrSpam(urlString)) {
                                 AppLogger.log("[PkgLinkCaptureScreen] Propaganda bloqueada: $urlString")
                                 return true
@@ -292,6 +281,7 @@ fun PkgLinkCaptureScreen(
                             val cleanPath = urlString.substringBefore("?")
                             val host = request.url.host?.lowercase() ?: ""
 
+                            // Captura imediata se for o arquivo .pkg real fora da página web do Filekeeper
                             if (cleanPath.endsWith(".pkg", ignoreCase = true) && !host.contains("filekeeper.net")) {
                                 handleCapturedUrl(urlString)
                                 return true
@@ -306,49 +296,8 @@ fun PkgLinkCaptureScreen(
                             canGoBack = view.canGoBack()
 
                             if (!processingCapture) {
-                                status = "Página carregada."
+                                status = "Página carregada. Conclua a verificação e avance."
                             }
-
-                            // Script cirúrgico: remove camadas invisíveis e desativa window.open para não travar
-                            val antiAdOverlayScript = """
-                                (function() {
-                                    // Bloqueia tentativas de scripts abrirem abas à força
-                                    window.open = function() { return null; };
-
-                                    // Remove iframes suspeitos e camadas transparentes por cima da tela
-                                    const elements = document.querySelectorAll('iframe, div, a');
-                                    elements.forEach(el => {
-                                        const style = window.getComputedStyle(el);
-                                        const zIndex = parseInt(style.zIndex, 10);
-                                        // Detecta divs transparentes que ocupam a tela inteira (clickjack)
-                                        if (zIndex > 1000 && (style.position === 'fixed' || style.position === 'absolute') && style.opacity === '0') {
-                                            el.remove();
-                                        }
-                                    });
-
-                                    // Clica no verificador legítimo se disponível
-                                    const captchaSelectors = [
-                                        '#recaptcha-anchor',
-                                        '#checkbox',
-                                        'input[type="checkbox"]',
-                                        '.cf-turnstile input',
-                                        '.cf-turnstile',
-                                        '#amzn-captcha-verify-button'
-                                    ];
-                                    
-                                    for (let sel of captchaSelectors) {
-                                        let el = document.querySelector(sel);
-                                        if (el && el.offsetParent !== null) {
-                                            el.click();
-                                            return;
-                                        }
-                                    }
-                                })();
-                            """.trimIndent()
-
-                            view.postDelayed({
-                                view.evaluateJavascript(antiAdOverlayScript, null)
-                            }, 500)
                         }
                     }
 
