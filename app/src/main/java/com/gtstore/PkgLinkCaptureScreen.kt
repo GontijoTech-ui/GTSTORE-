@@ -50,33 +50,76 @@ private const val BROWSER_USER_AGENT =
 fun PkgLinkCaptureScreen(
     sourceUrl: String,
     allowedDomains: List<String> = emptyList(),
-    onCaptured: (PkgCaptureResult) -> Unit,
-    onProcessingComplete: () -> Unit,
+    onCaptured: (
+        result: PkgCaptureResult,
+        onComplete: () -> Unit
+    ) -> Unit,
     onCancel: () -> Unit
 ) {
-    var currentDisplayUrl by remember { mutableStateOf(sourceUrl) }
-    var currentPageUrl by remember { mutableStateOf(sourceUrl) }
-
-    var returnPageUrl by remember { mutableStateOf("") }
-    var originPageUrl by remember { mutableStateOf("") }
-
-    var status by remember {
-        mutableStateOf("Aguardando início do download do PKG...")
+    var currentDisplayUrl by remember {
+        mutableStateOf(sourceUrl)
     }
 
-    var captured by remember { mutableStateOf(false) }
-    var processing by remember { mutableStateOf(false) }
+    var currentPageUrl by remember {
+        mutableStateOf(sourceUrl)
+    }
 
-    var canGoBack by remember { mutableStateOf(false) }
-    var browser by remember { mutableStateOf<WebView?>(null) }
+    /*
+     * Primeira etapa:
+     * página para onde o WebView deverá voltar
+     * depois que o processamento terminar.
+     */
+    var returnPageUrl by remember {
+        mutableStateOf("")
+    }
+
+    /*
+     * Segunda etapa:
+     * página que será gravada no catálogo como
+     * página de origem.
+     */
+    var originPageUrl by remember {
+        mutableStateOf("")
+    }
+
+    var status by remember {
+        mutableStateOf(
+            "Aguardando início do download do PKG..."
+        )
+    }
+
+    var captured by remember {
+        mutableStateOf(false)
+    }
+
+    var processing by remember {
+        mutableStateOf(false)
+    }
+
+    var canGoBack by remember {
+        mutableStateOf(false)
+    }
+
+    var browser by remember {
+        mutableStateOf<WebView?>(null)
+    }
 
     val sourceHost = remember(sourceUrl) {
         try {
-            Uri.parse(sourceUrl).host?.lowercase() ?: ""
+            Uri.parse(sourceUrl)
+                .host
+                ?.lowercase()
+                ?: ""
         } catch (_: Exception) {
             ""
         }
     }
+
+    /*
+     * ========================================================
+     * LIMPEZA DO WEBVIEW
+     * ========================================================
+     */
 
     DisposableEffect(Unit) {
         onDispose {
@@ -86,14 +129,25 @@ fun PkgLinkCaptureScreen(
         }
     }
 
+    /*
+     * ========================================================
+     * DOMÍNIOS PERMITIDOS
+     * ========================================================
+     */
+
     fun isDomainPermitted(url: String): Boolean {
         val host = try {
-            Uri.parse(url).host?.lowercase() ?: ""
+            Uri.parse(url)
+                .host
+                ?.lowercase()
+                ?: ""
         } catch (_: Exception) {
             ""
         }
 
-        if (host.isBlank()) return true
+        if (host.isBlank()) {
+            return true
+        }
 
         val isSource =
             sourceHost.isNotEmpty() &&
@@ -102,79 +156,233 @@ fun PkgLinkCaptureScreen(
                                     sourceHost.contains(host)
                             )
 
-        val isAllowed = allowedDomains.any { domain ->
-            domain.isNotBlank() &&
-                    host.contains(domain.trim().lowercase())
-        }
+        val isAllowed =
+            allowedDomains.any { domain ->
+                val cleanDomain =
+                    domain.trim().lowercase()
 
+                cleanDomain.isNotBlank() &&
+                        host.contains(cleanDomain)
+            }
+
+        /*
+         * Domínios intermediários/CDN utilizados
+         * pelo fluxo atual.
+         */
         val isCommonCdn =
             host.contains("filekeeper") ||
                     host.contains("dlproxy") ||
                     host.contains("akirabox") ||
                     host.contains("mocha")
 
-        return isSource || isAllowed || isCommonCdn
+        return isSource ||
+                isAllowed ||
+                isCommonCdn
     }
 
+    /*
+     * ========================================================
+     * URL ATUAL
+     * ========================================================
+     *
+     * Quando o usuário pressiona um dos botões, damos
+     * prioridade à URL efetivamente carregada no WebView.
+     */
+
     fun getCurrentBrowserUrl(): String {
-        val webViewUrl = browser?.url?.trim().orEmpty()
+        val webViewUrl =
+            browser?.url
+                ?.trim()
+                .orEmpty()
 
         return when {
-            webViewUrl.isNotBlank() -> webViewUrl
-            currentPageUrl.isNotBlank() -> currentPageUrl
-            currentDisplayUrl.isNotBlank() -> currentDisplayUrl
-            else -> sourceUrl
+            webViewUrl.isNotBlank() ->
+                webViewUrl
+
+            currentPageUrl.isNotBlank() ->
+                currentPageUrl
+
+            currentDisplayUrl.isNotBlank() ->
+                currentDisplayUrl
+
+            else ->
+                sourceUrl
         }
     }
 
+    /*
+     * ========================================================
+     * PRIMEIRO CLIQUE
+     * ========================================================
+     *
+     * Salva a página para a qual o WebView deverá voltar
+     * depois que o processamento do PKG terminar.
+     */
+
     fun saveReturnPage() {
-        val url = getCurrentBrowserUrl()
+        val url =
+            getCurrentBrowserUrl()
 
         if (url.isBlank()) {
-            status = "Não foi possível salvar a página de retorno."
+            status =
+                "Não foi possível salvar a página de retorno."
+
             return
         }
 
         returnPageUrl = url
 
-        status = "Página de retorno salva."
+        status =
+            "Página de retorno salva."
 
         AppLogger.log(
-            "[PkgLinkCaptureScreen] Página de RETORNO salva: $returnPageUrl"
+            "[PkgLinkCaptureScreen] " +
+                    "Página de RETORNO salva: $returnPageUrl"
         )
     }
 
+    /*
+     * ========================================================
+     * SEGUNDO CLIQUE
+     * ========================================================
+     *
+     * Salva a página que será enviada ao CatalogManager
+     * como sourceUrl.
+     */
+
     fun saveOriginPage() {
-        val url = getCurrentBrowserUrl()
+        val url =
+            getCurrentBrowserUrl()
 
         if (url.isBlank()) {
-            status = "Não foi possível salvar a página de origem."
+            status =
+                "Não foi possível salvar a página de origem."
+
             return
         }
 
         originPageUrl = url
 
-        status = "Página de origem salva."
+        status =
+            "Página de origem salva."
 
         AppLogger.log(
-            "[PkgLinkCaptureScreen] Página de ORIGEM salva: $originPageUrl"
+            "[PkgLinkCaptureScreen] " +
+                    "Página de ORIGEM salva: $originPageUrl"
         )
     }
+
+    /*
+     * ========================================================
+     * FINALIZAÇÃO DO PROCESSAMENTO
+     * ========================================================
+     *
+     * Esta função só é chamada pelo onComplete fornecido
+     * ao callback onCaptured.
+     *
+     * Portanto:
+     *
+     * captura PKG
+     *      ↓
+     * CatalogManager processa
+     *      ↓
+     * CatalogManager termina
+     *      ↓
+     * onComplete()
+     *      ↓
+     * WebView volta para returnPageUrl
+     */
+
+    fun finishProcessingAndReturn() {
+        if (!processing) {
+            return
+        }
+
+        val targetUrl =
+            returnPageUrl
+                .trim()
+
+        /*
+         * Não existe página de retorno salva.
+         *
+         * Nesse caso simplesmente libera a tela novamente.
+         */
+        if (targetUrl.isBlank()) {
+            processing = false
+            captured = false
+
+            status =
+                "Processamento concluído."
+
+            AppLogger.log(
+                "[PkgLinkCaptureScreen] " +
+                        "Processamento concluído sem página de retorno."
+            )
+
+            return
+        }
+
+        status =
+            "Processamento concluído. Voltando à página..."
+
+        AppLogger.log(
+            "[PkgLinkCaptureScreen] " +
+                    "Navegando para página de retorno: $targetUrl"
+        )
+
+        val view =
+            browser
+
+        if (view != null) {
+            view.post {
+                view.loadUrl(targetUrl)
+            }
+        }
+
+        /*
+         * Libera uma nova captura depois que o processamento
+         * terminou.
+         *
+         * O WebView NÃO é destruído.
+         */
+        processing = false
+        captured = false
+    }
+
+    /*
+     * ========================================================
+     * CAPTURA DO LINK PKG
+     * ========================================================
+     */
 
     fun handleCapturedUrl(
         url: String,
         contentDisposition: String? = null,
         mimeType: String? = null
     ) {
-        if (captured || processing) return
+        /*
+         * Evita capturas duplicadas enquanto o processamento
+         * anterior ainda está em andamento.
+         */
+        if (captured || processing) {
+            return
+        }
 
         val isHttp =
-            url.startsWith("http://", ignoreCase = true)
+            url.startsWith(
+                "http://",
+                ignoreCase = true
+            )
 
         val isHttps =
-            url.startsWith("https://", ignoreCase = true)
+            url.startsWith(
+                "https://",
+                ignoreCase = true
+            )
 
-        if (!isHttp && !isHttps) return
+        if (!isHttp && !isHttps) {
+            return
+        }
 
         val guessedFileName =
             URLUtil.guessFileName(
@@ -191,11 +399,11 @@ fun PkgLinkCaptureScreen(
                 }
 
         /*
-         * A página de origem deve ser aquela salva explicitamente
-         * pelo segundo clique.
+         * A origem é obrigatoriamente a página salva no
+         * segundo clique quando ela existir.
          *
-         * Caso o usuário não tenha salvo uma origem, mantemos
-         * o comportamento antigo como fallback.
+         * O fallback mantém o comportamento anterior
+         * caso o usuário não tenha salvo uma origem.
          */
         val finalSourceUrl =
             originPageUrl
@@ -211,88 +419,90 @@ fun PkgLinkCaptureScreen(
         captured = true
         processing = true
 
-        status = "Link PKG capturado. Processando..."
+        status =
+            "Link PKG capturado. Processando..."
 
         AppLogger.log(
-            "[PkgLinkCaptureScreen] Link capturado com sucesso: $url"
+            "[PkgLinkCaptureScreen] " +
+                    "Link capturado com sucesso: $url"
         )
 
         AppLogger.log(
-            "[PkgLinkCaptureScreen] Página de origem utilizada: $finalSourceUrl"
+            "[PkgLinkCaptureScreen] " +
+                    "Página de origem utilizada: $finalSourceUrl"
         )
 
         AppLogger.log(
-            "[PkgLinkCaptureScreen] Página de retorno: ${returnPageUrl.ifBlank { "(não definida)" }}"
+            "[PkgLinkCaptureScreen] " +
+                    "Página de retorno: " +
+                    returnPageUrl.ifBlank {
+                        "(não definida)"
+                    }
         )
 
-        onCaptured(
+        val result =
             PkgCaptureResult(
                 sourceUrl = finalSourceUrl,
                 directUrl = url,
                 fileName = finalFileName
             )
-        )
-    }
 
-    fun finishProcessingAndReturn() {
-        if (!processing) return
-
-        val targetUrl = returnPageUrl.trim()
-
-        if (targetUrl.isBlank()) {
-            processing = false
-            captured = false
-
-            status =
-                "Processamento concluído. Nenhuma página de retorno foi definida."
-
-            AppLogger.log(
-                "[PkgLinkCaptureScreen] Processamento concluído sem página de retorno."
-            )
-
-            return
-        }
-
-        status = "Processamento concluído. Voltando à página..."
-
-        AppLogger.log(
-            "[PkgLinkCaptureScreen] Navegando para página de retorno: $targetUrl"
-        )
-
-        val view = browser
-
-        if (view != null) {
-            view.post {
-                view.loadUrl(targetUrl)
+        /*
+         * O processamento real acontece no chamador.
+         *
+         * Quando ele terminar, deverá chamar onComplete().
+         */
+        onCaptured(
+            result,
+            {
+                finishProcessingAndReturn()
             }
-        }
-
-        processing = false
-        captured = false
+        )
     }
+
+    /*
+     * ========================================================
+     * INTERFACE
+     * ========================================================
+     */
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(PureBlack)
             .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement =
+            Arrangement.spacedBy(8.dp)
     ) {
 
+        /*
+         * ====================================================
+         * STATUS
+         * ====================================================
+         */
+
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = CardBlack
-            ),
-            border = BorderStroke(
-                width = 1.dp,
-                color = BorderDark
-            )
+            modifier =
+                Modifier.fillMaxWidth(),
+
+            colors =
+                CardDefaults.cardColors(
+                    containerColor = CardBlack
+                ),
+
+            border =
+                BorderStroke(
+                    width = 1.dp,
+                    color = BorderDark
+                )
         ) {
 
             Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                modifier =
+                    Modifier.padding(12.dp),
+
+                verticalArrangement =
+                    Arrangement.spacedBy(6.dp)
             ) {
 
                 Text(
@@ -302,14 +512,21 @@ fun PkgLinkCaptureScreen(
 
                 Text(
                     text = status,
-                    color = when {
-                        processing -> Color(0xFFFFC107)
-                        captured -> GreenLed
-                        else -> TextMuted
-                    }
+                    color =
+                        when {
+                            processing ->
+                                Color(0xFFFFC107)
+
+                            captured ->
+                                GreenLed
+
+                            else ->
+                                TextMuted
+                        }
                 )
 
                 if (currentDisplayUrl.isNotBlank()) {
+
                     Text(
                         text = currentDisplayUrl,
                         color = Color(0xFF64B5F6),
@@ -318,16 +535,18 @@ fun PkgLinkCaptureScreen(
                 }
 
                 if (returnPageUrl.isNotBlank()) {
+
                     Text(
-                        text = "Retorno salvo",
+                        text = "✓ Página de retorno salva",
                         color = GreenLed,
                         maxLines = 1
                     )
                 }
 
                 if (originPageUrl.isNotBlank()) {
+
                     Text(
-                        text = "Origem salva",
+                        text = "✓ Página de origem salva",
                         color = GreenLed,
                         maxLines = 1
                     )
@@ -336,70 +555,130 @@ fun PkgLinkCaptureScreen(
         }
 
         /*
-         * Botão de duas etapas:
+         * ====================================================
+         * BOTÃO DE DUAS ETAPAS
+         * ====================================================
          *
-         * 1º clique -> salva retorno
-         * 2º clique -> salva origem
+         * 1º clique:
+         *     SALVAR PÁGINA DE RETORNO
+         *
+         * 2º clique:
+         *     SALVAR PÁGINA DE ORIGEM
+         *
+         * Depois disso:
+         *     PÁGINAS SALVAS
          */
+
         Button(
             onClick = {
-                if (returnPageUrl.isBlank()) {
-                    saveReturnPage()
-                } else if (originPageUrl.isBlank()) {
-                    saveOriginPage()
+
+                when {
+
+                    returnPageUrl.isBlank() -> {
+                        saveReturnPage()
+                    }
+
+                    originPageUrl.isBlank() -> {
+                        saveOriginPage()
+                    }
                 }
             },
-            enabled = !processing && originPageUrl.isBlank(),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF303030),
-                disabledContainerColor = Color(0xFF181818),
-                contentColor = Color.White,
-                disabledContentColor = Color(0xFF666666)
-            )
+
+            enabled =
+                !processing &&
+                        originPageUrl.isBlank(),
+
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+
+            colors =
+                ButtonDefaults.buttonColors(
+                    containerColor =
+                        Color(0xFF303030),
+
+                    disabledContainerColor =
+                        Color(0xFF181818),
+
+                    contentColor =
+                        Color.White,
+
+                    disabledContentColor =
+                        Color(0xFF666666)
+                )
         ) {
+
             Text(
-                text = when {
-                    returnPageUrl.isBlank() ->
-                        "SALVAR PÁGINA DE RETORNO"
+                text =
+                    when {
+                        returnPageUrl.isBlank() ->
+                            "SALVAR PÁGINA DE RETORNO"
 
-                    originPageUrl.isBlank() ->
-                        "SALVAR PÁGINA DE ORIGEM"
+                        originPageUrl.isBlank() ->
+                            "SALVAR PÁGINA DE ORIGEM"
 
-                    else ->
-                        "PÁGINAS SALVAS"
-                }
+                        else ->
+                            "PÁGINAS SALVAS"
+                    }
             )
         }
 
+        /*
+         * ====================================================
+         * BOTÕES DE NAVEGAÇÃO
+         * ====================================================
+         */
+
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+
+            horizontalArrangement =
+                Arrangement.spacedBy(10.dp)
         ) {
 
             Button(
                 onClick = {
-                    val view = browser
 
-                    if (view != null && view.canGoBack()) {
+                    val view =
+                        browser
+
+                    if (
+                        view != null &&
+                        view.canGoBack()
+                    ) {
                         view.goBack()
                     }
                 },
-                enabled = canGoBack && !processing,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxSize(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF303030),
-                    disabledContainerColor = Color(0xFF181818),
-                    contentColor = Color.White,
-                    disabledContentColor = Color(0xFF666666)
-                )
+
+                enabled =
+                    canGoBack &&
+                            !processing,
+
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxSize(),
+
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor =
+                            Color(0xFF303030),
+
+                        disabledContainerColor =
+                            Color(0xFF181818),
+
+                        contentColor =
+                            Color.White,
+
+                        disabledContentColor =
+                            Color(0xFF666666)
+                    )
             ) {
+
                 Text(
                     text = "VOLTAR PÁGINA"
                 )
@@ -407,17 +686,31 @@ fun PkgLinkCaptureScreen(
 
             Button(
                 onClick = onCancel,
-                enabled = !processing,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxSize(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF303030),
-                    disabledContainerColor = Color(0xFF181818),
-                    contentColor = Color.White,
-                    disabledContentColor = Color(0xFF666666)
-                )
+
+                enabled =
+                    !processing,
+
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxSize(),
+
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor =
+                            Color(0xFF303030),
+
+                        disabledContainerColor =
+                            Color(0xFF181818),
+
+                        contentColor =
+                            Color.White,
+
+                        disabledContentColor =
+                            Color(0xFF666666)
+                    )
             ) {
+
                 Text(
                     text = "CANCELAR"
                 )
@@ -425,13 +718,22 @@ fun PkgLinkCaptureScreen(
         }
 
         Spacer(
-            modifier = Modifier.height(2.dp)
+            modifier =
+                Modifier.height(2.dp)
         )
 
+        /*
+         * ====================================================
+         * WEBVIEW
+         * ====================================================
+         */
+
         AndroidView(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
 
             factory = { context ->
 
@@ -439,23 +741,49 @@ fun PkgLinkCaptureScreen(
 
                     browser = this
 
+                    /*
+                     * ----------------------------------------
+                     * CONFIGURAÇÕES
+                     * ----------------------------------------
+                     */
+
                     settings.userAgentString =
                         BROWSER_USER_AGENT
 
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.databaseEnabled = true
-                    settings.loadsImagesAutomatically = true
-                    settings.javaScriptCanOpenWindowsAutomatically = true
-                    settings.setSupportMultipleWindows(false)
+                    settings.javaScriptEnabled =
+                        true
+
+                    settings.domStorageEnabled =
+                        true
+
+                    settings.databaseEnabled =
+                        true
+
+                    settings.loadsImagesAutomatically =
+                        true
+
+                    settings.javaScriptCanOpenWindowsAutomatically =
+                        true
+
+                    settings.setSupportMultipleWindows(
+                        false
+                    )
 
                     settings.mixedContentMode =
                         WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
+                    /*
+                     * ----------------------------------------
+                     * COOKIES
+                     * ----------------------------------------
+                     */
+
                     val cookieManager =
                         CookieManager.getInstance()
 
-                    cookieManager.setAcceptCookie(true)
+                    cookieManager.setAcceptCookie(
+                        true
+                    )
 
                     cookieManager.setAcceptThirdPartyCookies(
                         this,
@@ -464,6 +792,12 @@ fun PkgLinkCaptureScreen(
 
                     webChromeClient =
                         WebChromeClient()
+
+                    /*
+                     * ----------------------------------------
+                     * WEBVIEW CLIENT
+                     * ----------------------------------------
+                     */
 
                     webViewClient =
                         object : WebViewClient() {
@@ -477,8 +811,11 @@ fun PkgLinkCaptureScreen(
                                     request.url.toString()
 
                                 /*
-                                 * Filekeeper nunca é tratado como
-                                 * binário direto.
+                                 * Filekeeper não deve ser tratado
+                                 * como binário direto.
+                                 *
+                                 * Ele precisa carregar normalmente
+                                 * para gerar a sessão/redirecionamento.
                                  */
                                 if (
                                     urlString.contains(
@@ -486,6 +823,7 @@ fun PkgLinkCaptureScreen(
                                         ignoreCase = true
                                     )
                                 ) {
+
                                     currentDisplayUrl =
                                         urlString
 
@@ -493,10 +831,14 @@ fun PkgLinkCaptureScreen(
                                 }
 
                                 /*
-                                 * Captura direta de PKG.
+                                 * --------------------------------
+                                 * CAPTURA DE .PKG
+                                 * --------------------------------
                                  */
+
                                 val cleanPath =
-                                    urlString.substringBefore("?")
+                                    urlString
+                                        .substringBefore("?")
 
                                 if (
                                     cleanPath.endsWith(
@@ -512,13 +854,19 @@ fun PkgLinkCaptureScreen(
                                         urlString
                                     )
 
+                                    /*
+                                     * Não deixa o WebView
+                                     * navegar para o binário.
+                                     */
                                     return true
                                 }
 
                                 /*
-                                 * Bloqueio de popups/domínios
-                                 * não autorizados.
+                                 * --------------------------------
+                                 * BLOQUEIO DE DOMÍNIOS
+                                 * --------------------------------
                                  */
+
                                 if (
                                     !isDomainPermitted(
                                         urlString
@@ -552,12 +900,17 @@ fun PkgLinkCaptureScreen(
                                     )
 
                                 val isPkg =
-                                    url.substringBefore("?")
+                                    url
+                                        .substringBefore("?")
                                         .endsWith(
                                             ".pkg",
                                             ignoreCase = true
                                         )
 
+                                /*
+                                 * Bloqueia navegação para domínios
+                                 * não autorizados.
+                                 */
                                 if (
                                     isNotIntermediate &&
                                     !isPkg &&
@@ -570,6 +923,7 @@ fun PkgLinkCaptureScreen(
                                         currentPageUrl.isNotBlank() &&
                                         view.url != currentPageUrl
                                     ) {
+
                                         view.loadUrl(
                                             currentPageUrl
                                         )
@@ -594,16 +948,27 @@ fun PkgLinkCaptureScreen(
                                     view.canGoBack()
 
                                 val isPkg =
-                                    url.substringBefore("?")
+                                    url
+                                        .substringBefore("?")
                                         .endsWith(
                                             ".pkg",
                                             ignoreCase = true
                                         )
 
+                                /*
+                                 * Atualiza somente a página
+                                 * atualmente carregada.
+                                 *
+                                 * Isso NÃO altera:
+                                 *
+                                 * returnPageUrl
+                                 * originPageUrl
+                                 */
                                 if (
                                     !isPkg &&
                                     isDomainPermitted(url)
                                 ) {
+
                                     currentPageUrl =
                                         url
                                 }
@@ -612,11 +977,19 @@ fun PkgLinkCaptureScreen(
                                     !captured &&
                                     !processing
                                 ) {
+
                                     status =
-                                        "Página carregada. Clique para gerar ou iniciar o download."
+                                        "Página carregada. " +
+                                                "Clique para gerar ou iniciar o download."
                                 }
                             }
                         }
+
+                    /*
+                     * ----------------------------------------
+                     * DOWNLOAD LISTENER
+                     * ----------------------------------------
+                     */
 
                     setDownloadListener {
                             url,
@@ -626,15 +999,24 @@ fun PkgLinkCaptureScreen(
                             contentLength ->
 
                         AppLogger.log(
-                            "[PkgLinkCaptureScreen] DownloadListener disparado: $url"
+                            "[PkgLinkCaptureScreen] " +
+                                    "DownloadListener disparado: $url"
                         )
 
                         handleCapturedUrl(
                             url = url,
-                            contentDisposition = contentDisposition,
-                            mimeType = mimeType
+                            contentDisposition =
+                                contentDisposition,
+                            mimeType =
+                                mimeType
                         )
                     }
+
+                    /*
+                     * ----------------------------------------
+                     * PÁGINA INICIAL
+                     * ----------------------------------------
+                     */
 
                     loadUrl(sourceUrl)
                 }
@@ -642,21 +1024,12 @@ fun PkgLinkCaptureScreen(
 
             update = { view ->
 
-                browser = view
+                browser =
+                    view
 
                 canGoBack =
                     view.canGoBack()
             }
         )
     }
-
-    /*
-     * O callback de conclusão precisa ser disparado pelo
-     * responsável pelo processamento do CatalogManager.
-     *
-     * Este bloco não é executado automaticamente aqui.
-     *
-     * A tela recebe a conclusão através da função abaixo,
-     * que será conectada nos dois chamadores.
-     */
 }
