@@ -49,6 +49,25 @@
       font-size: 20px; font-weight: 900; letter-spacing: 1px; color: #fff; margin: 0;
     }
 
+    .header-actions {
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    /* BOTÃO QUE APARECE NO TOPO QUANDO HÁ DOWNLOADS LIBERADOS */
+    .btn-top-downloads {
+      display: none; align-items: center; gap: 8px;
+      background: #14351e; border: 1px solid var(--green);
+      color: #4cd964; padding: 10px 18px; border-radius: 30px;
+      font-weight: 900; font-size: 13px; cursor: pointer; outline: none;
+      transition: all 0.2s ease;
+    }
+    .btn-top-downloads.visible { display: flex; }
+    .btn-top-downloads:hover, .btn-top-downloads:focus {
+      background: var(--green); color: #000;
+      box-shadow: 0 0 14px rgba(53, 199, 89, 0.8);
+      outline: 2px solid #fff !important;
+    }
+
     .btn-top-cart {
       display: flex; align-items: center; gap: 10px;
       background: #1a1a1a; border: 1px solid var(--border);
@@ -167,24 +186,29 @@
     }
 
     .downloads-grid {
-      display: flex; flex-direction: column; gap: 16px;
+      display: flex; flex-direction: column; gap: 14px;
     }
 
     .download-item-card {
       display: flex; gap: 16px; background: #121212; border: 1px solid var(--border);
-      border-radius: 10px; padding: 16px; align-items: center;
+      border-radius: 10px; padding: 14px; align-items: center;
     }
     .download-cover {
-      width: 80px; height: 80px; object-fit: cover; border-radius: 8px; background: #000;
+      width: 70px; height: 70px; object-fit: cover; border-radius: 8px; background: #000;
     }
     .download-info { flex: 1; }
-    .download-title { margin: 0 0 4px; font-size: 16px; font-weight: bold; }
+    .download-title { margin: 0 0 4px; font-size: 15px; font-weight: bold; }
     .download-sub { margin: 0; font-size: 12px; color: var(--muted); }
 
+    .badge-type {
+      background: #222; border: 1px solid #444; color: #64b5f6;
+      font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px;
+    }
+
     .btn-install {
-      border: 0; border-radius: 8px; padding: 12px 20px; font-size: 13px;
+      border: 0; border-radius: 8px; padding: 12px 18px; font-size: 13px;
       font-weight: 900; cursor: pointer; color: white; background: var(--green);
-      outline: none; text-align: center;
+      outline: none; text-align: center; white-space: nowrap;
     }
     .btn-install:hover, .btn-install:focus {
       background: #2cb04b; outline: 2px solid #fff !important;
@@ -287,10 +311,18 @@
       <h1 class="brand-title">GTSTORE</h1>
     </div>
 
-    <button id="btn-top-cart" class="btn-top-cart" type="button">
-      <span>🛒 CARRINHO</span>
-      <span id="top-cart-badge" class="cart-badge">0</span>
-    </button>
+    <div class="header-actions">
+      <!-- BOTÃO PERSISTENTE NO TOPO ENQUANTO OS 15 MIN CORREM -->
+      <button id="btn-top-downloads" class="btn-top-downloads" type="button">
+        <span>⚡ FICHEIROS LIBERADOS</span>
+        <span id="top-timer-badge">(15:00)</span>
+      </button>
+
+      <button id="btn-top-cart" class="btn-top-cart" type="button">
+        <span>🛒 CARRINHO</span>
+        <span id="top-cart-badge" class="cart-badge">0</span>
+      </button>
+    </div>
   </div>
 
   <div class="header-controls">
@@ -320,16 +352,16 @@
     </section>
   </div>
 
-  <!-- VISTA 2: DOWNLOADS LIBERADOS (ABRE AUTOMATICAMENTE APÓS APROVAÇÃO) -->
+  <!-- VISTA 2: DOWNLOADS LIBERADOS -->
   <div id="view-downloads" class="view-downloads">
     <div class="downloads-header">
       <div>
         <h2 class="downloads-title">✓ FICHEIROS LIBERADOS</h2>
-        <p style="margin: 4px 0 0; color: #aaa; font-size: 13px;">O acesso aos pacotes foi concedido com sucesso!</p>
+        <p style="margin: 4px 0 0; color: #aaa; font-size: 13px;">Você tem acesso completo aos jogos base, updates e DLCs:</p>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
-        <span class="time-badge">⏳ 15 MINUTOS RESTANTES</span>
-        <button id="btn-back-catalog" class="btn-back" type="button">← CATÁLOGO</button>
+        <span id="downloads-timer-badge" class="time-badge">⏳ 15:00 RESTANTES</span>
+        <button id="btn-back-catalog" class="btn-back" type="button">← VOLTAR AO CATÁLOGO</button>
       </div>
     </div>
     <div id="downloads-list" class="downloads-grid"></div>
@@ -412,9 +444,9 @@ let games = [];
 let ps4ClientIp = "";
 let isServerOnline = false;
 let pollingInterval = null;
+let countdownTimer = null;
 
 let cart = JSON.parse(localStorage.getItem("ps4_store_cart") || "[]");
-let approvedGamesList = [];
 
 function getOrCreateConsoleId() {
   let cid = localStorage.getItem("ps4_store_cid");
@@ -429,8 +461,7 @@ function getOrCreateConsoleId() {
 const myConsoleId = getOrCreateConsoleId();
 
 function updateCartTopButton() {
-  const badge = document.getElementById("top-cart-badge");
-  badge.textContent = cart.length;
+  document.getElementById("top-cart-badge").textContent = cart.length;
 }
 
 function saveCart() {
@@ -479,6 +510,13 @@ function savePs4Ip() {
 
 function getTargetIp() {
   return document.getElementById("ps4-ip").value.trim() || localStorage.getItem("ps4_ip") || ps4ClientIp;
+}
+
+function formatSize(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  if (value < 1024 * 1024 * 1024) return (value / (1024 * 1024)).toFixed(2) + " MB";
+  return (value / (1024 * 1024 * 1024)).toFixed(2) + " GB";
 }
 
 async function checkStatus() {
@@ -590,8 +628,86 @@ function renderCatalog() {
   }
 }
 
-// TRANSIÇÃO DIRETA PARA A ABA DE FICHEIROS LIBERADOS
-function showDownloadsView(approvedList) {
+// =========================================================================
+// GESTÃO DOS 15 MINUTOS E ABA DE DOWNLOADS (PERSISTÊNCIA COMPLETA)
+// =========================================================================
+function activateGrantedAccess(approvedGames) {
+  const expiresAt = Date.now() + (15 * 60 * 1000); // 15 minutos de tolerância
+  const grantData = {
+    expiresAt: expiresAt,
+    games: approvedGames
+  };
+  localStorage.setItem("ps4_store_grant", JSON.stringify(grantData));
+  startSessionCountdown();
+  showDownloadsView();
+}
+
+function checkStoredGrant() {
+  const raw = localStorage.getItem("ps4_store_grant");
+  if (!raw) return;
+
+  try {
+    const grant = JSON.parse(raw);
+    if (Date.now() < grant.expiresAt) {
+      startSessionCountdown();
+    } else {
+      localStorage.removeItem("ps4_store_grant");
+    }
+  } catch (_) {
+    localStorage.removeItem("ps4_store_grant");
+  }
+}
+
+function startSessionCountdown() {
+  if (countdownTimer) clearInterval(countdownTimer);
+
+  const btnTop = document.getElementById("btn-top-downloads");
+  btnTop.classList.add("visible");
+
+  function tick() {
+    const raw = localStorage.getItem("ps4_store_grant");
+    if (!raw) {
+      clearInterval(countdownTimer);
+      btnTop.classList.remove("visible");
+      backToCatalog();
+      return;
+    }
+
+    const grant = JSON.parse(raw);
+    const diff = grant.expiresAt - Date.now();
+
+    if (diff <= 0) {
+      clearInterval(countdownTimer);
+      localStorage.removeItem("ps4_store_grant");
+      btnTop.classList.remove("visible");
+      showNotice("O tempo de 15 minutos expirou. Acesso revogado.", "error");
+      backToCatalog();
+      return;
+    }
+
+    const min = Math.floor(diff / 60000);
+    const sec = Math.floor((diff % 60000) / 1000);
+    const formatted = `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+
+    document.getElementById("top-timer-badge").textContent = `(${formatted})`;
+    document.getElementById("downloads-timer-badge").textContent = `⏳ ${formatted} RESTANTES`;
+  }
+
+  tick();
+  countdownTimer = setInterval(tick, 1000);
+}
+
+// RENDERIZA TODOS OS ARQUIVOS VINCULADOS AO CUSA (BASE, UPDATE, DLCS)
+function showDownloadsView() {
+  const raw = localStorage.getItem("ps4_store_grant");
+  if (!raw) {
+    showNotice("Nenhum acesso ativo no momento.", "error");
+    return;
+  }
+
+  const grant = JSON.parse(raw);
+  const approvedKeys = (grant.games || []).map(it => it.key.toUpperCase());
+
   document.getElementById("view-catalog").style.display = "none";
   const viewDownloads = document.getElementById("view-downloads");
   viewDownloads.classList.add("active");
@@ -601,20 +717,48 @@ function showDownloadsView(approvedList) {
 
   const actionText = isPS4Browser ? "INSTALAR VIA DPI" : "BAIXAR FICHEIRO";
 
-  approvedList.forEach(item => {
+  // Busca em allPackages todos os arquivos que pertencem a estes CUSAs (Base, Update, DLCs)
+  const availableFiles = allPackages.filter(pkg => {
+    const key = groupKey(pkg).toUpperCase();
+    return approvedKeys.includes(key);
+  });
+
+  if (availableFiles.length === 0) {
+    listContainer.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">Nenhum arquivo listado para este pacote.</div>';
+    return;
+  }
+
+  // Ordena: GAME -> UPDATE -> DLC
+  availableFiles.sort((a, b) => {
+    const order = { "GAME": 1, "UPDATE": 2, "DLC": 3 };
+    const typeA = order[(a.catalogType || a.category || "GAME").toUpperCase()] || 4;
+    const typeB = order[(b.catalogType || b.category || "GAME").toUpperCase()] || 4;
+    return typeA - typeB;
+  });
+
+  availableFiles.forEach(pkg => {
     const card = document.createElement("div");
     card.className = "download-item-card";
 
     const img = document.createElement("img");
     img.className = "download-cover";
-    img.src = item.cover || "/api/package-icon/" + item.id;
+    img.src = pkg.iconUrl || `/api/package-icon/${pkg.id}`;
     img.onerror = () => { img.style.display = "none"; };
+
+    const typeTag = (pkg.catalogType || pkg.category || "PKG").toUpperCase();
+    const sizeFormatted = pkg.size ? ` • ${formatSize(pkg.size)}` : "";
+    const versionFormatted = pkg.version ? ` • v${pkg.version}` : "";
 
     const info = document.createElement("div");
     info.className = "download-info";
     info.innerHTML = `
-      <h3 class="download-title">${item.title}</h3>
-      <p class="download-sub">${item.key} • Liberado por 15 minutos</p>
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+        <span class="badge-type">${typeTag}</span>
+        <h3 class="download-title" style="margin: 0;">${pkg.title}</h3>
+      </div>
+      <p class="download-sub" style="margin: 0; color: #888; font-size: 12px;">
+        ${pkg.contentId || groupKey(pkg)} ${versionFormatted} ${sizeFormatted}
+      </p>
     `;
 
     const btnInstall = document.createElement("button");
@@ -623,9 +767,9 @@ function showDownloadsView(approvedList) {
     btnInstall.textContent = actionText;
     btnInstall.onclick = () => {
       if (isPS4Browser) {
-        triggerDpiInstall(item.id, btnInstall);
+        triggerDpiInstall(pkg.id, btnInstall);
       } else {
-        window.open(`/download?id=${item.id}&consoleId=${encodeURIComponent(myConsoleId)}`, "_blank");
+        window.open(`/download?id=${pkg.id}&consoleId=${encodeURIComponent(myConsoleId)}`, "_blank");
       }
     };
 
@@ -737,7 +881,7 @@ function startPollingCart() {
   pollingInterval = setInterval(checkCartStatus, 10000);
 }
 
-// DETECTA QUANDO VOCÊ CLICAR EM "APROVAR" NO CELULAR
+// DETECTA QUANDO VOCÊ CLICAR EM APROVAR NO CELULAR
 async function checkCartStatus() {
   if (cart.length === 0) return;
   try {
@@ -747,12 +891,12 @@ async function checkCartStatus() {
     });
     const data = await res.json();
     if (data.approved) {
-      approvedGamesList = [...cart];
+      const approvedGames = [...cart];
       cart = [];
       saveCart();
       closeCartModal();
       showNotice("✓ Pacote aprovado! Acesso liberado por 15 minutos.", "success");
-      showDownloadsView(approvedGamesList);
+      activateGrantedAccess(approvedGames);
     }
   } catch (_) {}
 }
@@ -778,6 +922,7 @@ async function loadPackages() {
 document.getElementById("search").addEventListener("input", renderCatalog);
 document.getElementById("refresh").addEventListener("click", () => { checkStatus(); loadPackages(); });
 document.getElementById("btn-top-cart").addEventListener("click", openCartModal);
+document.getElementById("btn-top-downloads").addEventListener("click", showDownloadsView);
 document.getElementById("btn-close-cart").addEventListener("click", closeCartModal);
 document.getElementById("btn-back-catalog").addEventListener("click", backToCatalog);
 document.getElementById("btn-clear-cart").addEventListener("click", () => {
@@ -795,6 +940,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   updateCartTopButton();
   await checkStatus();
   await loadPackages();
+  checkStoredGrant(); // Verifica se já tem uma liberação ativa em andamento ao carregar
   setInterval(checkStatus, 5000);
 });
 </script>
