@@ -113,6 +113,7 @@
       background: #151515; color: var(--text); cursor: pointer; font-weight: 700; outline: none;
     }
 
+    /* GRELHA DO CATÁLOGO (SEM PREÇOS) */
     .catalog {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px;
     }
@@ -189,7 +190,7 @@
       background: #2cb04b; outline: 2px solid #fff !important;
     }
 
-    /* MODAL DO CARRINHO */
+    /* MODAL DO CARRINHO / CHECKOUT */
     .overlay {
       position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
       padding: 16px; background: rgba(0, 0, 0, 0.94); z-index: 1000;
@@ -197,7 +198,7 @@
     .overlay.visible { display: flex; }
 
     .modal {
-      width: 100%; max-width: 520px; background: #121212; border: 1px solid var(--border);
+      width: 100%; max-width: 540px; background: #121212; border: 1px solid var(--border);
       border-radius: 12px; padding: 20px; text-align: center; max-height: 90vh; overflow-y: auto;
     }
     .modal h2 { margin: 0 0 8px; font-size: 20px; }
@@ -209,29 +210,41 @@
       padding: 6px 12px; border-radius: 6px; margin: 6px 0; display: inline-block;
     }
 
-    .cart-items-preview {
+    .cart-summary {
       background: #000; border: 1px solid #222; border-radius: 8px;
-      padding: 8px; margin: 12px 0; max-height: 190px; overflow-y: auto; text-align: left;
+      padding: 10px; margin: 10px 0; text-align: left; max-height: 160px; overflow-y: auto;
     }
-    .cart-item-row {
+    .summary-row {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 8px 6px; border-bottom: 1px solid #1a1a1a; font-size: 13px;
+      padding: 6px 4px; border-bottom: 1px solid #1a1a1a; font-size: 13px;
     }
-    .cart-item-row:last-child { border-bottom: none; }
-    .btn-remove-item {
-      background: transparent; border: 0; color: #ff453a; font-weight: bold;
-      cursor: pointer; font-size: 14px; padding: 2px 6px;
+    .summary-row:last-child { border-bottom: none; }
+    .summary-total {
+      display: flex; justify-content: space-between; border-top: 1px solid #333;
+      margin-top: 8px; padding-top: 8px; font-weight: 900; font-size: 15px; color: var(--green);
     }
 
-    .qr-image {
-      width: 130px; height: 130px; object-fit: contain;
-      margin: 8px auto; display: block; border-radius: 8px;
-      background: #fff; padding: 4px;
+    .btn-remove-item {
+      background: transparent; border: 0; color: #ff453a; font-weight: bold;
+      cursor: pointer; font-size: 14px; padding: 2px 6px; margin-left: 8px;
+    }
+
+    /* BLOCO DOS 2 QR CODES */
+    .qr-dual-container {
+      display: flex; gap: 12px; justify-content: center; align-items: stretch; margin: 12px 0;
+    }
+    .qr-card {
+      flex: 1; background: #080808; border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px; text-align: center;
+    }
+    .qr-card-img {
+      width: 130px; height: 130px; object-fit: contain; margin: 0 auto;
+      display: block; border-radius: 6px; background: #fff; padding: 4px;
     }
 
     .whatsapp-box {
       background: #182c1e; border: 1px solid #35c759; color: #4cd964;
-      padding: 8px; border-radius: 8px; font-weight: bold; font-size: 13px; margin: 6px 0;
+      padding: 10px; border-radius: 8px; font-weight: bold; font-size: 13px; margin: 8px 0;
     }
 
     .time-notice {
@@ -324,7 +337,7 @@
   </div>
 </main>
 
-<!-- MODAL DO CARRINHO -->
+<!-- MODAL DO CARRINHO COM 2 QR CODES E RESUMO FINANCEIRO -->
 <div id="cart-overlay" class="overlay">
   <div class="modal">
     <h2>Pacote Escolhido</h2>
@@ -335,27 +348,51 @@
       <div id="display-console-id" class="console-badge">PS4-CARREGANDO</div>
     </div>
 
-    <div id="cart-items-list" class="cart-items-preview"></div>
-
-    <button id="btn-submit-cart" class="btn-sec btn-sec-primary" type="button" style="width: 100%; margin: 8px 0; padding: 14px;">
-      SUBMETER PEDIDO AO SERVIDOR
-    </button>
-
-    <div id="polling-container" style="display: none;" class="polling-status">
-      <span class="status-dot" style="background: #0088f0; box-shadow: 0 0 8px #0088f0;"></span>
-      <span>Aguardando aprovação no telemóvel (a cada 10s)...</span>
+    <!-- RESUMO DO PEDIDO COM VALOR FIXO DE R$ 10,00 -->
+    <div class="cart-summary">
+      <div id="cart-items-list"></div>
+      <div class="summary-total">
+        <span>TOTAL A PAGAR:</span>
+        <span id="cart-total-price">R$ 0,00</span>
+      </div>
     </div>
 
-    <p style="font-weight: bold; color: #35c759; margin: 8px 0 4px; font-size: 13px;">
-      Enviar lista de jogos pelo WhatsApp:
-    </p>
+    <!-- ÁREA DOS DOIS QR CODES (PIX + WHATSAPP) -->
+    <div class="qr-dual-container">
+      
+      <!-- 1. QR CODE PIX (qr-pix.jpg) -->
+      <div class="qr-card">
+        <p style="margin: 0 0 6px; font-size: 12px; font-weight: bold; color: var(--green);">
+          1. Pagar via Pix
+        </p>
+        <img class="qr-card-img" src="/qr-pix.jpg" alt="QR Pix" onerror="this.src='/qr-pix.png';">
+        <p style="margin: 6px 0 0; font-size: 10px; color: #888;">
+          Aponte a câmara do banco
+        </p>
+      </div>
 
-    <a id="link-wa" href="https://w.app/rdilgq" target="_blank">
-      <img class="qr-image" src="/qr.png" alt="QR WhatsApp" onerror="this.style.display='none';">
-    </a>
+      <!-- 2. QR CODE WHATSAPP (qr.png) -->
+      <div class="qr-card">
+        <p style="margin: 0 0 6px; font-size: 12px; font-weight: bold; color: #25d366;">
+          2. Enviar Comprovativo
+        </p>
+        <a id="link-wa" href="https://w.app/rdilgq" target="_blank">
+          <img class="qr-card-img" src="/qr.png" alt="QR WhatsApp" onerror="this.src='/qr (1).png';">
+        </a>
+        <p style="margin: 6px 0 0; font-size: 10px; color: #888;">
+          Toque para abrir a conversa
+        </p>
+      </div>
+
+    </div>
 
     <div class="whatsapp-box">
       WhatsApp: (64) 99225-9727
+    </div>
+
+    <div id="polling-container" class="polling-status">
+      <span class="status-dot" style="background: #0088f0; box-shadow: 0 0 8px #0088f0;"></span>
+      <span>Aguardando aprovação no telemóvel (a cada 10s)...</span>
     </div>
 
     <div class="time-notice">
@@ -421,7 +458,11 @@ function removeFromCart(key) {
   cart = cart.filter(it => it.key !== key);
   saveCart();
   renderCatalog();
-  openCartModal();
+  if (cart.length === 0) {
+    closeCartModal();
+  } else {
+    openCartModal();
+  }
 }
 
 function initPs4Ip() {
@@ -441,13 +482,6 @@ function savePs4Ip() {
 
 function getTargetIp() {
   return document.getElementById("ps4-ip").value.trim() || localStorage.getItem("ps4_ip") || ps4ClientIp;
-}
-
-function formatSize(bytes) {
-  const value = Number(bytes);
-  if (!Number.isFinite(value) || value <= 0) return "";
-  if (value < 1024 * 1024 * 1024) return (value / (1024 * 1024)).toFixed(2) + " MB";
-  return (value / (1024 * 1024 * 1024)).toFixed(2) + " GB";
 }
 
 async function checkStatus() {
@@ -559,7 +593,7 @@ function renderCatalog() {
   }
 }
 
-// TRANSIÇÃO DIRETA PARA A ABA DE FICHEIROS
+// TRANSIÇÃO DIRETA PARA A ABA DE FICHEIROS LIBERADOS
 function showDownloadsView(approvedList) {
   document.getElementById("view-catalog").style.display = "none";
   const viewDownloads = document.getElementById("view-downloads");
@@ -647,6 +681,7 @@ async function triggerDpiInstall(pkgId, button) {
   }
 }
 
+// ABERTURA DO CHECKOUT (CALCULA VALORES E DISPARA AVISO DE PEDIDO)
 function openCartModal() {
   if (cart.length === 0) {
     showNotice("O seu carrinho está vazio! Toque em '+ ADICIONAR AO CARRINHO' nos jogos.");
@@ -660,25 +695,30 @@ function openCartModal() {
   const waLines = [];
   cart.forEach((item, index) => {
     const row = document.createElement("div");
-    row.className = "cart-item-row";
+    row.className = "summary-row";
     row.innerHTML = `
-      <span><strong>${index + 1}.</strong> ${item.title} (${item.key})</span>
-      <button class="btn-remove-item" onclick="removeFromCart('${item.key}')">✕</button>
+      <span><strong>${index + 1}.</strong> ${item.title}</span>
+      <div style="display: flex; align-items: center;">
+        <span style="font-weight: bold; color: var(--green);">R$ 10,00</span>
+        <button class="btn-remove-item" onclick="removeFromCart('${item.key}')">✕</button>
+      </div>
     `;
     list.appendChild(row);
-    waLines.push(`${index + 1}. ${item.title} (${item.key})`);
+    waLines.push(`${index + 1}. ${item.title} (${item.key}) - R$ 10,00`);
   });
 
-  const btnSubmit = document.getElementById("btn-submit-cart");
-  btnSubmit.disabled = false;
-  btnSubmit.textContent = `SUBMETER PEDIDO (${cart.length} JOGOS)`;
-  document.getElementById("polling-container").style.display = "none";
+  const total = cart.length * 10;
+  document.getElementById("cart-total-price").textContent = `R$ ${total.toFixed(2).replace(".", ",")}`;
 
-  const fullMsg = `Olá! Solicito liberação de acesso para o pacote de jogos:\n\n${waLines.join("\n")}\n\nID do meu Console: ${myConsoleId}`;
+  // Formata mensagem para envio de comprovativo via WhatsApp
+  const fullMsg = `Olá! Fiz o Pix no valor total de R$ ${total.toFixed(2)} referente ao seguinte pacote:\n\n${waLines.join("\n")}\n\nID do meu Console: ${myConsoleId}\n\n(Segue o comprovativo em anexo)`;
   document.getElementById("link-wa").href = `https://wa.me/5564992259727?text=${encodeURIComponent(fullMsg)}`;
 
+  // Submete lote em segundo plano para o telemóvel do administrador
+  submitBatchRequest();
+
   document.getElementById("cart-overlay").classList.add("visible");
-  checkCartStatus();
+  startPollingCart();
 }
 
 function closeCartModal() {
@@ -687,14 +727,9 @@ function closeCartModal() {
   document.getElementById("cart-overlay").classList.remove("visible");
 }
 
-async function submitCart() {
-  if (cart.length === 0) return;
-  const btn = document.getElementById("btn-submit-cart");
-  btn.disabled = true;
-  btn.textContent = "A SUBMETER...";
-
+async function submitBatchRequest() {
   try {
-    const res = await fetch("/api/request-cart-access", {
+    await fetch("/api/request-cart-access", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -703,22 +738,7 @@ async function submitCart() {
         clientIp: getTargetIp()
       })
     });
-    const data = await res.json();
-    if (data.success) {
-      btn.textContent = "✓ PEDIDO ENVIADO!";
-      document.getElementById("polling-container").style.display = "flex";
-      showNotice("✓ Pedido enviado com sucesso! Aguarde a aprovação no telemóvel.", "success");
-      startPollingCart();
-    } else {
-      btn.disabled = false;
-      btn.textContent = "SUBMETER PEDIDO";
-      showNotice("Erro ao submeter pedido.", "error");
-    }
-  } catch (_) {
-    btn.disabled = false;
-    btn.textContent = "SUBMETER PEDIDO";
-    showNotice("Falha ao comunicar com o servidor.", "error");
-  }
+  } catch (_) {}
 }
 
 function startPollingCart() {
@@ -726,7 +746,7 @@ function startPollingCart() {
   pollingInterval = setInterval(checkCartStatus, 10000);
 }
 
-// CHECA SE FOI APROVADO E ABRE A TELA DE ARQUIVOS
+// DETETA QUANDO VOCÊ CLICAR EM "APROVAR" NO APP
 async function checkCartStatus() {
   if (cart.length === 0) return;
   try {
@@ -740,7 +760,7 @@ async function checkCartStatus() {
       cart = [];
       saveCart();
       closeCartModal();
-      showNotice("✓ Acesso aprovado! Redirecionando para os ficheiros liberados...", "success");
+      showNotice("✓ Pacote aprovado! Redirecionando para os ficheiros liberados...", "success");
       showDownloadsView(approvedGamesList);
     }
   } catch (_) {}
@@ -767,7 +787,6 @@ async function loadPackages() {
 document.getElementById("search").addEventListener("input", renderCatalog);
 document.getElementById("refresh").addEventListener("click", () => { checkStatus(); loadPackages(); });
 document.getElementById("btn-top-cart").addEventListener("click", openCartModal);
-document.getElementById("btn-submit-cart").addEventListener("click", submitCart);
 document.getElementById("btn-close-cart").addEventListener("click", closeCartModal);
 document.getElementById("btn-back-catalog").addEventListener("click", backToCatalog);
 document.getElementById("btn-clear-cart").addEventListener("click", () => {
