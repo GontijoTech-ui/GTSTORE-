@@ -7,7 +7,6 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStream
-import java.net.InetAddress
 import java.net.NetworkInterface
 
 data class ServerStatusInfo(
@@ -125,7 +124,7 @@ class HttpServer(
                 put("id", item.catalogIndex)
                 put("title", item.title)
                 put("contentId", item.contentId)
-                put("size", 0L)
+                put("size", item.size)
                 put("catalogType", item.type.ifBlank { "GAME" })
                 put("iconUrl", if (item.iconFile.isNotBlank()) "/covers/${item.iconFile}" else "")
             }
@@ -219,13 +218,15 @@ class HttpServer(
             return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Acesso expirado (15 min).")
         }
 
-        if (item.directUrl.startsWith("http://", ignoreCase = true) || item.directUrl.startsWith("https://", ignoreCase = true)) {
+        val directLink = item.url.trim()
+
+        if (directLink.startsWith("http://", ignoreCase = true) || directLink.startsWith("https://", ignoreCase = true)) {
             val response = newFixedLengthResponse(Response.Status.REDIRECT, MIME_HTML, "")
-            response.addHeader("Location", item.directUrl)
+            response.addHeader("Location", directLink)
             return response
         }
 
-        val file = File(item.directUrl)
+        val file = File(directLink)
         if (!file.exists()) {
             return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Arquivo local não existe")
         }
