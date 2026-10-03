@@ -1640,8 +1640,7 @@ fun AdminScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    // Utiliza diretamente a lista de solicitações ativas do AccessManager
-    val requests = AccessManager.pendingRequests
+    val batches = AccessManager.pendingBatches
 
     LazyColumn(
         modifier = Modifier
@@ -1688,26 +1687,26 @@ fun AdminScreen(
                             modifier = Modifier
                                 .size(10.dp)
                                 .clip(CircleShape)
-                                .background(if (requests.isNotEmpty()) GreenLed else RedLed)
+                                .background(if (batches.isNotEmpty()) GreenLed else RedLed)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (requests.isNotEmpty()) "SOLICITAÇÕES PENDENTES" else "NENHUMA SOLICITAÇÃO",
+                            text = if (batches.isNotEmpty()) "PACOTES PENDENTES" else "NENHUMA SOLICITAÇÃO",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (requests.isNotEmpty()) GreenLed else TextMuted
+                            color = if (batches.isNotEmpty()) GreenLed else TextMuted
                         )
                     }
 
                     Text(
-                        text = "Aparelhos aguardando liberação: ${requests.size}",
+                        text = "Carrinhos aguardando liberação: ${batches.size}",
                         color = TextWhite,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
 
                     Text(
-                        text = "O acesso aprovado permanece liberado por 10 minutos para download.",
+                        text = "O acesso de cada pacote aprovado é liberado por 15 minutos.",
                         color = TextMuted,
                         fontSize = 13.sp
                     )
@@ -1715,7 +1714,7 @@ fun AdminScreen(
             }
         }
 
-        if (requests.isEmpty()) {
+        if (batches.isEmpty()) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -1724,7 +1723,7 @@ fun AdminScreen(
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Text(
-                        text = "Aguardando novos pedidos de acesso vindos do PS4...",
+                        text = "Aguardando novas solicitações de pacotes vindas do PS4...",
                         modifier = Modifier.padding(20.dp),
                         color = TextMuted,
                         fontSize = 15.sp
@@ -1733,9 +1732,9 @@ fun AdminScreen(
             }
         } else {
             items(
-                items = requests,
-                key = { "${it.consoleId}_${it.gameKey}" }
-            ) { req ->
+                items = batches,
+                key = { it.id }
+            ) { batch ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = CardBlack),
@@ -1752,11 +1751,10 @@ fun AdminScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = req.gameTitle,
-                                fontSize = 17.sp,
+                                text = "PACOTE (${batch.games.size} JOGOS)",
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = TextWhite,
-                                modifier = Modifier.weight(1f)
+                                color = TextWhite
                             )
 
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1775,13 +1773,6 @@ fun AdminScreen(
                                 )
                             }
                         }
-
-                        Text(
-                            text = "Jogo / CUSA: ${req.gameKey}",
-                            fontSize = 13.sp,
-                            color = Color(0xFF64B5F6),
-                            fontWeight = FontWeight.SemiBold
-                        )
 
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -1808,20 +1799,45 @@ fun AdminScreen(
                                     )
 
                                     Text(
-                                        text = req.consoleId,
-                                        fontSize = 16.sp,
+                                        text = batch.consoleId,
+                                        fontSize = 15.sp,
                                         fontWeight = FontWeight.Black,
                                         color = Color(0xFF64B5F6)
                                     )
                                 }
 
-                                if (req.clientIp.isNotBlank()) {
+                                if (batch.clientIp.isNotBlank()) {
                                     Text(
-                                        text = "IP do Console: ${req.clientIp}",
+                                        text = "IP do Console: ${batch.clientIp}",
                                         fontSize = 11.sp,
                                         color = Color(0xFF777777)
                                     )
                                 }
+                            }
+                        }
+
+                        Text(
+                            text = "JOGOS SELECIONADOS NO CARRINHO:",
+                            fontSize = 12.sp,
+                            color = Color(0xFFDDDDDD),
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF141414), RoundedCornerShape(8.dp))
+                                .padding(10.dp)
+                        ) {
+                            batch.games.forEachIndexed { idx, game ->
+                                Text(
+                                    text = "${idx + 1}. ${game.title} (${game.gameKey})",
+                                    color = TextWhite,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
 
@@ -1833,17 +1849,17 @@ fun AdminScreen(
                         ) {
                             Button(
                                 onClick = {
-                                    AccessManager.approveAccess(req.consoleId, req.gameKey)
-                                    Toast.makeText(context, "Acesso aprovado por 10 minutos!", Toast.LENGTH_SHORT).show()
+                                    AccessManager.approveBatch(batch.id)
+                                    Toast.makeText(context, "Pacote aprovado por 15 minutos!", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier
-                                    .weight(1.2f)
+                                    .weight(1.3f)
                                     .height(46.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = GreenLed),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text(
-                                    text = "APROVAR",
+                                    text = "APROVAR (${batch.games.size})",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
                                     color = Color.Black
@@ -1852,11 +1868,11 @@ fun AdminScreen(
 
                             Button(
                                 onClick = {
-                                    AccessManager.rejectAccess(req.consoleId, req.gameKey)
-                                    Toast.makeText(context, "Solicitação recusada.", Toast.LENGTH_SHORT).show()
+                                    AccessManager.rejectBatch(batch.id)
+                                    Toast.makeText(context, "Pacote recusado.", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .weight(0.9f)
                                     .height(46.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222222)),
                                 shape = RoundedCornerShape(8.dp)
@@ -1871,15 +1887,16 @@ fun AdminScreen(
 
                             Button(
                                 onClick = {
+                                    val gamesFormatted = batch.games.mapIndexed { idx, g -> "${idx + 1}. ${g.title} (${g.gameKey})" }.joinToString("\n")
                                     val sendIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
                                         putExtra(
                                             Intent.EXTRA_TEXT,
-                                            "Olá! O seu acesso para o jogo *${req.gameTitle}* (${req.gameKey}) foi liberado no console *${req.consoleId}*!\n\nVocê tem 10 minutos para iniciar o download/instalação na loja."
+                                            "Olá! O seu pacote de jogos foi liberado no console *${batch.consoleId}*!\n\n*Jogos Aprovados:*\n$gamesFormatted\n\n⚠️ Você tem *15 minutos* para iniciar os downloads na loja."
                                         )
                                     }
                                     context.startActivity(
-                                        Intent.createChooser(sendIntent, "Notificar Cliente")
+                                        Intent.createChooser(sendIntent, "Notificar Pacote")
                                     )
                                 },
                                 modifier = Modifier
