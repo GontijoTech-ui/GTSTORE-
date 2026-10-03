@@ -511,7 +511,7 @@ fun CatalogManagerScreen(
         PkgLinkCaptureScreen(
             sourceUrl = captureSourceUrl!!,
             allowedDomains = exceptionsList,
-            onCaptured = { captureResult ->
+            onCaptured = { captureResult, onComplete ->
                 saving = true
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
@@ -532,6 +532,7 @@ fun CatalogManagerScreen(
                     saving = false
                     withContext(Dispatchers.Main) {
                         Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                        onComplete()
                     }
                 }
             },
@@ -931,7 +932,7 @@ fun RegisteredCatalogScreen(
         PkgLinkCaptureScreen(
             sourceUrl = captureSourceUrl!!,
             allowedDomains = exceptionsList,
-            onCaptured = { captureResult ->
+            onCaptured = { captureResult, onComplete ->
                 updating = true
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
@@ -955,6 +956,10 @@ fun RegisteredCatalogScreen(
                     }
 
                     allItems = withContext(Dispatchers.IO) { catalogManager.getAll() }
+
+                    withContext(Dispatchers.Main) {
+                        onComplete()
+                    }
                 }
             },
             onCancel = { captureSourceUrl = null }
