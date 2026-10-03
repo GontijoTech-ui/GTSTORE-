@@ -77,12 +77,28 @@ class HttpServer(
         activeConnectionsCount++
         val response = try {
             when {
+                // STATUS DO SERVIDOR
                 uri == "/api/status" && method == Method.GET -> handleStatus(session)
+
+                // CATÁLOGO DE JOGOS
                 uri == "/api/packages" && method == Method.GET -> handlePackages()
+
+                // ROTA ORIGINAL EXATA PARA CARREGAR CAPAS DOS JOGOS
+                uri.startsWith("/api/package-icon/") && method == Method.GET -> handlePackageIcon(uri)
+
+                // COMPATIBILIDADE EXTRA CASO ACESSEM /covers/{id}
+                uri.startsWith("/covers/") && method == Method.GET -> handlePackageIcon(uri)
+
+                // SOLICITAÇÃO DO CARRINHO EM LOTE (PS4)
                 uri == "/api/request-cart-access" && method == Method.POST -> handleRequestCartAccess(session)
+
+                // CHECAGEM DE STATUS (POLLING A CADA 10s)
                 uri == "/api/check-access" && method == Method.GET -> handleCheckAccess(session)
-                uri.startsWith("/download") && method == Method.GET -> handleDownloadPkg(session)
-                uri.startsWith("/covers/") && method == Method.GET -> handleCoverImage(uri)
+
+                // DOWNLOAD / REDIRECT DO JOGO
+                (uri == "/download" || uri == "/pkg") && method == Method.GET -> handleDownloadPkg(session)
+
+                // ARQUIVOS ESTÁTICOS (index.html, logo.jpg, qr.png)
                 else -> handleStaticFiles(uri)
             }
         } catch (e: Exception) {
@@ -116,29 +132,76 @@ class HttpServer(
         return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
     }
 
+    // =========================================================================
+    // CATÁLOGO (Usa a mesma convenção original: /api/package-icon/{id})
+    // =========================================================================
     private fun handlePackages(): Response {
-        val items = catalogManager.getAll()
+        val packages = catalogManager.getAll()
         val jsonArray = JSONArray()
 
-        items.forEach { item ->
-            val hasIcon = item.iconFile.isNotBlank()
+        for (item in packages) {
+            val icon = catalogManager.getIcon(item)
+            val hasIcon = icon != null && icon.isNotEmpty()
+
             val obj = JSONObject().apply {
                 put("id", item.catalogIndex)
+                put("index", item.indexString)
                 put("title", item.title)
                 put("contentId", item.contentId)
                 put("size", item.size)
+                put("version", item.version)
+                put("category", item.category)
                 put("catalogType", item.type.ifBlank { "GAME" })
-                put("iconUrl", if (hasIcon) "/covers/${item.iconFile}" else "/covers/icon_${item.catalogIndex}.jpg")
+                put("url", item.url)
+                // Aponta para o endpoint original garantido
+                put("iconUrl", if (hasIcon) "/api/package-icon/${item.catalogIndex}" else "")
             }
             jsonArray.put(obj)
         }
 
         val json = JSONObject().apply {
+            put("count", packages.size)
             put("packages", jsonArray)
         }
         return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
     }
 
+    // =========================================================================
+    // ENTREGA DO ÍCONE (LÓGICA ORIGINAL RESTAURADA: getByIndex + getIcon)
+    // =========================================================================
+    private fun handlePackageIcon(uri: String): Response {
+        // Extrai o ID da URL (ex: "/api/package-icon/1" ou "/covers/1")
+        val rawId = uri.substringAfterLast("/").substringBefore(".").substringBefore("?")
+        val packageId = rawId.toIntOrNull()
+
+        if (packageId != null) {
+            val item = catalogManager.getByIndex(packageId)
+            if (item != null) {
+                val icon = catalogManager.getIcon(item)
+                if (icon != null && icon.isNotEmpty()) {
+                    val mime = if (icon.size > 8 && icon[0] == 0x89.toByte() && icon[1] == 0x50.toByte()) {
+                        "image/png"
+                    } else {
+                        "image/jpeg"
+                    }
+                    val resp = newFixedLengthResponse(
+                        Response.Status.OK,
+                        mime,
+                        ByteArrayInputStream(icon),
+                        icon.size.toLong()
+                    )
+                    resp.addHeader("Cache-Control", "public, max-age=86400")
+                    return resp
+                }
+            }
+        }
+
+        return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Ícone não encontrado")
+    }
+
+    // =========================================================================
+    // CARRINHO E CONTROLE DE ACESSO (15 MINUTOS)
+    // =========================================================================
     private fun handleRequestCartAccess(session: IHTTPSession): Response {
         val files = HashMap<String, String>()
         session.parseBody(files)
@@ -212,7 +275,7 @@ class HttpServer(
         val consoleId = session.parameters["consoleId"]?.firstOrNull() ?: ""
         val index = idStr.toIntOrNull() ?: -1
 
-        val item = catalogManager.getAll().find { it.catalogIndex == index }
+        val item = catalogManager.getByIndex(index)
             ?: return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Item não encontrado")
 
         val gameKey = item.contentId.substringBefore("_00-").ifBlank { item.title }
@@ -241,61 +304,9 @@ class HttpServer(
         )
     }
 
-    private fun handleCoverImage(uri: String): Response {
-        val fileName = uri.removePrefix("/covers/").substringBefore("?").trim()
-        val allItems = catalogManager.getAll()
-
-        // 1ª Tentativa: Localiza o item e carrega os bytes diretamente pelo catalogManager
-        val matchedItem = allItems.find {
-            it.iconFile.equals(fileName, ignoreCase = true) ||
-            fileName.contains("icon_${it.catalogIndex}") ||
-            it.contentId.contains(fileName.substringBefore("."), ignoreCase = true)
-        }
-
-        if (matchedItem != null) {
-            val iconBytes = catalogManager.getIcon(matchedItem)
-            if (iconBytes != null && iconBytes.isNotEmpty()) {
-                val mime = if (iconBytes.size > 8 && iconBytes[0] == 0x89.toByte() && iconBytes[1] == 0x50.toByte()) {
-                    "image/png"
-                } else {
-                    "image/jpeg"
-                }
-                val response = newFixedLengthResponse(
-                    Response.Status.OK,
-                    mime,
-                    ByteArrayInputStream(iconBytes),
-                    iconBytes.size.toLong()
-                )
-                response.addHeader("Cache-Control", "public, max-age=86400")
-                return response
-            }
-        }
-
-        // 2ª Tentativa: Varredura de ficheiros nas pastas internas da aplicação
-        val candidateDirs = listOf(
-            File(context.filesDir, "catalog_icons"),
-            File(context.filesDir, "covers"),
-            context.filesDir
-        )
-
-        for (dir in candidateDirs) {
-            val file = File(dir, fileName)
-            if (file.exists() && file.length() > 0) {
-                val mime = if (fileName.endsWith(".png", ignoreCase = true)) "image/png" else "image/jpeg"
-                val response = newFixedLengthResponse(
-                    Response.Status.OK,
-                    mime,
-                    FileInputStream(file),
-                    file.length()
-                )
-                response.addHeader("Cache-Control", "public, max-age=86400")
-                return response
-            }
-        }
-
-        return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Capa não encontrada")
-    }
-
+    // =========================================================================
+    // ARQUIVOS ESTÁTICOS (assets/ raiz)
+    // =========================================================================
     private fun handleStaticFiles(uri: String): Response {
         val cleanUri = uri.substringBefore("?").trim().removePrefix("/")
         val targetFile = if (cleanUri.isBlank() || cleanUri == "/") "index.html" else cleanUri
