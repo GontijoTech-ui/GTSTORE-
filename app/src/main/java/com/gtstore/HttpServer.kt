@@ -5,10 +5,17 @@ import fi.iki.elonen.NanoHTTPD
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStream
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
+import java.net.ServerSocket
+import java.net.Socket
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.charset.StandardCharsets
 
 data class ServerStatusInfo(
     val running: Boolean,
@@ -25,6 +32,11 @@ class HttpServer(
 
     private var running = false
     private var activeConnectionsCount = 0
+
+    companion object {
+        private const val PAYLOAD_DIR = "payloads"
+        private const val ZERO_DIGEST = "0000000000000000000000000000000000000000000000000000000000000000"
+    }
 
     fun isRunning(): Boolean = running
 
@@ -83,22 +95,25 @@ class HttpServer(
                 // CATÁLOGO DE JOGOS
                 uri == "/api/packages" && method == Method.GET -> handlePackages()
 
-                // ROTA ORIGINAL EXATA PARA CARREGAR CAPAS DOS JOGOS
+                // ROTA ORIGINAL DE ÍCONES
                 uri.startsWith("/api/package-icon/") && method == Method.GET -> handlePackageIcon(uri)
 
-                // COMPATIBILIDADE EXTRA CASO ACESSEM /covers/{id}
-                uri.startsWith("/covers/") && method == Method.GET -> handlePackageIcon(uri)
+                // ROTA ORIGINAL DO MANIFEST JSON (O PS4 BUSCA ESSE JSON NO PROCESSO DO DPI)
+                uri.startsWith("/json/") && method == Method.GET -> handleManifestJson(uri)
 
-                // SOLICITAÇÃO DO CARRINHO EM LOTE (PS4)
+                // SOLICITAÇÃO DE PACOTE (CARRINHO)
                 uri == "/api/request-cart-access" && method == Method.POST -> handleRequestCartAccess(session)
 
-                // CHECAGEM DE STATUS (POLLING A CADA 10s)
+                // CHECAGEM DE APROVAÇÃO (POLLING DE 10S)
                 uri == "/api/check-access" && method == Method.GET -> handleCheckAccess(session)
 
-                // DOWNLOAD / REDIRECT DO JOGO
+                // ENVIO DE PAYLOAD / INSTALAÇÃO DIRETA DPI (PORTA 9090)
+                uri == "/api/install-dpi" && method == Method.POST -> handleDirectInstallDpi(session)
+
+                // DOWNLOAD / REDIRECIONAMENTO DE PKG
                 (uri == "/download" || uri == "/pkg") && method == Method.GET -> handleDownloadPkg(session)
 
-                // ARQUIVOS ESTÁTICOS (index.html, logo.jpg, qr.png)
+                // ARQUIVOS ESTÁTICOS (index.html, logo.jpg, qr.png, qr-pix.jpg)
                 else -> handleStaticFiles(uri)
             }
         } catch (e: Exception) {
@@ -124,7 +139,7 @@ class HttpServer(
 
     private fun handleStatus(session: IHTTPSession): Response {
         val json = JSONObject().apply {
-            put("status", if (running) "online" else "offline")
+            put("online", running)
             put("port", port)
             put("localAddress", getLocalIpAddress() ?: "")
             put("clientIp", session.remoteIpAddress ?: "")
@@ -132,9 +147,6 @@ class HttpServer(
         return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
     }
 
-    // =========================================================================
-    // CATÁLOGO (Usa a mesma convenção original: /api/package-icon/{id})
-    // =========================================================================
     private fun handlePackages(): Response {
         val packages = catalogManager.getAll()
         val jsonArray = JSONArray()
@@ -153,7 +165,6 @@ class HttpServer(
                 put("category", item.category)
                 put("catalogType", item.type.ifBlank { "GAME" })
                 put("url", item.url)
-                // Aponta para o endpoint original garantido
                 put("iconUrl", if (hasIcon) "/api/package-icon/${item.catalogIndex}" else "")
             }
             jsonArray.put(obj)
@@ -166,11 +177,7 @@ class HttpServer(
         return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
     }
 
-    // =========================================================================
-    // ENTREGA DO ÍCONE (LÓGICA ORIGINAL RESTAURADA: getByIndex + getIcon)
-    // =========================================================================
     private fun handlePackageIcon(uri: String): Response {
-        // Extrai o ID da URL (ex: "/api/package-icon/1" ou "/covers/1")
         val rawId = uri.substringAfterLast("/").substringBefore(".").substringBefore("?")
         val packageId = rawId.toIntOrNull()
 
@@ -195,12 +202,258 @@ class HttpServer(
                 }
             }
         }
-
         return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Ícone não encontrado")
     }
 
     // =========================================================================
-    // CARRINHO E CONTROLE DE ACESSO (15 MINUTOS)
+    // DPI: MANIFEST JSON (/json/{id}.json)
+    // =========================================================================
+    private fun handleManifestJson(uri: String): Response {
+        val rawId = uri.removePrefix("/json/").removeSuffix(".json").substringBefore("?")
+        val packageId = rawId.toIntOrNull()
+            ?: return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "ID inválido")
+
+        val item = catalogManager.getByIndex(packageId)
+            ?: return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Jogo não encontrado")
+
+        if (item.url.isBlank()) {
+            return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "URL do item ausente")
+        }
+
+        val digest = if (item.digest.isNotBlank()) item.digest else ZERO_DIGEST
+        val json = JSONObject().apply {
+            put("originalFileSize", item.size)
+            put("packageDigest", digest)
+            put("numberOfSplitFiles", 1)
+            put(
+                "pieces",
+                JSONArray().put(
+                    JSONObject().apply {
+                        put("url", item.url)
+                        put("fileOffset", 0)
+                        put("fileSize", item.size)
+                        put("hashValue", "0000000000000000000000000000000000000000")
+                    }
+                )
+            )
+        }
+
+        return newFixedLengthResponse(
+            Response.Status.OK,
+            "application/json; charset=utf-8",
+            json.toString()
+        )
+    }
+
+    // =========================================================================
+    // DPI: ENVIO DE PAYLOAD NA PORTA 9090 (LÓGICA ORIGINAL RESTAURADA)
+    // =========================================================================
+    private fun handleDirectInstallDpi(session: IHTTPSession): Response {
+        val files = HashMap<String, String>()
+        session.parseBody(files)
+        val postData = files["postData"] ?: ""
+        val json = if (postData.isNotBlank()) JSONObject(postData) else JSONObject()
+
+        var ps4Ip = json.optString("ip").trim()
+        if (!isValidIp(ps4Ip)) {
+            ps4Ip = session.remoteIpAddress ?: ""
+        }
+
+        val pkgId = json.optInt("pkgId", -1)
+        val consoleId = json.optString("consoleId").trim()
+
+        if (!isValidIp(ps4Ip) || pkgId == -1) {
+            return jsonError(400, "IP do PS4 ou ID inválido.")
+        }
+
+        val item = catalogManager.getByIndex(pkgId)
+            ?: return jsonError(404, "Item do catálogo não encontrado.")
+
+        if (item.url.isBlank()) {
+            return jsonError(422, "O item do catálogo não possui URL.")
+        }
+
+        // Verifica se o console tem autorização
+        val gameKey = item.contentId.substringBefore("_00-").ifBlank { item.title }
+        if (consoleId.isNotBlank() && !AccessManager.isAccessApproved(consoleId, gameKey)) {
+            return jsonError(403, "Acesso não autorizado ou expirado.")
+        }
+
+        val payloadTemplate = loadPayload("payload.bin") ?: loadPayload("direct-installer.bin")
+            ?: return jsonError(500, "Arquivo payload.bin ausente na pasta assets.")
+
+        val payload = payloadTemplate.copyOf()
+        val off = indexOf(
+            payload,
+            byteArrayOf(0xB4.toByte(), 0xB4.toByte(), 0xB4.toByte(), 0xB4.toByte(), 0xB4.toByte())
+        )
+
+        if (off < 0) {
+            return jsonError(500, "Payload incompatível.")
+        }
+
+        val localIp = getLocalIpAddress()
+            ?: return jsonError(500, "IP local do Android indisponível.")
+
+        val manifestUrl = "http://$localIp:$port/json/${item.catalogIndex}.json"
+        val localAddr = java.net.InetAddress.getByName(localIp)
+
+        try {
+            ServerSocket(0, 5, localAddr).use { tempServer ->
+                tempServer.soTimeout = 15_000
+                val callbackPort = tempServer.localPort
+
+                // Injeta o IP e a porta de callback no buffer do payload
+                localAddr.address.copyInto(payload, off)
+                payload[off + 4] = (callbackPort ushr 8).toByte()
+                payload[off + 5] = callbackPort.toByte()
+
+                // 1. Envia o payload via TCP para o BinLoader (Porta 9090) do PS4
+                val binSuccess = sendPayloadToBinLoader(ps4Ip, payload)
+                if (!binSuccess) {
+                    return jsonError(502, "Falha ao conectar no BinLoader (9090) do PS4. O exploit/GoldHEN está ativo?")
+                }
+
+                // 2. Aguarda o PS4 conectar de volta no socket temporário para receber os dados do jogo
+                try {
+                    tempServer.accept().use { ps4Client ->
+                        ps4Client.getOutputStream().apply {
+                            write(buildDpiInfo(manifestUrl, item))
+                            flush()
+                        }
+                    }
+
+                    AppLogger.log("[DPI] Instalação iniciada para ${item.title} no PS4 ($ps4Ip)")
+                    return newFixedLengthResponse(
+                        Response.Status.OK,
+                        "application/json",
+                        """{"success":true,"message":"Instalação iniciada!"}"""
+                    )
+                } catch (_: Exception) {
+                    return jsonError(504, "Tempo esgotado aguardando o PS4 responder.")
+                }
+            }
+        } catch (e: Exception) {
+            return jsonError(500, "Falha no servidor local: ${e.message}")
+        }
+    }
+
+    private fun sendPayloadToBinLoader(ip: String, payload: ByteArray): Boolean {
+        return try {
+            Socket().use { socket ->
+                socket.tcpNoDelay = true
+                socket.soTimeout = 8000
+                socket.connect(InetSocketAddress(ip, 9090), 5000)
+
+                val out = socket.getOutputStream()
+                out.write(payload)
+                out.flush()
+                try {
+                    socket.shutdownOutput()
+                } catch (_: Exception) {}
+            }
+            true
+        } catch (e: Exception) {
+            AppLogger.log("[DPI] Erro ao enviar payload (9090): ${e.message}")
+            false
+        }
+    }
+
+    private fun buildDpiInfo(url: String, item: CatalogItem): ByteArray {
+        val out = ByteArrayOutputStream()
+
+        fun i32(v: Int) {
+            out.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(v).array())
+        }
+
+        fun i64(v: Long) {
+            out.write(ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(v).array())
+        }
+
+        fun str(s: String) {
+            val b = s.toByteArray(StandardCharsets.UTF_8)
+            i32(b.size)
+            out.write(b)
+        }
+
+        i32(1)
+        str(url)
+        str(item.title)
+        str(item.contentId)
+
+        val bgftType = "PS4" + item.category.uppercase()
+        str(bgftType)
+        i64(item.size)
+
+        val icon = catalogManager.getIcon(item)
+        if (icon == null || icon.isEmpty()) {
+            i32(0)
+        } else {
+            i32(icon.size)
+            out.write(icon)
+        }
+
+        return out.toByteArray()
+    }
+
+    private fun loadPayload(payloadName: String): ByteArray? {
+        val targets = listOf("$PAYLOAD_DIR/$payloadName", payloadName)
+        for (target in targets) {
+            try {
+                context.assets.open(target).use { input ->
+                    return input.readBytes()
+                }
+            } catch (_: Exception) {}
+        }
+        return null
+    }
+
+    private fun indexOf(data: ByteArray, pattern: ByteArray): Int {
+        if (pattern.isEmpty()) return 0
+        if (pattern.size > data.size) return -1
+        for (i in 0..data.size - pattern.size) {
+            var match = true
+            for (j in pattern.indices) {
+                if (data[i + j] != pattern[j]) {
+                    match = false
+                    break
+                }
+            }
+            if (match) return i
+        }
+        return -1
+    }
+
+    private fun isValidIp(ip: String): Boolean {
+        if (ip.isBlank()) return false
+        val parts = ip.split(".")
+        if (parts.size != 4) return false
+        return try {
+            parts.all { it.toInt() in 0..255 }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun jsonError(code: Int, message: String): Response {
+        val status = when (code) {
+            400 -> Response.Status.BAD_REQUEST
+            403 -> Response.Status.FORBIDDEN
+            404 -> Response.Status.NOT_FOUND
+            422 -> Response.Status.BAD_REQUEST
+            502 -> Response.Status.INTERNAL_ERROR
+            504 -> Response.Status.INTERNAL_ERROR
+            else -> Response.Status.INTERNAL_ERROR
+        }
+        return newFixedLengthResponse(
+            status,
+            "application/json",
+            """{"success":false,"error":"$message"}"""
+        )
+    }
+
+    // =========================================================================
+    // CONTROLE DE ACESSO (CARRINHO & LIBERAÇÃO)
     // =========================================================================
     private fun handleRequestCartAccess(session: IHTTPSession): Response {
         val files = HashMap<String, String>()
@@ -280,7 +533,7 @@ class HttpServer(
 
         val gameKey = item.contentId.substringBefore("_00-").ifBlank { item.title }
         if (consoleId.isNotBlank() && !AccessManager.isAccessApproved(consoleId, gameKey)) {
-            return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Acesso expirado (15 min).")
+            return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Acesso não autorizado ou expirado.")
         }
 
         val directLink = item.url.trim()
@@ -304,9 +557,6 @@ class HttpServer(
         )
     }
 
-    // =========================================================================
-    // ARQUIVOS ESTÁTICOS (assets/ raiz)
-    // =========================================================================
     private fun handleStaticFiles(uri: String): Response {
         val cleanUri = uri.substringBefore("?").trim().removePrefix("/")
         val targetFile = if (cleanUri.isBlank() || cleanUri == "/") "index.html" else cleanUri
