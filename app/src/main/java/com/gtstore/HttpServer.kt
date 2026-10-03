@@ -4,6 +4,7 @@ import android.content.Context
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStream
@@ -120,13 +121,14 @@ class HttpServer(
         val jsonArray = JSONArray()
 
         items.forEach { item ->
+            val hasIcon = item.iconFile.isNotBlank()
             val obj = JSONObject().apply {
                 put("id", item.catalogIndex)
                 put("title", item.title)
                 put("contentId", item.contentId)
                 put("size", item.size)
                 put("catalogType", item.type.ifBlank { "GAME" })
-                put("iconUrl", if (item.iconFile.isNotBlank()) "/covers/${item.iconFile}" else "")
+                put("iconUrl", if (hasIcon) "/covers/${item.iconFile}" else "/covers/icon_${item.catalogIndex}.jpg")
             }
             jsonArray.put(obj)
         }
@@ -240,25 +242,68 @@ class HttpServer(
     }
 
     private fun handleCoverImage(uri: String): Response {
-        val fileName = uri.removePrefix("/covers/")
-        val file = File(context.filesDir, fileName)
-        if (file.exists()) {
-            return newFixedLengthResponse(Response.Status.OK, "image/jpeg", FileInputStream(file), file.length())
+        val fileName = uri.removePrefix("/covers/").substringBefore("?").trim()
+        val allItems = catalogManager.getAll()
+
+        // 1ª Tentativa: Localiza o item e carrega os bytes diretamente pelo catalogManager
+        val matchedItem = allItems.find {
+            it.iconFile.equals(fileName, ignoreCase = true) ||
+            fileName.contains("icon_${it.catalogIndex}") ||
+            it.contentId.contains(fileName.substringBefore("."), ignoreCase = true)
         }
+
+        if (matchedItem != null) {
+            val iconBytes = catalogManager.getIcon(matchedItem)
+            if (iconBytes != null && iconBytes.isNotEmpty()) {
+                val mime = if (iconBytes.size > 8 && iconBytes[0] == 0x89.toByte() && iconBytes[1] == 0x50.toByte()) {
+                    "image/png"
+                } else {
+                    "image/jpeg"
+                }
+                val response = newFixedLengthResponse(
+                    Response.Status.OK,
+                    mime,
+                    ByteArrayInputStream(iconBytes),
+                    iconBytes.size.toLong()
+                )
+                response.addHeader("Cache-Control", "public, max-age=86400")
+                return response
+            }
+        }
+
+        // 2ª Tentativa: Varredura de ficheiros nas pastas internas da aplicação
+        val candidateDirs = listOf(
+            File(context.filesDir, "catalog_icons"),
+            File(context.filesDir, "covers"),
+            context.filesDir
+        )
+
+        for (dir in candidateDirs) {
+            val file = File(dir, fileName)
+            if (file.exists() && file.length() > 0) {
+                val mime = if (fileName.endsWith(".png", ignoreCase = true)) "image/png" else "image/jpeg"
+                val response = newFixedLengthResponse(
+                    Response.Status.OK,
+                    mime,
+                    FileInputStream(file),
+                    file.length()
+                )
+                response.addHeader("Cache-Control", "public, max-age=86400")
+                return response
+            }
+        }
+
         return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Capa não encontrada")
     }
 
     private fun handleStaticFiles(uri: String): Response {
-        // Normaliza a URI retirando parâmetros e barras extras
         val cleanUri = uri.substringBefore("?").trim().removePrefix("/")
         val targetFile = if (cleanUri.isBlank() || cleanUri == "/") "index.html" else cleanUri
 
         val stream: InputStream = try {
-            // 1ª Prioridade: Abre diretamente a partir da raiz de assets/ (onde está o index.html)
             context.assets.open(targetFile)
         } catch (_: Exception) {
             try {
-                // 2ª Opção: Tenta encontrar dentro da subpasta web/ caso exista
                 context.assets.open("web/$targetFile")
             } catch (_: Exception) {
                 return newFixedLengthResponse(
