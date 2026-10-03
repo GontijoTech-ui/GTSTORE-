@@ -1,15 +1,12 @@
 package com.gtstore
 
 import android.content.Context
-import android.net.Uri
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStream
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
 
 class HttpServer(
     private val context: Context,
@@ -21,7 +18,6 @@ class HttpServer(
         val uri = session.uri
         val method = session.method
 
-        // Trata CORS para WebKit do PS4
         if (method == Method.OPTIONS) {
             val response = newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "")
             addCorsHeaders(response)
@@ -30,28 +26,18 @@ class HttpServer(
 
         val response = try {
             when {
-                // 1. Status do Servidor
                 uri == "/api/status" && method == Method.GET -> handleStatus(session)
-
-                // 2. Catálogo de Jogos
                 uri == "/api/packages" && method == Method.GET -> handlePackages()
-
-                // 3. Solicitação de Acesso (Novo fluxo PS4)
-                uri == "/api/request-access" && method == Method.POST -> handleRequestAccess(session)
-
-                // 4. Verificação de Acesso (Polling 10s)
+                
+                // Solicitação do Carrinho em lote
+                uri == "/api/request-cart-access" && method == Method.POST -> handleRequestCartAccess(session)
+                
+                // Checagem periódica do PS4 (a cada 10s)
                 uri == "/api/check-access" && method == Method.GET -> handleCheckAccess(session)
-
-                // 5. Instalação Direta via DPI (Direct Package Installer)
+                
                 uri == "/api/install-dpi" && method == Method.POST -> handleInstallDpi(session)
-
-                // 6. Download / Stream de PKG
                 uri.startsWith("/download") && method == Method.GET -> handleDownloadPkg(session)
-
-                // 7. Capas / Imagens
                 uri.startsWith("/covers/") && method == Method.GET -> handleCoverImage(uri)
-
-                // 8. Arquivos Estáticos da Web (index.html, logo.jpg, qr.png)
                 else -> handleStaticFiles(uri)
             }
         } catch (e: Exception) {
@@ -59,7 +45,7 @@ class HttpServer(
             newFixedLengthResponse(
                 Response.Status.INTERNAL_ERROR,
                 "application/json",
-                """{"error":"Erro interno do servidor: ${e.message}"}"""
+                """{"error":"Erro interno: ${e.message}"}"""
             )
         }
 
@@ -104,49 +90,65 @@ class HttpServer(
         return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
     }
 
-    private fun handleRequestAccess(session: IHTTPSession): Response {
+    private fun handleRequestCartAccess(session: IHTTPSession): Response {
         val files = HashMap<String, String>()
         session.parseBody(files)
         val postData = files["postData"] ?: ""
         val json = JSONObject(postData)
 
         val consoleId = json.optString("consoleId").trim()
-        val gameKey = json.optString("gameKey").trim()
-        val title = json.optString("title").trim()
+        val gamesJson = json.optJSONArray("games") ?: JSONArray()
         val clientIp = session.remoteIpAddress ?: ""
 
-        if (consoleId.isNotBlank() && gameKey.isNotBlank()) {
-            AccessManager.addRequest(
-                AccessRequestItem(
-                    consoleId = consoleId,
-                    gameKey = gameKey,
-                    gameTitle = title.ifBlank { gameKey },
-                    clientIp = clientIp
+        if (consoleId.isNotBlank() && gamesJson.length() > 0) {
+            val gamesList = mutableListOf<RequestedGame>()
+            for (i in 0 until gamesJson.length()) {
+                val g = gamesJson.getJSONObject(i)
+                val key = g.optString("gameKey").trim()
+                val title = g.optString("title").trim()
+                if (key.isNotBlank()) {
+                    gamesList.add(RequestedGame(gameKey = key, title = title.ifBlank { key }))
+                }
+            }
+
+            if (gamesList.isNotEmpty()) {
+                AccessManager.addBatchRequest(
+                    AccessBatchRequest(
+                        consoleId = consoleId,
+                        games = gamesList,
+                        clientIp = clientIp
+                    )
                 )
-            )
-            return newFixedLengthResponse(
-                Response.Status.OK,
-                "application/json",
-                """{"success":true}"""
-            )
+                return newFixedLengthResponse(
+                    Response.Status.OK,
+                    "application/json",
+                    """{"success":true}"""
+                )
+            }
         }
 
         return newFixedLengthResponse(
             Response.Status.BAD_REQUEST,
             "application/json",
-            """{"success":false,"error":"Parâmetros insuficientes"}"""
+            """{"success":false,"error":"Dados inválidos"}"""
         )
     }
 
     private fun handleCheckAccess(session: IHTTPSession): Response {
         val params = session.parameters
         val consoleId = params["consoleId"]?.firstOrNull()?.trim() ?: ""
-        val gameKey = params["gameKey"]?.firstOrNull()?.trim() ?: ""
+        val gameKeysParam = params["gameKeys"]?.firstOrNull()?.trim() ?: ""
+        val singleKey = params["gameKey"]?.firstOrNull()?.trim() ?: ""
 
-        val approved = if (consoleId.isNotBlank() && gameKey.isNotBlank()) {
-            AccessManager.isAccessApproved(consoleId, gameKey)
-        } else {
-            false
+        val approved = when {
+            consoleId.isNotBlank() && gameKeysParam.isNotBlank() -> {
+                val keys = gameKeysParam.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                AccessManager.areAllGamesApproved(consoleId, keys)
+            }
+            consoleId.isNotBlank() && singleKey.isNotBlank() -> {
+                AccessManager.isAccessApproved(consoleId, singleKey)
+            }
+            else -> false
         }
 
         return newFixedLengthResponse(
@@ -173,24 +175,18 @@ class HttpServer(
                 """{"success":false,"error":"Pacote não encontrado"}"""
             )
 
-        // Se consoleId foi enviado, valida se o acesso ainda está ativo
         val key = pkg.contentId.substringBefore("_00-").ifBlank { pkg.id }
         if (consoleId.isNotBlank() && !AccessManager.isAccessApproved(consoleId, key)) {
             return newFixedLengthResponse(
                 Response.Status.FORBIDDEN,
                 "application/json",
-                """{"success":false,"error":"Acesso expirado ou não autorizado. Solicite novamente."}"""
+                """{"success":false,"error":"Acesso expirado (15 min) ou não autorizado."}"""
             )
         }
 
         return try {
-            // Disparo DPI para a porta padrão 12800 do PS4
             DpiInstaller.sendInstallRequest(targetIp, pkg)
-            newFixedLengthResponse(
-                Response.Status.OK,
-                "application/json",
-                """{"success":true}"""
-            )
+            newFixedLengthResponse(Response.Status.OK, "application/json", """{"success":true}""")
         } catch (e: Exception) {
             newFixedLengthResponse(
                 Response.Status.INTERNAL_ERROR,
@@ -205,8 +201,7 @@ class HttpServer(
         val pkg = catalogProvider().find { it.id == pkgId }
             ?: return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Arquivo não encontrado")
 
-        // Se houver redirect direto para o servidor original
-        if (pkg.directUrl.startsWith("http://") || pkg.directUrl.startsWith("https://")) {
+        if (pkg.directUrl.startsWith("http://", ignoreCase = true) || pkg.directUrl.startsWith("https://", ignoreCase = true)) {
             val response = newFixedLengthResponse(Response.Status.REDIRECT, MIME_HTML, "")
             response.addHeader("Location", pkg.directUrl)
             return response
@@ -227,16 +222,10 @@ class HttpServer(
 
     private fun handleCoverImage(uri: String): Response {
         val fileName = uri.removePrefix("/covers/")
-        val coverDir = File(context.filesDir, "covers")
-        val file = File(coverDir, fileName)
+        val file = File(File(context.filesDir, "covers"), fileName)
 
         if (file.exists()) {
-            return newFixedLengthResponse(
-                Response.Status.OK,
-                "image/jpeg",
-                FileInputStream(file),
-                file.length()
-            )
+            return newFixedLengthResponse(Response.Status.OK, "image/jpeg", FileInputStream(file), file.length())
         }
         return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Capa não encontrada")
     }
