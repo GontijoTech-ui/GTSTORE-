@@ -76,6 +76,19 @@ class HttpServer(
         return null
     }
 
+    private fun extractGameKey(item: CatalogItem): String {
+        val cid = item.contentId.uppercase()
+        val match = Regex("CUSA\\d+").find(cid)
+        if (match != null) {
+            return match.value
+        }
+        val prefix = cid.substringBefore("_00-")
+        if (prefix.isNotBlank()) {
+            return prefix
+        }
+        return item.title.trim().uppercase()
+    }
+
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
         val method = session.method
@@ -95,16 +108,16 @@ class HttpServer(
                 // CATÁLOGO DE JOGOS
                 uri == "/api/packages" && method == Method.GET -> handlePackages()
 
-                // ROTA ORIGINAL DE ÍCONES
+                // ROTA DE ÍCONES
                 uri.startsWith("/api/package-icon/") && method == Method.GET -> handlePackageIcon(uri)
 
-                // ROTA ORIGINAL DO MANIFEST JSON (O PS4 BUSCA ESSE JSON NO PROCESSO DO DPI)
+                // ROTA DO MANIFEST JSON PARA O PS4
                 uri.startsWith("/json/") && method == Method.GET -> handleManifestJson(uri)
 
                 // SOLICITAÇÃO DE PACOTE (CARRINHO)
                 uri == "/api/request-cart-access" && method == Method.POST -> handleRequestCartAccess(session)
 
-                // CHECAGEM DE APROVAÇÃO (POLLING DE 10S)
+                // CHECAGEM DE APROVAÇÃO (POLLING)
                 uri == "/api/check-access" && method == Method.GET -> handleCheckAccess(session)
 
                 // ENVIO DE PAYLOAD / INSTALAÇÃO DIRETA DPI (PORTA 9090)
@@ -113,7 +126,7 @@ class HttpServer(
                 // DOWNLOAD / REDIRECIONAMENTO DE PKG
                 (uri == "/download" || uri == "/pkg") && method == Method.GET -> handleDownloadPkg(session)
 
-                // ARQUIVOS ESTÁTICOS (index.html, logo.jpg, qr.png, qr-pix.jpg)
+                // ARQUIVOS ESTÁTICOS (index.html, imagens, etc.)
                 else -> handleStaticFiles(uri)
             }
         } catch (e: Exception) {
@@ -205,9 +218,6 @@ class HttpServer(
         return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Ícone não encontrado")
     }
 
-    // =========================================================================
-    // DPI: MANIFEST JSON (/json/{id}.json)
-    // =========================================================================
     private fun handleManifestJson(uri: String): Response {
         val rawId = uri.removePrefix("/json/").removeSuffix(".json").substringBefore("?")
         val packageId = rawId.toIntOrNull()
@@ -245,9 +255,6 @@ class HttpServer(
         )
     }
 
-    // =========================================================================
-    // DPI: ENVIO DE PAYLOAD NA PORTA 9090 (LÓGICA ORIGINAL RESTAURADA)
-    // =========================================================================
     private fun handleDirectInstallDpi(session: IHTTPSession): Response {
         val files = HashMap<String, String>()
         session.parseBody(files)
@@ -273,9 +280,9 @@ class HttpServer(
             return jsonError(422, "O item do catálogo não possui URL.")
         }
 
-        // Verifica se o console tem autorização
-        val gameKey = item.contentId.substringBefore("_00-").ifBlank { item.title }
+        val gameKey = extractGameKey(item)
         if (consoleId.isNotBlank() && !AccessManager.isAccessApproved(consoleId, gameKey)) {
+            AppLogger.log("[HttpServer] Bloqueado 403: Console $consoleId tentou $gameKey")
             return jsonError(403, "Acesso não autorizado ou expirado.")
         }
 
@@ -303,18 +310,15 @@ class HttpServer(
                 tempServer.soTimeout = 15_000
                 val callbackPort = tempServer.localPort
 
-                // Injeta o IP e a porta de callback no buffer do payload
                 localAddr.address.copyInto(payload, off)
                 payload[off + 4] = (callbackPort ushr 8).toByte()
                 payload[off + 5] = callbackPort.toByte()
 
-                // 1. Envia o payload via TCP para o BinLoader (Porta 9090) do PS4
                 val binSuccess = sendPayloadToBinLoader(ps4Ip, payload)
                 if (!binSuccess) {
                     return jsonError(502, "Falha ao conectar no BinLoader (9090) do PS4. O exploit/GoldHEN está ativo?")
                 }
 
-                // 2. Aguarda o PS4 conectar de volta no socket temporário para receber os dados do jogo
                 try {
                     tempServer.accept().use { ps4Client ->
                         ps4Client.getOutputStream().apply {
@@ -323,7 +327,7 @@ class HttpServer(
                         }
                     }
 
-                    AppLogger.log("[DPI] Instalação iniciada para ${item.title} no PS4 ($ps4Ip)")
+                    AppLogger.log("[DPI] Instalação iniciada para ${item.title} ($gameKey) no PS4 ($ps4Ip)")
                     return newFixedLengthResponse(
                         Response.Status.OK,
                         "application/json",
@@ -452,9 +456,6 @@ class HttpServer(
         )
     }
 
-    // =========================================================================
-    // CONTROLE DE ACESSO (CARRINHO & LIBERAÇÃO)
-    // =========================================================================
     private fun handleRequestCartAccess(session: IHTTPSession): Response {
         val files = HashMap<String, String>()
         session.parseBody(files)
@@ -531,8 +532,9 @@ class HttpServer(
         val item = catalogManager.getByIndex(index)
             ?: return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Item não encontrado")
 
-        val gameKey = item.contentId.substringBefore("_00-").ifBlank { item.title }
+        val gameKey = extractGameKey(item)
         if (consoleId.isNotBlank() && !AccessManager.isAccessApproved(consoleId, gameKey)) {
+            AppLogger.log("[HttpServer] Bloqueado 403 Download: Console $consoleId tentou $gameKey")
             return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Acesso não autorizado ou expirado.")
         }
 
