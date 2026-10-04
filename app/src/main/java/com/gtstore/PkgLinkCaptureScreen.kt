@@ -1,12 +1,8 @@
 package com.gtstore
 
 import android.annotation.SuppressLint
-import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
 import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
@@ -46,9 +42,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 data class PkgCaptureResult(
     val sourceUrl: String,
@@ -56,109 +49,13 @@ data class PkgCaptureResult(
     val fileName: String
 )
 
+// Desativado: métodos vazios para não criar arquivos nem gravar em disco
 private class MochaDiagnosticLogger(
     private val context: Context
 ) {
-    private val lock = Any()
-    private var fileUri: Uri? = null
-    private var fileName: String = ""
-
-    fun start(sourceUrl: String, userAgent: String) {
-        synchronized(lock) {
-            if (fileUri != null) return
-
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            fileName = "GTSTORE_MOCHA_$timestamp.txt"
-
-            try {
-                val resolver = context.contentResolver
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val values = ContentValues().apply {
-                        put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                        put(MediaStore.Downloads.MIME_TYPE, "text/plain")
-                        put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                    }
-                    fileUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                } else {
-                    val directory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-                    if (directory != null) {
-                        if (!directory.exists()) directory.mkdirs()
-                        val file = java.io.File(directory, fileName)
-                        fileUri = Uri.fromFile(file)
-                    }
-                }
-
-                write(
-                    """
-                    ============================================================
-                    GTSTORE - DIAGNÓSTICO WEBVIEW / MOCHA
-                    ============================================================
-                    INÍCIO: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())}
-
-                    URL INICIAL:
-                    $sourceUrl
-
-                    USER-AGENT:
-                    $userAgent
-
-                    ANDROID:
-                    ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})
-
-                    DISPOSITIVO:
-                    ${Build.MANUFACTURER} ${Build.MODEL}
-
-                    ============================================================
-                    REQUISIÇÕES E EVENTOS
-                    ============================================================
-                    """.trimIndent()
-                )
-            } catch (e: Exception) {
-                fileUri = null
-                e.printStackTrace()
-            }
-        }
-    }
-
-    fun log(message: String) {
-        synchronized(lock) {
-            if (fileUri == null) return
-            val timestamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
-            write("[$timestamp] $message\n")
-        }
-    }
-
-    fun finish() {
-        synchronized(lock) {
-            if (fileUri == null) return
-            write(
-                "\n============================================================\n" +
-                        "FIM DO DIAGNÓSTICO\n" +
-                        "============================================================\n"
-            )
-        }
-    }
-
-    private fun write(text: String) {
-        val uri = fileUri ?: return
-        try {
-            val resolver = context.contentResolver
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                resolver.openOutputStream(uri, "wa")?.use { output ->
-                    output.write((text + "\n").toByteArray(Charsets.UTF_8))
-                    output.flush()
-                }
-            } else {
-                val path = uri.path ?: return
-                java.io.FileOutputStream(java.io.File(path), true).use { output ->
-                    output.write((text + "\n").toByteArray(Charsets.UTF_8))
-                    output.flush()
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
+    fun start(sourceUrl: String, userAgent: String) {}
+    fun log(message: String) {}
+    fun finish() {}
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -287,10 +184,6 @@ fun PkgLinkCaptureScreen(
         status = "Aguardando download do PKG..."
     }
 
-    /*
-     * Captura cumulativa: cadastra todos os ficheiros detetados
-     * e aguarda 3 segundos após o último descarregamento antes de regressar.
-     */
     fun handleCapturedUrl(
         url: String,
         contentDisposition: String? = null,
@@ -300,7 +193,6 @@ fun PkgLinkCaptureScreen(
         val isHttps = url.startsWith("https://", ignoreCase = true)
         if (!isHttp && !isHttps) return
 
-        // Evita chamadas repetidas com o mesmo URL exato
         if (capturedList.contains(url)) return
         capturedList.add(url)
 
@@ -323,12 +215,8 @@ fun PkgLinkCaptureScreen(
             fileName = finalFileName
         )
 
-        // Regista o ficheiro no catálogo
-        onCaptured(result) {
-            // Callback opcional por item
-        }
+        onCaptured(result) {}
 
-        // Dá 3 segundos de tolerância para capturar o próximo ficheiro da fila (ex.: base de 41 GB)
         browser?.removeCallbacks(null)
         browser?.postDelayed({
             if (!processing && capturedList.isNotEmpty()) {
