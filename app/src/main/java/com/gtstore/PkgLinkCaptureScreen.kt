@@ -12,13 +12,14 @@ import android.webkit.WebViewClient
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -30,9 +31,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 
 data class PkgCaptureResult(
@@ -56,41 +60,15 @@ fun PkgLinkCaptureScreen(
     ) -> Unit,
     onCancel: () -> Unit
 ) {
-    var currentDisplayUrl by remember {
-        mutableStateOf(sourceUrl)
-    }
-
-    var currentPageUrl by remember {
-        mutableStateOf(sourceUrl)
-    }
-
-    var returnPageUrl by remember {
-        mutableStateOf("")
-    }
-
-    var originPageUrl by remember {
-        mutableStateOf("")
-    }
-
-    var status by remember {
-        mutableStateOf("Aguardando início do download do PKG...")
-    }
-
-    var captured by remember {
-        mutableStateOf(false)
-    }
-
-    var processing by remember {
-        mutableStateOf(false)
-    }
-
-    var canGoBack by remember {
-        mutableStateOf(false)
-    }
-
-    var browser by remember {
-        mutableStateOf<WebView?>(null)
-    }
+    var currentDisplayUrl by remember { mutableStateOf(sourceUrl) }
+    var currentPageUrl by remember { mutableStateOf(sourceUrl) }
+    var returnPageUrl by remember { mutableStateOf("") }
+    var originPageUrl by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("Aguardando download do PKG...") }
+    var captured by remember { mutableStateOf(false) }
+    var processing by remember { mutableStateOf(false) }
+    var canGoBack by remember { mutableStateOf(false) }
+    var browser by remember { mutableStateOf<WebView?>(null) }
 
     val sourceHost = remember(sourceUrl) {
         try {
@@ -115,9 +93,7 @@ fun PkgLinkCaptureScreen(
             ""
         }
 
-        if (host.isBlank()) {
-            return true
-        }
+        if (host.isBlank()) return true
 
         val isSource = sourceHost.isNotEmpty() &&
                 (host.contains(sourceHost) || sourceHost.contains(host))
@@ -148,22 +124,22 @@ fun PkgLinkCaptureScreen(
     fun saveReturnPage() {
         val url = getCurrentBrowserUrl()
         if (url.isBlank()) {
-            status = "Não foi possível salvar a página de retorno."
+            status = "Não foi possível salvar página de retorno."
             return
         }
         returnPageUrl = url
-        status = "Página de retorno salva."
+        status = "Página de retorno salva!"
         AppLogger.log("[PkgLinkCaptureScreen] Página de RETORNO salva: $returnPageUrl")
     }
 
     fun saveOriginPage() {
         val url = getCurrentBrowserUrl()
         if (url.isBlank()) {
-            status = "Não foi possível salvar a página de origem."
+            status = "Não foi possível salvar página de origem."
             return
         }
         originPageUrl = url
-        status = "Página de origem salva."
+        status = "Página de origem salva!"
         AppLogger.log("[PkgLinkCaptureScreen] Página de ORIGEM salva: $originPageUrl")
     }
 
@@ -176,11 +152,11 @@ fun PkgLinkCaptureScreen(
             captured = false
             returnPageUrl = ""
             originPageUrl = ""
-            status = "Aguardando início do download do PKG..."
+            status = "Aguardando download do PKG..."
             return
         }
 
-        status = "Processamento concluído. Voltando à página..."
+        status = "Concluído! Retornando..."
         val view = browser
         if (view != null) {
             view.post {
@@ -192,7 +168,7 @@ fun PkgLinkCaptureScreen(
         captured = false
         returnPageUrl = ""
         originPageUrl = ""
-        status = "Aguardando início do download do PKG..."
+        status = "Aguardando download do PKG..."
     }
 
     fun handleCapturedUrl(
@@ -215,10 +191,10 @@ fun PkgLinkCaptureScreen(
 
         captured = true
         processing = true
-        status = "Link PKG capturado. Processando..."
+        status = "PKG capturado! Processando..."
 
-        AppLogger.log("[PkgLinkCaptureScreen] Link capturado com sucesso: $url")
-        AppLogger.log("[PkgLinkCaptureScreen] Página de origem utilizada: $finalSourceUrl")
+        AppLogger.log("[PkgLinkCaptureScreen] Link capturado: $url")
+        AppLogger.log("[PkgLinkCaptureScreen] Origem: $finalSourceUrl")
 
         val result = PkgCaptureResult(
             sourceUrl = finalSourceUrl,
@@ -231,137 +207,32 @@ fun PkgLinkCaptureScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(PureBlack)
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = CardBlack),
-            border = BorderStroke(1.dp, BorderDark)
-        ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(text = "CAPTURA DE LINK", color = TextWhite)
-                Text(
-                    text = status,
-                    color = when {
-                        processing -> Color(0xFFFFC107)
-                        captured -> GreenLed
-                        else -> TextMuted
-                    }
-                )
+    /*
+     * BOX FLUTUANTE: O WebView ocupa 100% do ecrã e os controlos
+     * ficam suspensos em camadas superiores sem roubar altura útil.
+     */
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
 
-                if (currentDisplayUrl.isNotBlank()) {
-                    Text(text = currentDisplayUrl, color = Color(0xFF64B5F6), maxLines = 1)
-                }
-                if (returnPageUrl.isNotBlank()) {
-                    Text(text = "✓ Página de retorno salva", color = GreenLed, maxLines = 1)
-                }
-                if (originPageUrl.isNotBlank()) {
-                    Text(text = "✓ Página de origem salva", color = GreenLed, maxLines = 1)
-                }
-            }
-        }
-
-        Button(
-            onClick = {
-                when {
-                    returnPageUrl.isBlank() -> saveReturnPage()
-                    originPageUrl.isBlank() -> saveOriginPage()
-                }
-            },
-            enabled = !processing && originPageUrl.isBlank(),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF303030),
-                disabledContainerColor = Color(0xFF181818),
-                contentColor = Color.White,
-                disabledContentColor = Color(0xFF666666)
-            )
-        ) {
-            Text(
-                text = when {
-                    returnPageUrl.isBlank() -> "SALVAR PÁGINA DE RETORNO"
-                    originPageUrl.isBlank() -> "SALVAR PÁGINA DE ORIGEM"
-                    else -> "PÁGINAS SALVAS"
-                }
-            )
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Button(
-                onClick = {
-                    val view = browser
-                    if (view != null && view.canGoBack()) {
-                        view.goBack()
-                    }
-                },
-                enabled = canGoBack && !processing,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxSize(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF303030),
-                disabledContainerColor = Color(0xFF181818),
-                contentColor = Color.White,
-                disabledContentColor = Color(0xFF666666)
-            )
-            ) {
-                Text(text = "VOLTAR PÁGINA")
-            }
-
-            Button(
-                onClick = onCancel,
-                enabled = !processing,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxSize(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF303030),
-                disabledContainerColor = Color(0xFF181818),
-                contentColor = Color.White,
-                disabledContentColor = Color(0xFF666666)
-            )
-            ) {
-                Text(text = "CANCELAR")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(2.dp))
-
+        // CAMADA 1: O WEBVIEW EM ECRÃ INTEIRO
         AndroidView(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+            modifier = Modifier.fillMaxSize(),
             factory = { context ->
                 WebView(context).apply {
                     browser = this
 
-                    // Configurações vitais para renderização completa do Mocha.my
+                    isVerticalScrollBarEnabled = true
+                    isHorizontalScrollBarEnabled = false
+
                     settings.userAgentString = BROWSER_USER_AGENT
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
                     settings.loadsImagesAutomatically = true
 
-                    // Habilita a escala responsiva correta para exibir as listas de arquivos
+                    // Escala ampla e fluida igual à de navegadores normais
                     settings.useWideViewPort = true
                     settings.loadWithOverviewMode = true
 
-                    // Permite acesso a recursos de mídia e scripts locais
                     settings.allowContentAccess = true
                     settings.allowFileAccess = true
 
@@ -408,11 +279,9 @@ fun PkgLinkCaptureScreen(
                             favicon: android.graphics.Bitmap?
                         ) {
                             super.onPageStarted(view, url, favicon)
-
                             val isNotIntermediate = !url.contains("filekeeper.net", ignoreCase = true)
                             val isPkg = url.substringBefore("?").endsWith(".pkg", ignoreCase = true)
 
-                            // Evita abortar requisições legítimas do Mocha
                             if (isNotIntermediate && !isPkg && !isDomainPermitted(url)) {
                                 view.stopLoading()
                                 if (currentPageUrl.isNotBlank() && view.url != currentPageUrl) {
@@ -432,7 +301,7 @@ fun PkgLinkCaptureScreen(
                             }
 
                             if (!captured && !processing) {
-                                status = "Página carregada. Clique no arquivo desejado para capturar."
+                                status = "Página carregada."
                             }
                         }
                     }
@@ -454,5 +323,140 @@ fun PkgLinkCaptureScreen(
                 canGoBack = view.canGoBack()
             }
         )
+
+        // CAMADA 2: CARD DE STATUS SUSPENSO NO TOPO (SEMI-TRANSLÚCIDO)
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .align(Alignment.TopCenter),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xDD121212) // Fundo preto com 85% de opacidade
+            ),
+            border = BorderStroke(1.dp, Color(0x66FFFFFF))
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "CAPTURA GTSTORE",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = when {
+                            processing -> "PROCESSANDO..."
+                            captured -> "✓ CAPTURADO"
+                            returnPageUrl.isNotBlank() && originPageUrl.isNotBlank() -> "✓ ORIGEM & RETORNO"
+                            returnPageUrl.isNotBlank() -> "1/2 RETORNO OK"
+                            else -> "PRONTO"
+                        },
+                        color = when {
+                            processing -> Color(0xFFFFC107)
+                            captured || originPageUrl.isNotBlank() -> GreenLed
+                            returnPageUrl.isNotBlank() -> Color(0xFF64B5F6)
+                            else -> Color(0xFFAAAAAA)
+                        },
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (currentDisplayUrl.isNotBlank()) {
+                    Text(
+                        text = currentDisplayUrl,
+                        color = Color(0xFF90CAF9),
+                        fontSize = 10.sp,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+
+        // CAMADA 3: BOTÕES DE AÇÃO FLUTUANTES NO FUNDO (RODAPÉ SUSPENSO)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .align(Alignment.BottomCenter),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Botão Principal (Salvar Retorno / Salvar Origem)
+            Button(
+                onClick = {
+                    when {
+                        returnPageUrl.isBlank() -> saveReturnPage()
+                        originPageUrl.isBlank() -> saveOriginPage()
+                    }
+                },
+                enabled = !processing && originPageUrl.isBlank(),
+                modifier = Modifier
+                    .weight(1.3f)
+                    .height(44.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = when {
+                        returnPageUrl.isBlank() -> Color(0xEE0070CC) // Azul translúcido
+                        originPageUrl.isBlank() -> Color(0xEE35C759) // Verde para a segunda etapa
+                        else -> Color(0xAA222222)
+                    },
+                    contentColor = Color.White
+                )
+            ) {
+                Text(
+                    text = when {
+                        returnPageUrl.isBlank() -> "1. SALVAR RETORNO"
+                        originPageUrl.isBlank() -> "2. SALVAR ORIGEM"
+                        else -> "PÁGINAS SALVAS"
+                    },
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Botão Voltar Página
+            Button(
+                onClick = {
+                    val view = browser
+                    if (view != null && view.canGoBack()) {
+                        view.goBack()
+                    }
+                },
+                enabled = canGoBack && !processing,
+                modifier = Modifier
+                    .weight(0.85f)
+                    .height(44.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xDD2A2A2A),
+                    contentColor = Color.White
+                )
+            ) {
+                Text(text = "VOLTAR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+
+            // Botão Cancelar
+            Button(
+                onClick = onCancel,
+                enabled = !processing,
+                modifier = Modifier
+                    .weight(0.85f)
+                    .height(44.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xDD2A2A2A),
+                    contentColor = Color(0xFFFF6B6B)
+                )
+            ) {
+                Text(text = "SAIR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
