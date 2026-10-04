@@ -106,7 +106,10 @@ fun PkgLinkCaptureScreen(
         val isCommonCdn = host.contains("filekeeper") ||
                 host.contains("dlproxy") ||
                 host.contains("akirabox") ||
-                host.contains("mocha")
+                host.contains("mocha") ||
+                host.contains("matchaup") ||
+                host.contains("cloudflare") ||
+                host.contains("hcaptcha")
 
         return isSource || isAllowed || isCommonCdn
     }
@@ -207,13 +210,8 @@ fun PkgLinkCaptureScreen(
         }
     }
 
-    /*
-     * BOX FLUTUANTE: O WebView ocupa 100% do ecrã e os controlos
-     * ficam suspensos em camadas superiores sem roubar altura útil.
-     */
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
 
-        // CAMADA 1: O WEBVIEW EM ECRÃ INTEIRO
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
@@ -229,14 +227,14 @@ fun PkgLinkCaptureScreen(
                     settings.databaseEnabled = true
                     settings.loadsImagesAutomatically = true
 
-                    // Escala ampla e fluida igual à de navegadores normais
-                    settings.useWideViewPort = true
-                    settings.loadWithOverviewMode = true
-
+                    settings.cacheMode = WebSettings.LOAD_DEFAULT
                     settings.allowContentAccess = true
                     settings.allowFileAccess = true
 
-                    settings.javaScriptCanOpenWindowsAutomatically = true
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+
+                    settings.javaScriptCanOpenWindowsAutomatically = false
                     settings.setSupportMultipleWindows(false)
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
@@ -300,6 +298,14 @@ fun PkgLinkCaptureScreen(
                                 currentPageUrl = url
                             }
 
+                            view.evaluateJavascript(
+                                """
+                                (function() {
+                                    window.dispatchEvent(new Event('resize'));
+                                })();
+                                """.trimIndent(), null
+                            )
+
                             if (!captured && !processing) {
                                 status = "Página carregada."
                             }
@@ -324,7 +330,6 @@ fun PkgLinkCaptureScreen(
             }
         )
 
-        // CAMADA 2: CARD DE STATUS SUSPENSO NO TOPO (SEMI-TRANSLÚCIDO)
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -332,7 +337,7 @@ fun PkgLinkCaptureScreen(
                 .align(Alignment.TopCenter),
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
-                containerColor = Color(0xDD121212) // Fundo preto com 85% de opacidade
+                containerColor = Color(0xDD121212)
             ),
             border = BorderStroke(1.dp, Color(0x66FFFFFF))
         ) {
@@ -380,7 +385,6 @@ fun PkgLinkCaptureScreen(
             }
         }
 
-        // CAMADA 3: BOTÕES DE AÇÃO FLUTUANTES NO FUNDO (RODAPÉ SUSPENSO)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -388,7 +392,6 @@ fun PkgLinkCaptureScreen(
                 .align(Alignment.BottomCenter),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Botão Principal (Salvar Retorno / Salvar Origem)
             Button(
                 onClick = {
                     when {
@@ -403,8 +406,8 @@ fun PkgLinkCaptureScreen(
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = when {
-                        returnPageUrl.isBlank() -> Color(0xEE0070CC) // Azul translúcido
-                        originPageUrl.isBlank() -> Color(0xEE35C759) // Verde para a segunda etapa
+                        returnPageUrl.isBlank() -> Color(0xEE0070CC)
+                        originPageUrl.isBlank() -> Color(0xEE35C759)
                         else -> Color(0xAA222222)
                     },
                     contentColor = Color.White
@@ -421,7 +424,6 @@ fun PkgLinkCaptureScreen(
                 )
             }
 
-            // Botão Voltar Página
             Button(
                 onClick = {
                     val view = browser
@@ -442,7 +444,6 @@ fun PkgLinkCaptureScreen(
                 Text(text = "VOLTAR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
 
-            // Botão Cancelar
             Button(
                 onClick = onCancel,
                 enabled = !processing,
