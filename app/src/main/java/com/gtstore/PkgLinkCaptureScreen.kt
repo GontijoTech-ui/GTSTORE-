@@ -1,11 +1,18 @@
 package com.gtstore
 
 import android.annotation.SuppressLint
+import android.content.ContentValues
+import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -38,12 +45,196 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class PkgCaptureResult(
     val sourceUrl: String,
     val directUrl: String,
     val fileName: String
 )
+
+/**
+ * Logger de diagnóstico do Mocha.
+ *
+ * Cria:
+ * Download/GTSTORE_MOCHA_yyyyMMdd_HHmmss.txt
+ *
+ * Não grava cookies nem cabeçalhos privados.
+ */
+private class MochaDiagnosticLogger(
+    private val context: Context
+) {
+
+    private val lock = Any()
+
+    private var fileUri: Uri? = null
+    private var fileName: String = ""
+
+    fun start(sourceUrl: String, userAgent: String) {
+        synchronized(lock) {
+            if (fileUri != null) return
+
+            val timestamp = SimpleDateFormat(
+                "yyyyMMdd_HHmmss",
+                Locale.US
+            ).format(Date())
+
+            fileName = "GTSTORE_MOCHA_$timestamp.txt"
+
+            try {
+                val resolver = context.contentResolver
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+
+                    val values = ContentValues().apply {
+                        put(
+                            MediaStore.Downloads.DISPLAY_NAME,
+                            fileName
+                        )
+                        put(
+                            MediaStore.Downloads.MIME_TYPE,
+                            "text/plain"
+                        )
+                        put(
+                            MediaStore.Downloads.RELATIVE_PATH,
+                            Environment.DIRECTORY_DOWNLOADS
+                        )
+                    }
+
+                    fileUri = resolver.insert(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        values
+                    )
+
+                } else {
+
+                    // Fallback para versões antigas.
+                    val directory = context.getExternalFilesDir(
+                        Environment.DIRECTORY_DOWNLOADS
+                    )
+
+                    if (directory != null) {
+                        if (!directory.exists()) {
+                            directory.mkdirs()
+                        }
+
+                        val file = java.io.File(
+                            directory,
+                            fileName
+                        )
+
+                        fileUri = Uri.fromFile(file)
+                    }
+                }
+
+                write(
+                    """
+                    ============================================================
+                    GTSTORE - DIAGNÓSTICO WEBVIEW / MOCHA
+                    ============================================================
+                    INÍCIO: ${
+                        SimpleDateFormat(
+                            "yyyy-MM-dd HH:mm:ss.SSS",
+                            Locale.US
+                        ).format(Date())
+                    }
+
+                    URL INICIAL:
+                    $sourceUrl
+
+                    USER-AGENT:
+                    $userAgent
+
+                    ANDROID:
+                    ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})
+
+                    DISPOSITIVO:
+                    ${Build.MANUFACTURER} ${Build.MODEL}
+
+                    ============================================================
+                    REQUISIÇÕES E EVENTOS
+                    ============================================================
+
+                    """.trimIndent()
+                )
+
+            } catch (e: Exception) {
+                fileUri = null
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun log(message: String) {
+        synchronized(lock) {
+            if (fileUri == null) return
+
+            val timestamp = SimpleDateFormat(
+                "HH:mm:ss.SSS",
+                Locale.US
+            ).format(Date())
+
+            write(
+                "[$timestamp] $message\n"
+            )
+        }
+    }
+
+    fun finish() {
+        synchronized(lock) {
+            if (fileUri == null) return
+
+            write(
+                "\n============================================================\n" +
+                        "FIM DO DIAGNÓSTICO\n" +
+                        "============================================================\n"
+            )
+        }
+    }
+
+    fun getFileName(): String {
+        synchronized(lock) {
+            return fileName
+        }
+    }
+
+    private fun write(text: String) {
+        val uri = fileUri ?: return
+
+        try {
+            val resolver = context.contentResolver
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+
+                resolver.openOutputStream(uri, "wa")?.use { output ->
+                    output.write(
+                        (text + "\n").toByteArray(Charsets.UTF_8)
+                    )
+                    output.flush()
+                }
+
+            } else {
+
+                val path = uri.path ?: return
+
+                java.io.FileOutputStream(
+                    java.io.File(path),
+                    true
+                ).use { output ->
+                    output.write(
+                        (text + "\n").toByteArray(Charsets.UTF_8)
+                    )
+                    output.flush()
+                }
+            }
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+}
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -56,11 +247,14 @@ fun PkgLinkCaptureScreen(
     ) -> Unit,
     onCancel: () -> Unit
 ) {
+
     var currentDisplayUrl by remember { mutableStateOf(sourceUrl) }
     var currentPageUrl by remember { mutableStateOf(sourceUrl) }
     var returnPageUrl by remember { mutableStateOf("") }
     var originPageUrl by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf("Aguardando download do PKG...") }
+    var status by remember {
+        mutableStateOf("Aguardando download do PKG...")
+    }
     var captured by remember { mutableStateOf(false) }
     var processing by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
@@ -83,6 +277,7 @@ fun PkgLinkCaptureScreen(
     }
 
     fun isDomainPermitted(url: String): Boolean {
+
         val host = try {
             Uri.parse(url).host?.lowercase() ?: ""
         } catch (_: Exception) {
@@ -92,73 +287,118 @@ fun PkgLinkCaptureScreen(
         if (host.isBlank()) return true
 
         val isSource = sourceHost.isNotEmpty() &&
-                (host.contains(sourceHost) || sourceHost.contains(host))
+                (
+                        host.contains(sourceHost) ||
+                                sourceHost.contains(host)
+                        )
 
         val isAllowed = allowedDomains.any { domain ->
             val cleanDomain = domain.trim().lowercase()
-            cleanDomain.isNotBlank() && host.contains(cleanDomain)
+
+            cleanDomain.isNotBlank() &&
+                    host.contains(cleanDomain)
         }
 
-        val isCommonCdn = host.contains("filekeeper") ||
-                host.contains("dlproxy") ||
-                host.contains("akirabox") ||
-                host.contains("mocha") ||
-                host.contains("matchaup") ||
-                host.contains("cloudflare") ||
-                host.contains("challenges.cloudflare") ||
-                host.contains("hcaptcha")
+        val isCommonCdn =
+            host.contains("filekeeper") ||
+                    host.contains("dlproxy") ||
+                    host.contains("akirabox") ||
+                    host.contains("mocha") ||
+                    host.contains("matchaup") ||
+                    host.contains("cloudflare") ||
+                    host.contains("challenges.cloudflare") ||
+                    host.contains("hcaptcha")
 
         return isSource || isAllowed || isCommonCdn
     }
 
     fun getCurrentBrowserUrl(): String {
-        val webViewUrl = browser?.url?.trim().orEmpty()
+
+        val webViewUrl =
+            browser?.url?.trim().orEmpty()
+
         return when {
-            webViewUrl.isNotBlank() -> webViewUrl
-            currentPageUrl.isNotBlank() -> currentPageUrl
-            currentDisplayUrl.isNotBlank() -> currentDisplayUrl
-            else -> sourceUrl
+            webViewUrl.isNotBlank() ->
+                webViewUrl
+
+            currentPageUrl.isNotBlank() ->
+                currentPageUrl
+
+            currentDisplayUrl.isNotBlank() ->
+                currentDisplayUrl
+
+            else ->
+                sourceUrl
         }
     }
 
     fun saveReturnPage() {
+
         val url = getCurrentBrowserUrl()
+
         if (url.isBlank()) {
-            status = "Não foi possível salvar página de retorno."
+            status =
+                "Não foi possível salvar página de retorno."
             return
         }
+
         returnPageUrl = url
-        status = "Página de retorno salva!"
-        AppLogger.log("[PkgLinkCaptureScreen] Página de RETORNO salva: $returnPageUrl")
+
+        status =
+            "Página de retorno salva!"
+
+        AppLogger.log(
+            "[PkgLinkCaptureScreen] Página de RETORNO salva: $returnPageUrl"
+        )
     }
 
     fun saveOriginPage() {
+
         val url = getCurrentBrowserUrl()
+
         if (url.isBlank()) {
-            status = "Não foi possível salvar página de origem."
+            status =
+                "Não foi possível salvar página de origem."
             return
         }
+
         originPageUrl = url
-        status = "Página de origem salva!"
-        AppLogger.log("[PkgLinkCaptureScreen] Página de ORIGEM salva: $originPageUrl")
+
+        status =
+            "Página de origem salva!"
+
+        AppLogger.log(
+            "[PkgLinkCaptureScreen] Página de ORIGEM salva: $originPageUrl"
+        )
     }
 
     fun finishProcessingAndReturn() {
+
         if (!processing) return
 
-        val targetUrl = returnPageUrl.trim()
+        val targetUrl =
+            returnPageUrl.trim()
+
         if (targetUrl.isBlank()) {
+
             processing = false
             captured = false
             returnPageUrl = ""
             originPageUrl = ""
-            status = "Aguardando download do PKG..."
+
+            status =
+                "Aguardando download do PKG..."
+
             return
         }
 
-        status = "Concluído! Retornando..."
+        status =
+            "Concluído! Retornando..."
+
         val view = browser
+
         if (view != null) {
+
             view.post {
                 view.loadUrl(targetUrl)
             }
@@ -166,9 +406,12 @@ fun PkgLinkCaptureScreen(
 
         processing = false
         captured = false
+
         returnPageUrl = ""
         originPageUrl = ""
-        status = "Aguardando download do PKG..."
+
+        status =
+            "Aguardando download do PKG..."
     }
 
     fun handleCapturedUrl(
@@ -176,25 +419,57 @@ fun PkgLinkCaptureScreen(
         contentDisposition: String? = null,
         mimeType: String? = null
     ) {
+
         if (captured || processing) return
 
-        val isHttp = url.startsWith("http://", ignoreCase = true)
-        val isHttps = url.startsWith("https://", ignoreCase = true)
+        val isHttp =
+            url.startsWith(
+                "http://",
+                ignoreCase = true
+            )
+
+        val isHttps =
+            url.startsWith(
+                "https://",
+                ignoreCase = true
+            )
+
         if (!isHttp && !isHttps) return
 
-        val guessedFileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
-        val finalFileName = guessedFileName.trim().ifBlank { "download.pkg" }
+        val guessedFileName =
+            URLUtil.guessFileName(
+                url,
+                contentDisposition,
+                mimeType
+            )
 
-        val finalSourceUrl = originPageUrl.trim().ifBlank {
-            currentPageUrl.trim().ifBlank { sourceUrl }
-        }
+        val finalFileName =
+            guessedFileName
+                .trim()
+                .ifBlank {
+                    "download.pkg"
+                }
+
+        val finalSourceUrl =
+            originPageUrl.trim().ifBlank {
+                currentPageUrl.trim().ifBlank {
+                    sourceUrl
+                }
+            }
 
         captured = true
         processing = true
-        status = "PKG capturado! Processando..."
 
-        AppLogger.log("[PkgLinkCaptureScreen] Link capturado: $url")
-        AppLogger.log("[PkgLinkCaptureScreen] Origem: $finalSourceUrl")
+        status =
+            "PKG capturado! Processando..."
+
+        AppLogger.log(
+            "[PkgLinkCaptureScreen] Link capturado: $url"
+        )
+
+        AppLogger.log(
+            "[PkgLinkCaptureScreen] Origem: $finalSourceUrl"
+        )
 
         val result = PkgCaptureResult(
             sourceUrl = finalSourceUrl,
@@ -207,273 +482,1044 @@ fun PkgLinkCaptureScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
 
         AndroidView(
             modifier = Modifier.fillMaxSize(),
+
             factory = { context ->
+
+                val diagnosticLogger =
+                    MochaDiagnosticLogger(context)
+
                 WebView(context).apply {
+
                     browser = this
+
+                    /*
+                     * ========================================================
+                     * DIAGNÓSTICO MOCHA
+                     * ========================================================
+                     */
+
+                    val defaultUa =
+                        settings.userAgentString
+
+                    diagnosticLogger.start(
+                        sourceUrl = sourceUrl,
+                        userAgent = defaultUa
+                    )
+
+                    diagnosticLogger.log(
+                        "[WEBVIEW] Criando WebView"
+                    )
+
+                    diagnosticLogger.log(
+                        "[WEBVIEW] User-Agent: $defaultUa"
+                    )
 
                     isVerticalScrollBarEnabled = true
                     isHorizontalScrollBarEnabled = false
 
-                    // Ajusta o User-Agent nativo para remover a assinatura de WebView Version/4.0
-                    val defaultUa = settings.userAgentString
-                    settings.userAgentString = defaultUa.replace("; wv", "").replace("Version/4.0 ", "")
+                    /*
+                     * Mantém o mesmo User-Agent atual do seu código.
+                     */
+                    settings.userAgentString =
+                        defaultUa
+                            .replace("; wv", "")
+                            .replace("Version/4.0 ", "")
 
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
                     settings.loadsImagesAutomatically = true
 
-                    settings.cacheMode = WebSettings.LOAD_DEFAULT
+                    settings.cacheMode =
+                        WebSettings.LOAD_DEFAULT
+
                     settings.allowContentAccess = true
                     settings.allowFileAccess = true
 
                     settings.useWideViewPort = true
                     settings.loadWithOverviewMode = true
 
-                    settings.javaScriptCanOpenWindowsAutomatically = false
+                    settings.javaScriptCanOpenWindowsAutomatically =
+                        false
+
                     settings.setSupportMultipleWindows(false)
-                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
-                    val cookieManager = CookieManager.getInstance()
+                    settings.mixedContentMode =
+                        WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+
+                    val cookieManager =
+                        CookieManager.getInstance()
+
                     cookieManager.setAcceptCookie(true)
-                    cookieManager.setAcceptThirdPartyCookies(this, true)
 
-                    webChromeClient = WebChromeClient()
+                    cookieManager.setAcceptThirdPartyCookies(
+                        this,
+                        true
+                    )
 
-                    webViewClient = object : WebViewClient() {
-                        override fun shouldOverrideUrlLoading(
-                            view: WebView,
-                            request: WebResourceRequest
-                        ): Boolean {
-                            val urlString = request.url.toString()
+                    diagnosticLogger.log(
+                        "[SETTINGS] JavaScript=${settings.javaScriptEnabled}"
+                    )
 
-                            if (urlString.contains("filekeeper.net", ignoreCase = true)) {
-                                currentDisplayUrl = urlString
+                    diagnosticLogger.log(
+                        "[SETTINGS] DOMStorage=${settings.domStorageEnabled}"
+                    )
+
+                    diagnosticLogger.log(
+                        "[SETTINGS] Database=${settings.databaseEnabled}"
+                    )
+
+                    diagnosticLogger.log(
+                        "[SETTINGS] WideViewport=${settings.useWideViewPort}"
+                    )
+
+                    diagnosticLogger.log(
+                        "[SETTINGS] OverviewMode=${settings.loadWithOverviewMode}"
+                    )
+
+                    diagnosticLogger.log(
+                        "[SETTINGS] MultipleWindows=false"
+                    )
+
+                    diagnosticLogger.log(
+                        "[SETTINGS] ThirdPartyCookies=true"
+                    )
+
+                    /*
+                     * ========================================================
+                     * CONSOLE JAVASCRIPT
+                     * ========================================================
+                     */
+
+                    webChromeClient =
+                        object : WebChromeClient() {
+
+                            override fun onConsoleMessage(
+                                consoleMessage: android.webkit.ConsoleMessage
+                            ): Boolean {
+
+                                val message =
+                                    consoleMessage.message()
+
+                                val source =
+                                    consoleMessage.sourceId()
+
+                                val line =
+                                    consoleMessage.lineNumber()
+
+                                val level =
+                                    consoleMessage.messageLevel()
+                                        .toString()
+
+                                diagnosticLogger.log(
+                                    "[JS][$level] $message | $source:$line"
+                                )
+
+                                return true
+                            }
+                        }
+
+                    /*
+                     * ========================================================
+                     * WEBVIEW CLIENT
+                     * ========================================================
+                     */
+
+                    webViewClient =
+                        object : WebViewClient() {
+
+                            /*
+                             * ------------------------------------------------
+                             * REQUISIÇÕES DE RECURSOS
+                             * ------------------------------------------------
+                             *
+                             * Este é um dos principais diagnósticos.
+                             *
+                             * Ele mostra scripts, APIs, imagens, iframes,
+                             * CSS etc. que o WebView realmente requisitou.
+                             */
+
+                            override fun shouldInterceptRequest(
+                                view: WebView,
+                                request: WebResourceRequest
+                            ): WebResourceResponse? {
+
+                                try {
+
+                                    val requestUrl =
+                                        request.url.toString()
+
+                                    diagnosticLogger.log(
+                                        "[REQ] " +
+                                                "${request.method} " +
+                                                "$requestUrl " +
+                                                "| mainFrame=${request.isForMainFrame}"
+                                    )
+
+                                } catch (_: Exception) {
+                                }
+
+                                return super.shouldInterceptRequest(
+                                    view,
+                                    request
+                                )
+                            }
+
+                            /*
+                             * ------------------------------------------------
+                             * NAVEGAÇÃO
+                             * ------------------------------------------------
+                             */
+
+                            override fun shouldOverrideUrlLoading(
+                                view: WebView,
+                                request: WebResourceRequest
+                            ): Boolean {
+
+                                val urlString =
+                                    request.url.toString()
+
+                                diagnosticLogger.log(
+                                    "[NAV] $urlString"
+                                )
+
+                                if (
+                                    urlString.contains(
+                                        "filekeeper.net",
+                                        ignoreCase = true
+                                    )
+                                ) {
+
+                                    currentDisplayUrl =
+                                        urlString
+
+                                    return false
+                                }
+
+                                val cleanPath =
+                                    urlString.substringBefore("?")
+
+                                if (
+                                    cleanPath.endsWith(
+                                        ".pkg",
+                                        ignoreCase = true
+                                    )
+                                ) {
+
+                                    diagnosticLogger.log(
+                                        "[PKG] URL .pkg detectada: $urlString"
+                                    )
+
+                                    currentDisplayUrl =
+                                        urlString
+
+                                    handleCapturedUrl(
+                                        urlString
+                                    )
+
+                                    return true
+                                }
+
+                                if (
+                                    !isDomainPermitted(
+                                        urlString
+                                    )
+                                ) {
+
+                                    diagnosticLogger.log(
+                                        "[NAV_BLOCK] Navegação bloqueada: $urlString"
+                                    )
+
+                                    return true
+                                }
+
+                                currentDisplayUrl =
+                                    urlString
+
                                 return false
                             }
 
-                            val cleanPath = urlString.substringBefore("?")
-                            if (cleanPath.endsWith(".pkg", ignoreCase = true)) {
-                                currentDisplayUrl = urlString
-                                handleCapturedUrl(urlString)
-                                return true
-                            }
+                            /*
+                             * ------------------------------------------------
+                             * INÍCIO DA PÁGINA
+                             * ------------------------------------------------
+                             */
 
-                            if (!isDomainPermitted(urlString)) {
-                                return true
-                            }
+                            override fun onPageStarted(
+                                view: WebView,
+                                url: String,
+                                favicon: android.graphics.Bitmap?
+                            ) {
 
-                            currentDisplayUrl = urlString
-                            return false
-                        }
+                                super.onPageStarted(
+                                    view,
+                                    url,
+                                    favicon
+                                )
 
-                        override fun onPageStarted(
-                            view: WebView,
-                            url: String,
-                            favicon: android.graphics.Bitmap?
-                        ) {
-                            super.onPageStarted(view, url, favicon)
+                                diagnosticLogger.log(
+                                    "[PAGE_START] $url"
+                                )
 
-                            // Mascara propriedades que identificam automação Web
-                            view.evaluateJavascript(
-                                """
-                                (function() {
-                                    try {
-                                        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                                        window.chrome = window.chrome || { runtime: {} };
-                                    } catch(e) {}
-                                })();
-                                """.trimIndent(), null
-                            )
+                                /*
+                                 * Mascara propriedades que identificam
+                                 * automação Web.
+                                 *
+                                 * Mantido exatamente como estava.
+                                 */
 
-                            val isNotIntermediate = !url.contains("filekeeper.net", ignoreCase = true)
-                            val isPkg = url.substringBefore("?").endsWith(".pkg", ignoreCase = true)
+                                view.evaluateJavascript(
+                                    """
+                                    (function() {
+                                        try {
+                                            Object.defineProperty(
+                                                navigator,
+                                                'webdriver',
+                                                {
+                                                    get: () => undefined
+                                                }
+                                            );
 
-                            if (isNotIntermediate && !isPkg && !isDomainPermitted(url)) {
-                                view.stopLoading()
-                                if (currentPageUrl.isNotBlank() && view.url != currentPageUrl) {
-                                    view.loadUrl(currentPageUrl)
+                                            window.chrome =
+                                                window.chrome ||
+                                                { runtime: {} };
+
+                                        } catch(e) {}
+                                    })();
+                                    """.trimIndent(),
+                                    null
+                                )
+
+                                val isNotIntermediate =
+                                    !url.contains(
+                                        "filekeeper.net",
+                                        ignoreCase = true
+                                    )
+
+                                val isPkg =
+                                    url
+                                        .substringBefore("?")
+                                        .endsWith(
+                                            ".pkg",
+                                            ignoreCase = true
+                                        )
+
+                                if (
+                                    isNotIntermediate &&
+                                    !isPkg &&
+                                    !isDomainPermitted(url)
+                                ) {
+
+                                    diagnosticLogger.log(
+                                        "[PAGE_BLOCK] Página não permitida: $url"
+                                    )
+
+                                    view.stopLoading()
+
+                                    if (
+                                        currentPageUrl.isNotBlank() &&
+                                        view.url != currentPageUrl
+                                    ) {
+
+                                        diagnosticLogger.log(
+                                            "[PAGE_RETURN] Voltando para: $currentPageUrl"
+                                        )
+
+                                        view.loadUrl(
+                                            currentPageUrl
+                                        )
+                                    }
                                 }
                             }
-                        }
 
-                        override fun onPageFinished(view: WebView, url: String) {
-                            super.onPageFinished(view, url)
-                            currentDisplayUrl = url
-                            canGoBack = view.canGoBack()
+                            /*
+                             * ------------------------------------------------
+                             * PÁGINA FINALIZADA
+                             * ------------------------------------------------
+                             */
 
-                            val isPkg = url.substringBefore("?").endsWith(".pkg", ignoreCase = true)
-                            if (!isPkg && isDomainPermitted(url)) {
-                                currentPageUrl = url
+                            override fun onPageFinished(
+                                view: WebView,
+                                url: String
+                            ) {
+
+                                super.onPageFinished(
+                                    view,
+                                    url
+                                )
+
+                                diagnosticLogger.log(
+                                    "[PAGE_FINISHED] $url"
+                                )
+
+                                currentDisplayUrl =
+                                    url
+
+                                canGoBack =
+                                    view.canGoBack()
+
+                                val isPkg =
+                                    url
+                                        .substringBefore("?")
+                                        .endsWith(
+                                            ".pkg",
+                                            ignoreCase = true
+                                        )
+
+                                if (
+                                    !isPkg &&
+                                    isDomainPermitted(url)
+                                ) {
+
+                                    currentPageUrl =
+                                        url
+                                }
+
+                                /*
+                                 * Atualiza layout.
+                                 */
+
+                                view.evaluateJavascript(
+                                    """
+                                    (function() {
+                                        try {
+                                            window.dispatchEvent(
+                                                new Event('resize')
+                                            );
+
+                                            window.dispatchEvent(
+                                                new Event('scroll')
+                                            );
+                                        } catch(e) {}
+                                    })();
+                                    """.trimIndent(),
+                                    null
+                                )
+
+                                /*
+                                 * ------------------------------------------------
+                                 * DIAGNÓSTICO DO DOM
+                                 * ------------------------------------------------
+                                 */
+
+                                view.evaluateJavascript(
+                                    """
+                                    (function() {
+
+                                        try {
+
+                                            const body =
+                                                document.body;
+
+                                            const doc =
+                                                document.documentElement;
+
+                                            const text =
+                                                body
+                                                    ? (body.innerText || "")
+                                                    : "";
+
+                                            const frames =
+                                                Array.from(
+                                                    document.querySelectorAll(
+                                                        "iframe"
+                                                    )
+                                                ).map(function(frame) {
+                                                    return {
+                                                        src: frame.src || "",
+                                                        width: frame.clientWidth,
+                                                        height: frame.clientHeight
+                                                    };
+                                                }).slice(0, 30);
+
+                                            const smallRects =
+                                                Array.from(
+                                                    document.querySelectorAll(
+                                                        "body *"
+                                                    )
+                                                ).map(function(el) {
+
+                                                    const r =
+                                                        el.getBoundingClientRect();
+
+                                                    const style =
+                                                        window.getComputedStyle(
+                                                            el
+                                                        );
+
+                                                    return {
+                                                        tag: el.tagName,
+                                                        id: el.id || "",
+                                                        className:
+                                                            typeof el.className === "string"
+                                                                ? el.className.substring(0, 200)
+                                                                : "",
+                                                        width:
+                                                            Math.round(r.width),
+                                                        height:
+                                                            Math.round(r.height),
+                                                        display:
+                                                            style.display,
+                                                        visibility:
+                                                            style.visibility,
+                                                        overflow:
+                                                            style.overflow
+                                                    };
+
+                                                }).filter(function(item) {
+
+                                                    return (
+                                                        item.width >= 150 &&
+                                                        item.height <= 8 &&
+                                                        item.display !== "none" &&
+                                                        item.visibility !== "hidden"
+                                                    );
+
+                                                }).slice(0, 50);
+
+                                            const links =
+                                                Array.from(
+                                                    document.querySelectorAll(
+                                                        "a"
+                                                    )
+                                                ).map(function(a) {
+
+                                                    return {
+                                                        text:
+                                                            (a.innerText || "")
+                                                                .trim()
+                                                                .substring(0, 200),
+
+                                                        href:
+                                                            a.href || ""
+                                                    };
+
+                                                }).slice(0, 50);
+
+                                            const result = {
+
+                                                url:
+                                                    location.href,
+
+                                                title:
+                                                    document.title,
+
+                                                viewport: {
+                                                    width:
+                                                        window.innerWidth,
+
+                                                    height:
+                                                        window.innerHeight,
+
+                                                    devicePixelRatio:
+                                                        window.devicePixelRatio
+                                                },
+
+                                                body: {
+                                                    width:
+                                                        body
+                                                            ? body.scrollWidth
+                                                            : -1,
+
+                                                    height:
+                                                        body
+                                                            ? body.scrollHeight
+                                                            : -1
+                                                },
+
+                                                document: {
+                                                    width:
+                                                        doc
+                                                            ? doc.scrollWidth
+                                                            : -1,
+
+                                                    height:
+                                                        doc
+                                                            ? doc.scrollHeight
+                                                            : -1
+                                                },
+
+                                                text:
+                                                    text.substring(
+                                                        0,
+                                                        5000
+                                                    ),
+
+                                                iframeCount:
+                                                    frames.length,
+
+                                                iframes:
+                                                    frames,
+
+                                                linkCount:
+                                                    links.length,
+
+                                                links,
+
+                                                suspiciousThinElements:
+                                                    smallRects
+                                            };
+
+                                            return JSON.stringify(result);
+
+                                        } catch(error) {
+
+                                            return JSON.stringify({
+                                                domError:
+                                                    String(error)
+                                            });
+                                        }
+
+                                    })();
+                                    """.trimIndent()
+                                ) { result ->
+
+                                    diagnosticLogger.log(
+                                        "[DOM] $result"
+                                    )
+                                }
+
+                                if (
+                                    !captured &&
+                                    !processing
+                                ) {
+
+                                    status =
+                                        "Página carregada."
+                                }
                             }
 
-                            // Dispara atualização de layout caso a lista demore a compilar
-                            view.evaluateJavascript(
-                                """
-                                (function() {
-                                    try {
-                                        window.dispatchEvent(new Event('resize'));
-                                        window.dispatchEvent(new Event('scroll'));
-                                    } catch(e) {}
-                                })();
-                                """.trimIndent(), null
-                            )
+                            /*
+                             * ------------------------------------------------
+                             * ERROS DE CARREGAMENTO
+                             * ------------------------------------------------
+                             */
 
-                            if (!captured && !processing) {
-                                status = "Página carregada."
+                            override fun onReceivedError(
+                                view: WebView,
+                                request: WebResourceRequest,
+                                error: WebResourceError
+                            ) {
+
+                                super.onReceivedError(
+                                    view,
+                                    request,
+                                    error
+                                )
+
+                                diagnosticLogger.log(
+                                    "[ERROR] " +
+                                            "${request.url} | " +
+                                            "code=${error.errorCode} | " +
+                                            "description=${error.description}"
+                                )
+                            }
+
+                            /*
+                             * ------------------------------------------------
+                             * ERROS HTTP
+                             * ------------------------------------------------
+                             */
+
+                            override fun onReceivedHttpError(
+                                view: WebView,
+                                request: WebResourceRequest,
+                                errorResponse: WebResourceResponse
+                            ) {
+
+                                super.onReceivedHttpError(
+                                    view,
+                                    request,
+                                    errorResponse
+                                )
+
+                                diagnosticLogger.log(
+                                    "[HTTP] " +
+                                            "${request.url} | " +
+                                            "status=${errorResponse.statusCode} | " +
+                                            "reason=${errorResponse.reasonPhrase}"
+                                )
                             }
                         }
-                    }
 
-                    setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-                        AppLogger.log("[PkgLinkCaptureScreen] DownloadListener disparado: $url")
+                    /*
+                     * ========================================================
+                     * DOWNLOAD LISTENER
+                     * ========================================================
+                     */
+
+                    setDownloadListener {
+                            url,
+                            userAgent,
+                            contentDisposition,
+                            mimeType,
+                            _ ->
+
+                        diagnosticLogger.log(
+                            "[DOWNLOAD] URL=$url"
+                        )
+
+                        diagnosticLogger.log(
+                            "[DOWNLOAD] MIME=$mimeType"
+                        )
+
+                        diagnosticLogger.log(
+                            "[DOWNLOAD] Content-Disposition=$contentDisposition"
+                        )
+
+                        AppLogger.log(
+                            "[PkgLinkCaptureScreen] DownloadListener disparado: $url"
+                        )
+
                         handleCapturedUrl(
                             url = url,
-                            contentDisposition = contentDisposition,
-                            mimeType = mimeType
+                            contentDisposition =
+                                contentDisposition,
+                            mimeType =
+                                mimeType
                         )
                     }
+
+                    /*
+                     * ========================================================
+                     * INICIALIZAÇÃO
+                     * ========================================================
+                     */
+
+                    diagnosticLogger.log(
+                        "[LOAD] Carregando URL inicial: $sourceUrl"
+                    )
 
                     loadUrl(sourceUrl)
                 }
             },
+
             update = { view ->
+
                 browser = view
-                canGoBack = view.canGoBack()
+
+                canGoBack =
+                    view.canGoBack()
             }
         )
+
+        /*
+         * ================================================================
+         * CARD SUPERIOR
+         * ================================================================
+         */
 
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .align(Alignment.TopCenter),
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xDD121212)
-            ),
-            border = BorderStroke(1.dp, Color(0x66FFFFFF))
+                .padding(
+                    horizontal = 12.dp,
+                    vertical = 8.dp
+                )
+                .align(
+                    Alignment.TopCenter
+                ),
+
+            shape =
+                RoundedCornerShape(12.dp),
+
+            colors =
+                CardDefaults.cardColors(
+                    containerColor =
+                        Color(0xDD121212)
+                ),
+
+            border =
+                BorderStroke(
+                    1.dp,
+                    Color(0x66FFFFFF)
+                )
         ) {
+
             Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "CAPTURA GTSTORE",
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
+                modifier =
+                    Modifier.padding(
+                        horizontal = 12.dp,
+                        vertical = 6.dp
                     )
+            ) {
+
+                Row(
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    horizontalArrangement =
+                        Arrangement.SpaceBetween,
+
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
+
                     Text(
-                        text = when {
-                            processing -> "PROCESSANDO..."
-                            captured -> "✓ CAPTURADO"
-                            returnPageUrl.isNotBlank() && originPageUrl.isNotBlank() -> "✓ ORIGEM & RETORNO"
-                            returnPageUrl.isNotBlank() -> "1/2 RETORNO OK"
-                            else -> "PRONTO"
-                        },
-                        color = when {
-                            processing -> Color(0xFFFFC107)
-                            captured || originPageUrl.isNotBlank() -> GreenLed
-                            returnPageUrl.isNotBlank() -> Color(0xFF64B5F6)
-                            else -> Color(0xFFAAAAAA)
-                        },
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
+                        text =
+                            "CAPTURA GTSTORE",
+
+                        color =
+                            Color.White,
+
+                        fontSize =
+                            11.sp,
+
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+
+                    Text(
+                        text =
+                            when {
+
+                                processing ->
+                                    "PROCESSANDO..."
+
+                                captured ->
+                                    "✓ CAPTURADO"
+
+                                returnPageUrl.isNotBlank() &&
+                                        originPageUrl.isNotBlank() ->
+                                    "✓ ORIGEM & RETORNO"
+
+                                returnPageUrl.isNotBlank() ->
+                                    "1/2 RETORNO OK"
+
+                                else ->
+                                    "PRONTO"
+                            },
+
+                        color =
+                            when {
+
+                                processing ->
+                                    Color(0xFFFFC107)
+
+                                captured ||
+                                        originPageUrl.isNotBlank() ->
+                                    GreenLed
+
+                                returnPageUrl.isNotBlank() ->
+                                    Color(0xFF64B5F6)
+
+                                else ->
+                                    Color(0xFFAAAAAA)
+                            },
+
+                        fontSize =
+                            11.sp,
+
+                        fontWeight =
+                            FontWeight.Bold
                     )
                 }
 
-                if (currentDisplayUrl.isNotBlank()) {
+                if (
+                    currentDisplayUrl.isNotBlank()
+                ) {
+
                     Text(
-                        text = currentDisplayUrl,
-                        color = Color(0xFF90CAF9),
-                        fontSize = 10.sp,
-                        maxLines = 1
+                        text =
+                            currentDisplayUrl,
+
+                        color =
+                            Color(0xFF90CAF9),
+
+                        fontSize =
+                            10.sp,
+
+                        maxLines =
+                            1
                     )
                 }
             }
         }
 
+        /*
+         * ================================================================
+         * BOTÕES INFERIORES
+         * ================================================================
+         */
+
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp)
-                .align(Alignment.BottomCenter),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = 12.dp,
+                        vertical = 10.dp
+                    )
+                    .align(
+                        Alignment.BottomCenter
+                    ),
+
+            horizontalArrangement =
+                Arrangement.spacedBy(8.dp)
         ) {
+
             Button(
                 onClick = {
+
                     when {
-                        returnPageUrl.isBlank() -> saveReturnPage()
-                        originPageUrl.isBlank() -> saveOriginPage()
+
+                        returnPageUrl.isBlank() ->
+                            saveReturnPage()
+
+                        originPageUrl.isBlank() ->
+                            saveOriginPage()
                     }
                 },
-                enabled = !processing && originPageUrl.isBlank(),
-                modifier = Modifier
-                    .weight(1.3f)
-                    .height(44.dp),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = when {
-                        returnPageUrl.isBlank() -> Color(0xEE0070CC)
-                        originPageUrl.isBlank() -> Color(0xEE35C759)
-                        else -> Color(0xAA222222)
-                    },
-                    contentColor = Color.White
-                )
+
+                enabled =
+                    !processing &&
+                            originPageUrl.isBlank(),
+
+                modifier =
+                    Modifier
+                        .weight(1.3f)
+                        .height(44.dp),
+
+                shape =
+                    RoundedCornerShape(10.dp),
+
+                colors =
+                    ButtonDefaults.buttonColors(
+
+                        containerColor =
+                            when {
+
+                                returnPageUrl.isBlank() ->
+                                    Color(0xEE0070CC)
+
+                                originPageUrl.isBlank() ->
+                                    Color(0xEE35C759)
+
+                                else ->
+                                    Color(0xAA222222)
+                            },
+
+                        contentColor =
+                            Color.White
+                    )
             ) {
+
                 Text(
-                    text = when {
-                        returnPageUrl.isBlank() -> "1. SALVAR RETORNO"
-                        originPageUrl.isBlank() -> "2. SALVAR ORIGEM"
-                        else -> "PÁGINAS SALVAS"
-                    },
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
+                    text =
+                        when {
+
+                            returnPageUrl.isBlank() ->
+                                "1. SALVAR RETORNO"
+
+                            originPageUrl.isBlank() ->
+                                "2. SALVAR ORIGEM"
+
+                            else ->
+                                "PÁGINAS SALVAS"
+                        },
+
+                    fontSize =
+                        11.sp,
+
+                    fontWeight =
+                        FontWeight.Bold
                 )
             }
 
             Button(
                 onClick = {
-                    val view = browser
-                    if (view != null && view.canGoBack()) {
+
+                    val view =
+                        browser
+
+                    if (
+                        view != null &&
+                        view.canGoBack()
+                    ) {
+
                         view.goBack()
                     }
                 },
-                enabled = canGoBack && !processing,
-                modifier = Modifier
-                    .weight(0.85f)
-                    .height(44.dp),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xDD2A2A2A),
-                    contentColor = Color.White
-                )
+
+                enabled =
+                    canGoBack &&
+                            !processing,
+
+                modifier =
+                    Modifier
+                        .weight(0.85f)
+                        .height(44.dp),
+
+                shape =
+                    RoundedCornerShape(10.dp),
+
+                colors =
+                    ButtonDefaults.buttonColors(
+
+                        containerColor =
+                            Color(0xDD2A2A2A),
+
+                        contentColor =
+                            Color.White
+                    )
             ) {
-                Text(text = "VOLTAR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+
+                Text(
+                    text =
+                        "VOLTAR",
+
+                    fontSize =
+                        11.sp,
+
+                    fontWeight =
+                        FontWeight.Bold
+                )
             }
 
             Button(
-                onClick = onCancel,
-                enabled = !processing,
-                modifier = Modifier
-                    .weight(0.85f)
-                    .height(44.dp),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xDD2A2A2A),
-                    contentColor = Color(0xFFFF6B6B)
-                )
+                onClick =
+                    onCancel,
+
+                enabled =
+                    !processing,
+
+                modifier =
+                    Modifier
+                        .weight(0.85f)
+                        .height(44.dp),
+
+                shape =
+                    RoundedCornerShape(10.dp),
+
+                colors =
+                    ButtonDefaults.buttonColors(
+
+                        containerColor =
+                            Color(0xDD2A2A2A),
+
+                        contentColor =
+                            Color(0xFFFF6B6B)
+                    )
             ) {
-                Text(text = "SAIR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+
+                Text(
+                    text =
+                        "SAIR",
+
+                    fontSize =
+                        11.sp,
+
+                    fontWeight =
+                        FontWeight.Bold
+                )
             }
         }
     }
