@@ -461,126 +461,120 @@ function saveCart() {
   updateCartTopButton();
 }
 
-// 1. CLASSIFICAÇÃO RIGOROSA POR METADADOS DO SFO
-function getPackageMetadataType(pkg) {
-  var cat = String(pkg.category || pkg.catalogType || pkg.type || "").trim().toLowerCase();
-  if (cat === "gp" || cat.indexOf("patch") !== -1 || cat.indexOf("update") !== -1) {
-    return "UPDATE";
-  }
-  if (cat === "ac" || cat.indexOf("dlc") !== -1 || cat.indexOf("addon") !== -1) {
-    return "DLC";
-  }
-  return "GAME"; // 'gd'
+function getItemIndex(pkg) {
+  return pkg.catalogIndex !== undefined ? pkg.catalogIndex : (pkg.id !== undefined ? pkg.id : 0);
 }
 
-// 2. EXTRAÇÃO DO CUSA DE 9 DÍGITOS VIA CONTENT_ID / SFO
-function extractCusa(pkg) {
-  if (pkg.titleId && /^CUSA\d{5}$/i.test(pkg.titleId)) {
-    return pkg.titleId.toUpperCase();
-  }
-  var contentId = String(pkg.contentId || "").trim().toUpperCase();
-  var match = contentId.match(/CUSA\d{5}/i);
-  if (match) return match[0].toUpperCase();
-
-  var raw = (pkg.key || "") + " " + (pkg.parentKey || "");
-  var rawMatch = raw.match(/CUSA\d{5}/i);
-  if (rawMatch) return rawMatch[0].toUpperCase();
-
+function getItemCoverUrl(pkg) {
+  var idx = getItemIndex(pkg);
+  if (pkg.iconFile) return "/api/package-icon/" + idx;
+  if (pkg.iconUrl) return pkg.iconUrl;
   return "";
 }
 
-// 3. EXTRAÇÃO DA CHAVE DE FAMÍLIA (Permite que CUSAs regionais diferentes pertençam ao mesmo jogo)
-function getFamilyKey(pkg) {
-  if (pkg.parentKey) return String(pkg.parentKey).trim().toUpperCase();
-  if (pkg.gameKey) return String(pkg.gameKey).trim().toUpperCase();
+function isGameBase(pkg) {
+  var cat = String(pkg.category || "").toLowerCase();
+  var type = String(pkg.type || "").toUpperCase();
+  return cat === "gd" || type === "GAME";
+}
 
-  // Usa o campo gameTitle vindo dos metadados ou limpa o título raiz
-  var title = String(pkg.gameTitle || pkg.title || "").trim();
-  var clean = title
+function isUpdatePkg(pkg) {
+  var cat = String(pkg.category || "").toLowerCase();
+  var type = String(pkg.type || "").toUpperCase();
+  return cat === "gp" || type === "UPDATE";
+}
+
+function isDlcPkg(pkg) {
+  var cat = String(pkg.category || "").toLowerCase();
+  var type = String(pkg.type || "").toUpperCase();
+  return cat === "ac" || type === "DLC";
+}
+
+function getPackageTypeTag(pkg) {
+  if (isGameBase(pkg)) return "GAME";
+  if (isUpdatePkg(pkg)) return "UPDATE";
+  return "DLC";
+}
+
+function extractCusa(pkg) {
+  var cid = String(pkg.contentId || "").toUpperCase();
+  var match = cid.match(/CUSA\d{5}/i);
+  if (match) return match[0];
+  var fnMatch = String(pkg.fileName || "").match(/CUSA\d{5}/i);
+  if (fnMatch) return fnMatch[0].toUpperCase();
+  return "";
+}
+
+// Vincula Updates e DLCs (mesmo com CUSAs de outras regiões) ao jogo base correto
+function getGameFamilyKey(pkg) {
+  var raw = String(pkg.title || "").toUpperCase();
+  var clean = raw
     .replace(/\[.*?\]|\(.*?\)|「.*?」/g, "")
-    .replace(/\b(cusa[-_ ]?\d{5})\b/gi, "")
-    .replace(/\b(dlc|update|patch|addon|add-on|soundtrack|expansion|pack)\b.*$/gi, "")
-    .replace(/\bv\d+(\.\d+)?.*$/gi, "")
+    .replace(/[\uF8B6\uF8B8]/g, "")
+    .replace(/\b(UPDATE|PATCH|DLC|DELUXE|GOLD|EDITION|SEASON PASS|ADD-?ON|REMAKE|THE DEFINITIVE EDITION)\b.*/g, "")
     .replace(/[-_:\"]/g, " ")
     .trim();
 
-  if (clean.length >= 3) {
-    return clean.toUpperCase();
-  }
+  if (clean.indexOf("RESIDENT EVIL 7") !== -1 || clean.indexOf("BIOHAZARD 7") !== -1 || raw.indexOf("BANNED FOOTAGE") !== -1 || raw.indexOf("END OF ZOE") !== -1 || raw.indexOf("NOT A HERO") !== -1) return "RESIDENT_EVIL_7";
+  if (clean.indexOf("RESIDENT EVIL 2") !== -1 || raw.indexOf("SOUNDTRACK SWAP") !== -1) return "RESIDENT_EVIL_2";
+  if (clean.indexOf("GOD OF WAR RAGNAR") !== -1) return "GOD_OF_WAR_RAGNAROK";
+  if (clean.indexOf("GOD OF WAR") !== -1 && clean.indexOf("III") === -1) return "GOD_OF_WAR_2018";
+  if (clean.indexOf("THE LAST OF US PART II") !== -1 || raw.indexOf("THE LAST OF US PART 2") !== -1) return "THE_LAST_OF_US_PART_2";
+  if (clean.indexOf("FALLOUT 4") !== -1 || raw.indexOf("AUTOMATRON") !== -1 || raw.indexOf("NUKA WORLD") !== -1 || raw.indexOf("FAR HARBOR") !== -1) return "FALLOUT_4";
+  if (clean.indexOf("MODERN WARFARE III") !== -1) return "COD_MW_3";
+  if (clean.indexOf("MODERN WARFARE II") !== -1 && clean.indexOf("III") === -1) return "COD_MW_2";
+  if (clean.indexOf("CALL OF DUTY WWII") !== -1 || clean.indexOf("CALL OF DUTY  WWII") !== -1) return "COD_WWII";
+  if (clean.indexOf("HITMAN") !== -1) return "HITMAN_1";
+  if (clean.indexOf("ARK SURVIVAL") !== -1) return "ARK_SURVIVAL_EVOLVED";
+  if (clean.indexOf("UNCHARTED 4") !== -1) return "UNCHARTED_4";
+  if (clean.indexOf("SONIC RACING") !== -1) return "SONIC_RACING_CROSSWORLDS";
+  if (clean.indexOf("YAKUZA KIWAMI 3") !== -1) return "YAKUZA_KIWAMI_3";
+  if (clean.indexOf("BANNER OF THE MAID") !== -1) return "BANNER_OF_THE_MAID";
+  if (clean.indexOf("BEYOND THE ICE PALACE") !== -1) return "BEYOND_THE_ICE_PALACE_2";
 
-  var cusa = extractCusa(pkg);
-  if (cusa) return cusa;
-
-  return ("PKG_" + pkg.id).toUpperCase();
+  if (clean.length >= 3) return clean;
+  return extractCusa(pkg) || ("PKG_" + getItemIndex(pkg));
 }
 
-// 4. CONSTRUÇÃO DO CATÁLOGO POR METADADOS (Jogos Base definem capa e nome na Home)
 function buildCatalog(packages) {
-  var familyMap = new Map();
+  var catalogMap = new Map();
 
-  // PASSAGEM 1: Mapeia estritamente os Jogos Base (GAME / gd)
+  // PASSAGEM 1: Apenas Jogos Base ('gd') criam cards no Catálogo da Home
   for (var i = 0; i < packages.length; i++) {
-    var pkg = packages[i];
-    var type = getPackageMetadataType(pkg);
-    var family = getFamilyKey(pkg);
-    var cusa = extractCusa(pkg);
+    var item = packages[i];
+    if (isGameBase(item)) {
+      var famKey = getGameFamilyKey(item);
+      var cusa = extractCusa(item);
+      var cleanTitle = String(item.title || "").replace(/\[.*?\]|\(.*?\)|[\uF8B6\uF8B8]/g, "").trim();
 
-    if (type === "GAME") {
-      if (!familyMap.has(family)) {
-        familyMap.set(family, {
-          id: pkg.id,
-          key: family,
-          primaryCusa: cusa || family,
-          title: pkg.title || family,
-          cover: pkg.iconUrl || "",
-          hasBaseGame: true,
-          associatedCusas: cusa ? [cusa] : []
-        });
-      } else {
-        var existing = familyMap.get(family);
-        if (cusa && existing.associatedCusas.indexOf(cusa) === -1) {
-          existing.associatedCusas.push(cusa);
-        }
-        if (!existing.cover && pkg.iconUrl) existing.cover = pkg.iconUrl;
-        if (!existing.hasBaseGame) {
-          existing.title = pkg.title;
-          existing.cover = pkg.iconUrl || existing.cover;
-          existing.hasBaseGame = true;
-        }
-      }
+      catalogMap.set(famKey, {
+        id: getItemIndex(item),
+        key: famKey,
+        cusa: cusa,
+        title: cleanTitle,
+        cover: getItemCoverUrl(item),
+        associatedCusas: cusa ? [cusa] : []
+      });
     }
   }
 
-  // PASSAGEM 2: Anexa Updates e DLCs (mesmo com CUSA diferente) à família correspondente
+  // PASSAGEM 2: Agrupa CUSAs de DLCs e Updates ao card pai
   for (var j = 0; j < packages.length; j++) {
-    var item = packages[j];
-    var itemType = getPackageMetadataType(item);
+    var extra = packages[j];
+    if (!isGameBase(extra)) {
+      var extraFam = getGameFamilyKey(extra);
+      var extraCusa = extractCusa(extra);
 
-    if (itemType !== "GAME") {
-      var itemFamily = getFamilyKey(item);
-      var itemCusa = extractCusa(item);
-
-      if (familyMap.has(itemFamily)) {
-        var group = familyMap.get(itemFamily);
-        if (itemCusa && group.associatedCusas.indexOf(itemCusa) === -1) {
-          group.associatedCusas.push(itemCusa);
+      if (catalogMap.has(extraFam)) {
+        var parentGame = catalogMap.get(extraFam);
+        if (extraCusa && parentGame.associatedCusas.indexOf(extraCusa) === -1) {
+          parentGame.associatedCusas.push(extraCusa);
         }
-      } else {
-        // Se houver apenas a DLC cadastrada no servidor sem o jogo base
-        familyMap.set(itemFamily, {
-          id: item.id,
-          key: itemFamily,
-          primaryCusa: itemCusa || itemFamily,
-          title: item.title || itemFamily,
-          cover: item.iconUrl || "",
-          hasBaseGame: false,
-          associatedCusas: itemCusa ? [itemCusa] : []
-        });
       }
     }
   }
 
-  return Array.from(familyMap.values()).sort(function(a, b) {
+  return Array.from(catalogMap.values()).sort(function(a, b) {
     return a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" });
   });
 }
@@ -591,13 +585,7 @@ function toggleCart(game) {
     cart.splice(index, 1);
     showNotice("Removido do carrinho: " + game.title);
   } else {
-    cart.push({ 
-      key: game.key, 
-      title: game.title, 
-      id: game.id, 
-      cover: game.cover,
-      associatedCusas: game.associatedCusas 
-    });
+    cart.push({ key: game.key, title: game.title, id: game.id, cover: game.cover });
     showNotice("✓ Adicionado ao carrinho: " + game.title, "success");
   }
   saveCart();
@@ -689,7 +677,9 @@ function renderCatalog() {
     coverWrap.className = "cover-wrap";
     if (game.cover) {
       var img = document.createElement("img");
-      img.className = "cover"; img.src = game.cover; img.loading = "lazy";
+      img.className = "cover"; 
+      img.src = game.cover; 
+      img.loading = "lazy";
       img.onerror = function() {
         coverWrap.innerHTML = '<div class="cover-placeholder">' + game.title + '</div>';
       };
@@ -707,7 +697,7 @@ function renderCatalog() {
 
     var id = document.createElement("p");
     id.className = "game-id"; 
-    id.textContent = (game.associatedCusas && game.associatedCusas.length > 0) ? game.associatedCusas.join(" | ") : game.primaryCusa;
+    id.textContent = game.associatedCusas.length > 0 ? game.associatedCusas.join(" • ") : game.cusa;
 
     var inCart = cart.some(function(it) { return it.key === game.key; });
     var btn = document.createElement("button");
@@ -793,7 +783,7 @@ function startSessionCountdown() {
   countdownTimer = setInterval(tick, 1000);
 }
 
-// 5. ABA DE DOWNLOADS: REÚNE TODAS AS DLCS DA MESMA FAMÍLIA (MESMO CUSAs DIFERENTES)
+// ABA DE DOWNLOADS: REÚNE JOGO BASE, UPDATES E TODAS AS DLCS
 function showDownloadsView() {
   var raw = localStorage.getItem("ps4_store_grant");
   if (!raw) {
@@ -802,7 +792,7 @@ function showDownloadsView() {
   }
 
   var grant = JSON.parse(raw);
-  var approvedFamilies = (grant.games || []).map(function(it) { return it.key.toUpperCase(); });
+  var approvedFamilyKeys = (grant.games || []).map(function(it) { return it.key.toUpperCase(); });
 
   document.getElementById("view-catalog").style.display = "none";
   var viewDownloads = document.getElementById("view-downloads");
@@ -813,10 +803,9 @@ function showDownloadsView() {
 
   var actionText = isPS4Browser ? "INSTALAR VIA DPI" : "BAIXAR FICHEIRO";
 
-  // Reúne todos os pacotes cuja família ou CUSA pertença aos jogos autorizados
   var availableFiles = allPackages.filter(function(pkg) {
-    var fam = getFamilyKey(pkg).toUpperCase();
-    return approvedFamilies.indexOf(fam) !== -1;
+    var fam = getGameFamilyKey(pkg).toUpperCase();
+    return approvedFamilyKeys.indexOf(fam) !== -1;
   });
 
   if (availableFiles.length === 0) {
@@ -824,11 +813,11 @@ function showDownloadsView() {
     return;
   }
 
-  // Ordenação rígida por Metadados: 1. GAME -> 2. UPDATE -> 3. DLC
+  // 1. GAME -> 2. UPDATE -> 3. DLC
   availableFiles.sort(function(a, b) {
     var order = { "GAME": 1, "UPDATE": 2, "DLC": 3 };
-    var typeA = order[getPackageMetadataType(a)] || 4;
-    var typeB = order[getPackageMetadataType(b)] || 4;
+    var typeA = order[getPackageTypeTag(a)] || 4;
+    var typeB = order[getPackageTypeTag(b)] || 4;
     if (typeA !== typeB) return typeA - typeB;
     return (a.title || "").localeCompare(b.title || "");
   });
@@ -839,10 +828,10 @@ function showDownloadsView() {
 
     var img = document.createElement("img");
     img.className = "download-cover";
-    img.src = pkg.iconUrl || ("/api/package-icon/" + pkg.id);
+    img.src = getItemCoverUrl(pkg);
     img.onerror = function() { img.style.display = "none"; };
 
-    var typeTag = getPackageMetadataType(pkg);
+    var typeTag = getPackageTypeTag(pkg);
     var sizeFormatted = pkg.size ? " • " + formatSize(pkg.size) : "";
     var versionFormatted = pkg.version ? " • v" + pkg.version : "";
 
@@ -856,7 +845,7 @@ function showDownloadsView() {
         '<h3 class="download-title" style="margin: 0;">' + pkg.title + '</h3>' +
       '</div>' +
       '<p class="download-sub" style="margin: 0; color: #888; font-size: 12px;">' +
-        (pkg.contentId || extractCusa(pkg) || "PKG") + versionFormatted + sizeFormatted +
+        (pkg.contentId || extractCusa(pkg)) + versionFormatted + sizeFormatted +
       '</p>';
 
     var btnInstall = document.createElement("button");
@@ -864,15 +853,16 @@ function showDownloadsView() {
     btnInstall.type = "button";
     btnInstall.setAttribute("tabindex", "0");
     btnInstall.textContent = actionText;
-    btnInstall.onclick = (function(pId, btnRef) {
+    btnInstall.onclick = (function(itemPkg, btnRef) {
       return function() {
+        var idx = getItemIndex(itemPkg);
         if (isPS4Browser) {
-          triggerDpiInstall(pId, btnRef);
+          triggerDpiInstall(idx, btnRef);
         } else {
-          window.open("/download?id=" + pId + "&consoleId=" + encodeURIComponent(myConsoleId), "_blank");
+          window.open(itemPkg.url, "_blank");
         }
       };
-    })(pkg.id, btnInstall);
+    })(pkg, btnInstall);
 
     card.appendChild(img);
     card.appendChild(info);
@@ -1009,7 +999,8 @@ async function loadPackages() {
   try {
     var res = await fetch("/api/packages", { cache: "no-store" });
     var data = await res.json();
-    allPackages = data.packages || [];
+    // Suporta tanto o array 'items' do JSON como 'packages' da API
+    allPackages = data.items || data.packages || [];
     games = buildCatalog(allPackages);
     renderCatalog();
     updateCartTopButton();
