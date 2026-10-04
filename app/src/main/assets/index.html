@@ -377,7 +377,7 @@
   <div id="view-admin" class="view-admin">
     <div class="downloads-header">
       <div>
-        <h2 style="margin: 0; font-size: 22px; color: #ff9f0a; font-weight: 900;">🛡️️ PAINEL DO ADMINISTRADOR</h2>
+        <h2 style="margin: 0; font-size: 22px; color: #ff9f0a; font-weight: 900;">🛡 PAINEL DO ADMINISTRADOR</h2>
         <p style="margin: 4px 0 0; color: #8a94a6; font-size: 13px;">Gerenciamento de solicitações e liberação de pacotes em tempo real</p>
       </div>
       <button id="btn-back-from-admin" class="btn-back" type="button" tabindex="0">← VOLTAR AO CATÁLOGO</button>
@@ -723,7 +723,7 @@
   }
 
   // =========================================================================
-  // 5. JANELA DE DOWNLOADS & INJEÇÃO LOCAL
+  // 5. JANELA DE DOWNLOADS & INJEÇÃO DPI (PORTA 9090)
   // =========================================================================
   function activateGrantedAccess(approvedGames) {
     const expiresAt = Date.now() + (15 * 60 * 1000);
@@ -836,48 +836,41 @@
     button.textContent = "ENVIANDO...";
 
     const targetIp = getPs4Ip() || "127.0.0.1";
-    const manifestUrl = window.location.origin + `/json-public/${getItemIndex(pkg)}.json`;
+    // Manifest DPI oficial servido pelo Admin na rota /json/{id}.json
+    const manifestUrl = window.location.origin + `/json/${getItemIndex(pkg)}.json`;
 
-    // 1. Tenta a rota interna da Ponte Android (/api/local/inject)
     try {
       const res = await fetch('/api/local/inject', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ps4Ip: targetIp, manifestUrl: manifestUrl })
+        body: JSON.stringify({
+          ps4Ip: targetIp,
+          manifestUrl: manifestUrl,
+          title: pkg.title || "Jogo PS4",
+          contentId: pkg.contentId || extractCusa(pkg) || "CUSA00000",
+          category: pkg.category || (isGameBase(pkg) ? "gd" : "gp"),
+          size: pkg.size || 0,
+          iconUrl: getItemCoverUrl(pkg)
+        })
       });
+
       const data = await res.json();
       if (data.success) {
         button.textContent = "ENVIADO ✓";
         button.style.background = "#0070d1";
         button.style.color = "#fff";
-        exibirNotificacao("Injeção concluída! Verifique o console.", "success");
+        exibirNotificacao("Payload DPI injetado com sucesso no PS4!", "success");
         return;
+      } else {
+        throw new Error(data.error || "Falha na injeção do payload");
       }
-    } catch (_) {}
-
-    // 2. Fallback direto para o GoldHEN (Porta 12800)
-    try {
-      const directUrl = targetIp === "127.0.0.1" ? "http://127.0.0.1:12800/api/install" : `http://${targetIp}:12800/api/install`;
-      const directRes = await fetch(directUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: "direct", packages: [manifestUrl] })
-      });
-      if (directRes.ok) {
-        button.textContent = "ENVIADO ✓";
-        button.style.background = "#0070d1";
-        button.style.color = "#fff";
-        exibirNotificacao("Instalação enviada ao GoldHEN!", "success");
-        return;
-      }
-    } catch (errDirect) {
-      console.warn("[GTSTORE] Falha no fallback:", errDirect);
+    } catch (err) {
+      console.warn("[GTSTORE] Falha na injeção via ponte local:", err);
+      button.disabled = false;
+      button.textContent = "FALHOU";
+      button.style.background = "var(--red)";
+      exibirNotificacao("Erro ao injetar DPI: " + err.message, "error");
     }
-
-    button.disabled = false;
-    button.textContent = "FALHOU";
-    button.style.background = "var(--red)";
-    exibirNotificacao("Falha ao alcançar PS4 na porta 12800.", "error");
   }
 
   function backToCatalog() {
