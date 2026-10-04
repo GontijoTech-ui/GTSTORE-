@@ -6,15 +6,16 @@
   <title>GTSTORE PS4</title>
   <style>
     :root {
-      --bg: #000000;
-      --panel: #0d0d0d;
-      --panel-card: #121212;
-      --border: #222222;
-      --primary: #0070cc;
-      --primary-hover: #0088f0;
-      --text: #ffffff;
-      --muted: #888888;
-      --green: #35c759;
+      --bg: #05070b;
+      --panel: rgba(14, 18, 27, 0.72);
+      --panel-card: rgba(18, 24, 38, 0.65);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-focus: #0070d1;
+      --primary: #0070d1;
+      --primary-hover: #1f8eff;
+      --text: #f5f7fa;
+      --muted: #8a94a6;
+      --green: #2ecc71;
       --orange: #ff9f0a;
       --red: #ff453a;
     }
@@ -22,14 +23,30 @@
     * { box-sizing: border-box; }
     html, body {
       margin: 0; padding: 0; min-height: 100%;
-      background-color: var(--bg); color: var(--text);
-      font-family: Arial, Helvetica, sans-serif;
+      background: radial-gradient(circle at 50% 0%, #0d1b2a 0%, #05070a 55%, #020305 100%) fixed;
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      letter-spacing: 0.2px;
     }
     button, input { font-family: inherit; }
 
+    /* Foco contínuo para navegação suave via D-Pad do controle do PS4 */
+    button:focus, input:focus, .game-card:focus {
+      outline: none !important;
+      border-color: var(--border-focus) !important;
+      box-shadow: 0 0 0 3px rgba(0, 112, 209, 0.4), 0 8px 24px rgba(0, 112, 209, 0.35) !important;
+      transform: translateY(-2px);
+    }
+
+    /* Barra Superior com efeito Frosted Glass */
     .header {
-      width: 100%; background: #000000; border-bottom: 1px solid var(--border);
-      padding: 16px 20px; position: sticky; top: 0; z-index: 100;
+      width: 100%;
+      background: rgba(5, 7, 11, 0.85);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      position: sticky; top: 0; z-index: 100;
     }
 
     .header-top {
@@ -37,140 +54,142 @@
       max-width: 1400px; margin: 0 auto;
     }
 
-    .logo-container {
-      display: flex; align-items: center; gap: 12px;
-    }
-
-    .logo {
-      height: 48px; width: auto; object-fit: contain; border-radius: 6px;
-    }
-
+    .logo-container { display: flex; align-items: center; gap: 14px; }
+    .logo { height: 44px; width: auto; object-fit: contain; border-radius: 8px; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.6)); }
     .brand-title {
-      font-size: 20px; font-weight: 900; letter-spacing: 1px; color: #fff; margin: 0;
+      font-size: 22px; font-weight: 900; letter-spacing: 1.5px;
+      background: linear-gradient(90deg, #ffffff, #a5c7eb);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin: 0;
     }
 
-    .header-actions {
-      display: flex; align-items: center; gap: 10px;
-    }
+    .header-actions { display: flex; align-items: center; gap: 12px; }
 
-    /* BOTÃO QUE APARECE NO TOPO QUANDO HÁ DOWNLOADS LIBERADOS */
     .btn-top-downloads {
       display: none; align-items: center; gap: 8px;
-      background: #14351e; border: 1px solid var(--green);
-      color: #4cd964; padding: 10px 18px; border-radius: 30px;
-      font-weight: 900; font-size: 13px; cursor: pointer; outline: none;
+      background: rgba(20, 53, 30, 0.65); border: 1px solid rgba(46, 204, 113, 0.5);
+      color: var(--green); padding: 10px 20px; border-radius: 99px;
+      font-weight: 800; font-size: 13px; cursor: pointer; outline: none;
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
       transition: all 0.2s ease;
     }
     .btn-top-downloads.visible { display: flex; }
     .btn-top-downloads:hover, .btn-top-downloads:focus {
-      background: var(--green); color: #000;
-      box-shadow: 0 0 14px rgba(53, 199, 89, 0.8);
-      outline: 2px solid #fff !important;
+      background: var(--green); color: #020305;
+      box-shadow: 0 0 16px rgba(46, 204, 113, 0.7);
     }
 
     .btn-top-cart {
       display: flex; align-items: center; gap: 10px;
-      background: #1a1a1a; border: 1px solid var(--border);
-      color: #fff; padding: 10px 18px; border-radius: 30px;
-      font-weight: 800; font-size: 14px; cursor: pointer; outline: none;
+      background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border);
+      color: #fff; padding: 10px 20px; border-radius: 99px;
+      font-weight: 800; font-size: 13px; cursor: pointer; outline: none;
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
       transition: all 0.2s ease;
     }
-
     .btn-top-cart:hover, .btn-top-cart:focus {
       background: var(--primary); border-color: var(--primary-hover);
-      box-shadow: 0 0 12px rgba(0, 112, 204, 0.7);
-      outline: 2px solid #fff !important;
+      box-shadow: 0 0 14px rgba(0, 112, 209, 0.6);
     }
 
     .cart-badge {
-      background: #e50914; color: #fff; font-size: 12px; font-weight: 900;
-      padding: 2px 8px; border-radius: 12px; min-width: 20px; text-align: center;
+      background: #ff334b; color: #fff; font-size: 11px; font-weight: 900;
+      padding: 3px 8px; border-radius: 12px; min-width: 20px; text-align: center;
     }
 
     .header-controls {
       display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
-      gap: 12px; margin-top: 12px; max-width: 1400px; margin-left: auto; margin-right: auto;
+      gap: 14px; margin-top: 14px; max-width: 1400px; margin-left: auto; margin-right: auto;
     }
 
-    .server-status {
+    .server-status, .ps4-ip-bar {
       display: inline-flex; align-items: center; gap: 8px;
-      padding: 5px 12px; border-radius: 20px; background: #141414;
-      border: 1px solid #222; color: var(--muted); font-size: 11px;
+      padding: 6px 14px; border-radius: 99px; background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border); font-size: 12px;
     }
 
     .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); }
-    .status-online .status-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
-    .status-offline .status-dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
+    .status-online .status-dot { background: var(--green); box-shadow: 0 0 10px var(--green); }
+    .status-offline .status-dot { background: var(--red); box-shadow: 0 0 10px var(--red); }
 
-    .ps4-ip-bar {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 4px 10px; border-radius: 20px; background: #141414;
-      border: 1px solid var(--border); font-size: 11px;
-    }
     .ps4-ip-label { font-weight: bold; color: var(--muted); }
     .ps4-ip-input {
-      width: 125px; background: #000; border: 1px solid #333; border-radius: 6px;
-      color: #fff; font-size: 12px; font-weight: bold; text-align: center; padding: 3px 6px; outline: none;
+      width: 130px; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--border);
+      border-radius: 8px; color: #fff; font-size: 12px; font-weight: bold;
+      text-align: center; padding: 4px 8px; outline: none;
     }
     .btn-save-ip {
-      border: 0; border-radius: 6px; padding: 4px 10px; background: var(--primary);
+      border: 0; border-radius: 8px; padding: 5px 12px; background: var(--primary);
       color: #fff; font-size: 11px; font-weight: bold; cursor: pointer; outline: none;
+      transition: background 0.2s ease;
     }
+    .btn-save-ip:hover { background: var(--primary-hover); }
 
-    .container { width: 95%; max-width: 1400px; margin: 0 auto; padding: 20px 0 60px; }
-    
-    .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
+    /* Barra de Pesquisa e Ferramentas */
+    .container { width: 95%; max-width: 1400px; margin: 0 auto; padding: 24px 0 60px; }
+    .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; }
     .search {
-      flex: 1; padding: 12px 16px; border: 1px solid var(--border);
-      border-radius: 8px; background: var(--panel); color: var(--text);
-      font-size: 15px; outline: none;
+      flex: 1; padding: 14px 20px; border: 1px solid var(--border);
+      border-radius: 12px; background: var(--panel); color: var(--text);
+      font-size: 15px; outline: none; backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px); transition: border-color 0.2s;
     }
-    .search:focus { border-color: var(--primary); box-shadow: 0 0 10px rgba(0, 112, 204, 0.6); }
+    .search:focus { border-color: var(--primary); }
 
     .refresh {
-      border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px;
-      background: #151515; color: var(--text); cursor: pointer; font-weight: 700; outline: none;
+      border: 1px solid var(--border); border-radius: 12px; padding: 14px 22px;
+      background: rgba(255, 255, 255, 0.05); color: var(--text);
+      cursor: pointer; font-weight: 700; outline: none; transition: background 0.2s;
     }
+    .refresh:hover { background: rgba(255, 255, 255, 0.1); }
 
-    /* GRELHA DO CATÁLOGO (SEM PREÇOS) */
+    /* Grid do Catálogo */
     .catalog {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px;
     }
 
     .game-card {
       display: flex; flex-direction: column; background: var(--panel-card);
-      border: 1px solid var(--border); border-radius: 10px; padding: 12px;
-      position: relative;
+      border: 1px solid var(--border); border-radius: 14px; padding: 12px;
+      position: relative; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+    .game-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(255, 255, 255, 0.2);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
     }
 
     .cover-wrap {
-      width: 100%; aspect-ratio: 1 / 1; background: #050505; border-radius: 8px;
+      width: 100%; aspect-ratio: 1 / 1; background: #000; border-radius: 10px;
       overflow: hidden; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 14px rgba(0,0,0,0.6);
     }
     .cover { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .cover-placeholder { color: #555; font-size: 12px; font-weight: bold; text-align: center; }
+    .cover-placeholder { color: #666; font-size: 13px; font-weight: bold; text-align: center; }
 
-    .game-content { display: flex; flex-direction: column; flex: 1; margin-top: 10px; }
+    .game-content { display: flex; flex-direction: column; flex: 1; margin-top: 12px; }
     .game-title {
-      margin: 0 0 4px; font-size: 14px; font-weight: 700; line-height: 1.3;
-      height: 36px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical; word-break: break-word;
+      margin: 0 0 6px; font-size: 14px; font-weight: 700; line-height: 1.35;
+      height: 38px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; word-break: break-word; color: #ffffff;
     }
-    .game-id { margin: 0 0 10px; color: var(--muted); font-size: 11px; }
+    .game-id { margin: 0 0 12px; color: var(--muted); font-size: 11px; letter-spacing: 0.5px; }
 
     .btn-cart-action {
-      width: 100%; border: 0; border-radius: 6px; padding: 11px 8px;
+      width: 100%; border: 0; border-radius: 8px; padding: 12px 8px;
       background: var(--primary); color: #fff; font-size: 12px; font-weight: 800;
-      cursor: pointer; outline: none; text-align: center; transition: background 0.2s;
+      cursor: pointer; outline: none; text-align: center; transition: background 0.2s, box-shadow 0.2s;
     }
-    .btn-cart-action.in-cart {
-      background: #e50914; color: #fff;
-    }
+    .btn-cart-action.in-cart { background: #ff334b; }
+    .btn-cart-action:hover { opacity: 0.95; }
 
-    /* ABA DE FICHEIROS / DOWNLOADS LIBERADOS */
+    /* Aba de Downloads Liberados */
     .view-downloads {
-      display: none; background: #0a0a0a; border: 1px solid var(--border);
-      border-radius: 14px; padding: 24px; margin-top: 10px;
+      display: none; background: rgba(14, 18, 27, 0.85); border: 1px solid var(--border);
+      border-radius: 16px; padding: 28px; margin-top: 10px; backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
     }
     .view-downloads.active { display: block; }
 
@@ -181,85 +200,77 @@
 
     .downloads-title { margin: 0; font-size: 22px; color: var(--green); font-weight: 900; }
     .time-badge {
-      background: #2b1d05; border: 1px solid #ff9f0a; color: #ffbe53;
-      font-size: 13px; font-weight: bold; padding: 6px 14px; border-radius: 20px;
+      background: rgba(43, 29, 5, 0.7); border: 1px solid var(--orange); color: #ffbe53;
+      font-size: 13px; font-weight: bold; padding: 6px 16px; border-radius: 99px;
     }
 
-    .downloads-grid {
-      display: flex; flex-direction: column; gap: 14px;
-    }
-
+    .downloads-grid { display: flex; flex-direction: column; gap: 14px; }
     .download-item-card {
-      display: flex; gap: 16px; background: #121212; border: 1px solid var(--border);
-      border-radius: 10px; padding: 14px; align-items: center;
+      display: flex; gap: 16px; background: rgba(255, 255, 255, 0.025);
+      border: 1px solid var(--border); border-radius: 12px; padding: 16px; align-items: center;
     }
-    .download-cover {
-      width: 70px; height: 70px; object-fit: cover; border-radius: 8px; background: #000;
-    }
+    .download-cover { width: 68px; height: 68px; object-fit: cover; border-radius: 8px; background: #000; }
     .download-info { flex: 1; }
     .download-title { margin: 0 0 4px; font-size: 15px; font-weight: bold; }
     .download-sub { margin: 0; font-size: 12px; color: var(--muted); }
 
     .badge-type {
-      background: #222; border: 1px solid #444; color: #64b5f6;
-      font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px;
+      background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #64b5f6; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px;
     }
 
     .btn-install {
-      border: 0; border-radius: 8px; padding: 12px 18px; font-size: 13px;
-      font-weight: 900; cursor: pointer; color: white; background: var(--green);
-      outline: none; text-align: center; white-space: nowrap;
+      border: 0; border-radius: 8px; padding: 12px 20px; font-size: 13px;
+      font-weight: 900; cursor: pointer; color: #020305; background: var(--green);
+      outline: none; text-align: center; white-space: nowrap; transition: opacity 0.2s;
     }
-    .btn-install:hover, .btn-install:focus {
-      background: #2cb04b; outline: 2px solid #fff !important;
-    }
+    .btn-install:hover, .btn-install:focus { background: #2cb04b; color: #fff; }
 
-    /* MODAL DO CARRINHO / CHECKOUT */
+    /* Modais e Overlays */
     .overlay {
       position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-      padding: 16px; background: rgba(0, 0, 0, 0.94); z-index: 1000;
+      padding: 16px; background: rgba(2, 3, 5, 0.88); backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px); z-index: 1000;
     }
     .overlay.visible { display: flex; }
 
     .modal {
-      width: 100%; max-width: 540px; background: #121212; border: 1px solid var(--border);
-      border-radius: 12px; padding: 20px; text-align: center; max-height: 90vh; overflow-y: auto;
+      width: 100%; max-width: 520px; background: #0c0f17; border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px; padding: 26px; text-align: center; max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
     }
     .modal h2 { margin: 0 0 8px; font-size: 20px; }
-    .modal p { color: #aaa; font-size: 13px; line-height: 1.4; margin: 6px 0; }
+    .modal p { color: var(--muted); font-size: 13px; line-height: 1.4; margin: 6px 0; }
 
     .console-badge {
-      background: #000; border: 1px dashed var(--primary); color: #64b5f6;
+      background: rgba(0, 0, 0, 0.5); border: 1px dashed var(--primary); color: #64b5f6;
       font-family: monospace; font-size: 14px; font-weight: bold;
-      padding: 6px 12px; border-radius: 6px; margin: 6px 0; display: inline-block;
+      padding: 6px 14px; border-radius: 6px; margin: 6px 0; display: inline-block;
     }
 
     .cart-summary {
-      background: #000; border: 1px solid #222; border-radius: 8px;
-      padding: 10px; margin: 10px 0; text-align: left; max-height: 160px; overflow-y: auto;
+      background: rgba(0, 0, 0, 0.5); border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px; margin: 12px 0; text-align: left; max-height: 160px; overflow-y: auto;
     }
     .summary-row {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 6px 4px; border-bottom: 1px solid #1a1a1a; font-size: 13px;
+      padding: 6px 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 13px;
     }
     .summary-row:last-child { border-bottom: none; }
     .summary-total {
-      display: flex; justify-content: space-between; border-top: 1px solid #333;
+      display: flex; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, 0.1);
       margin-top: 8px; padding-top: 8px; font-weight: 900; font-size: 15px; color: var(--green);
     }
 
     .btn-remove-item {
-      background: transparent; border: 0; color: #ff453a; font-weight: bold;
+      background: transparent; border: 0; color: var(--red); font-weight: bold;
       cursor: pointer; font-size: 14px; padding: 2px 6px; margin-left: 8px;
     }
 
-    /* BLOCO DOS 2 QR CODES */
-    .qr-dual-container {
-      display: flex; gap: 12px; justify-content: center; align-items: stretch; margin: 12px 0;
-    }
+    .qr-dual-container { display: flex; gap: 12px; justify-content: center; align-items: stretch; margin: 12px 0; }
     .qr-card {
-      flex: 1; background: #080808; border: 1px solid var(--border);
-      border-radius: 8px; padding: 10px; text-align: center;
+      flex: 1; background: rgba(255, 255, 255, 0.025); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px; text-align: center;
     }
     .qr-card-img {
       width: 130px; height: 130px; object-fit: contain; margin: 0 auto;
@@ -267,12 +278,12 @@
     }
 
     .whatsapp-box {
-      background: #182c1e; border: 1px solid #35c759; color: #4cd964;
+      background: rgba(24, 44, 30, 0.6); border: 1px solid var(--green); color: #4cd964;
       padding: 10px; border-radius: 8px; font-weight: bold; font-size: 13px; margin: 8px 0;
     }
 
     .time-notice {
-      background: #2b1d05; border: 1px solid #ff9f0a; color: #ffbe53;
+      background: rgba(43, 29, 5, 0.6); border: 1px solid var(--orange); color: #ffbe53;
       font-size: 12px; padding: 8px; border-radius: 8px; margin: 8px 0; font-weight: bold;
     }
 
@@ -281,25 +292,29 @@
       font-size: 12px; color: #0088f0; font-weight: bold; margin: 10px 0;
     }
 
-    .modal-buttons { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+    .modal-buttons { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
     .btn-sec {
-      border: 0; border-radius: 6px; padding: 12px 16px; font-weight: bold;
-      cursor: pointer; outline: none; color: white; background: #262626; font-size: 13px;
+      border: 0; border-radius: 8px; padding: 12px 18px; font-weight: bold;
+      cursor: pointer; outline: none; color: white; background: rgba(255, 255, 255, 0.08); font-size: 13px;
+      transition: background 0.2s;
     }
+    .btn-sec:hover { background: rgba(255, 255, 255, 0.14); }
 
     .btn-back {
-      background: #1a1a1a; border: 1px solid var(--border); color: #fff;
+      background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border); color: #fff;
       padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; outline: none;
     }
+    .btn-back:hover { background: rgba(255, 255, 255, 0.1); }
 
     .notice {
-      display: none; margin-bottom: 16px; padding: 12px 14px; border-radius: 8px;
-      background: #161616; color: #ffffff; font-size: 13px; font-weight: bold;
-      border-left: 4px solid var(--primary);
+      display: none; margin-bottom: 16px; padding: 12px 16px; border-radius: 10px;
+      background: rgba(14, 18, 27, 0.9); color: #ffffff; font-size: 13px; font-weight: bold;
+      border-left: 4px solid var(--primary); backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
     }
     .notice.visible { display: block; }
-    .notice.error { border-left-color: var(--red); background: #261012; color: #ff817a; }
-    .notice.success { border-left-color: var(--green); background: #0e2013; color: #4cd964; }
+    .notice.error { border-left-color: var(--red); background: rgba(38, 16, 18, 0.9); color: #ff817a; }
+    .notice.success { border-left-color: var(--green); background: rgba(14, 32, 19, 0.9); color: #4cd964; }
   </style>
 </head>
 <body>
@@ -312,13 +327,12 @@
     </div>
 
     <div class="header-actions">
-      <!-- BOTÃO PERSISTENTE NO TOPO ENQUANTO OS 15 MIN CORREM -->
-      <button id="btn-top-downloads" class="btn-top-downloads" type="button">
+      <button id="btn-top-downloads" class="btn-top-downloads" type="button" tabindex="0">
         <span>⚡ FICHEIROS LIBERADOS</span>
         <span id="top-timer-badge">(15:00)</span>
       </button>
 
-      <button id="btn-top-cart" class="btn-top-cart" type="button">
+      <button id="btn-top-cart" class="btn-top-cart" type="button" tabindex="0">
         <span>🛒 CARRINHO</span>
         <span id="top-cart-badge" class="cart-badge">0</span>
       </button>
@@ -332,8 +346,8 @@
     </div>
     <div class="ps4-ip-bar">
       <span class="ps4-ip-label">🎮 IP PS4:</span>
-      <input id="ps4-ip" class="ps4-ip-input" type="text" placeholder="192.168.0.X" autocomplete="off">
-      <button id="btn-save-ip" class="btn-save-ip" type="button">SALVAR</button>
+      <input id="ps4-ip" class="ps4-ip-input" type="text" placeholder="192.168.0.X" autocomplete="off" tabindex="0">
+      <button id="btn-save-ip" class="btn-save-ip" type="button" tabindex="0">SALVAR</button>
     </div>
   </div>
 </header>
@@ -341,34 +355,31 @@
 <main class="container">
   <div id="notice" class="notice"></div>
 
-  <!-- VISTA 1: CATÁLOGO GERAL -->
   <div id="view-catalog">
     <div class="toolbar">
-      <input id="search" class="search" type="text" placeholder="Pesquisar por nome ou CUSA..." autocomplete="off">
-      <button id="refresh" class="refresh" type="button">Atualizar</button>
+      <input id="search" class="search" type="text" placeholder="Pesquisar por nome ou CUSA..." autocomplete="off" tabindex="0">
+      <button id="refresh" class="refresh" type="button" tabindex="0">Atualizar</button>
     </div>
     <section id="catalog" class="catalog">
       <div style="grid-column: 1/-1; text-align: center; color: #777; padding: 30px;">A carregar catálogo...</div>
     </section>
   </div>
 
-  <!-- VISTA 2: DOWNLOADS LIBERADOS -->
   <div id="view-downloads" class="view-downloads">
     <div class="downloads-header">
       <div>
         <h2 class="downloads-title">✓ FICHEIROS LIBERADOS</h2>
-        <p style="margin: 4px 0 0; color: #aaa; font-size: 13px;">Você tem acesso completo aos jogos base, updates e DLCs:</p>
+        <p style="margin: 4px 0 0; color: #aaa; font-size: 13px;">Todos os ficheiros associados ao pacote escolhido:</p>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span id="downloads-timer-badge" class="time-badge">⏳ 15:00 RESTANTES</span>
-        <button id="btn-back-catalog" class="btn-back" type="button">← VOLTAR AO CATÁLOGO</button>
+        <button id="btn-back-catalog" class="btn-back" type="button" tabindex="0">← VOLTAR AO CATÁLOGO</button>
       </div>
     </div>
     <div id="downloads-list" class="downloads-grid"></div>
   </div>
 </main>
 
-<!-- MODAL DO CARRINHO (EXCLUSIVO PS4 - LEITURA VIA CELULAR) -->
 <div id="cart-overlay" class="overlay">
   <div class="modal">
     <h2>Pacote Escolhido</h2>
@@ -379,7 +390,6 @@
       <div id="display-console-id" class="console-badge">PS4-CARREGANDO</div>
     </div>
 
-    <!-- RESUMO DO PEDIDO COM VALOR FIXO DE R$ 10,00 -->
     <div class="cart-summary">
       <div id="cart-items-list"></div>
       <div class="summary-total">
@@ -388,36 +398,21 @@
       </div>
     </div>
 
-    <!-- ÁREA DOS DOIS QR CODES (PIX + WHATSAPP) -->
     <div class="qr-dual-container">
-      
-      <!-- 1. QR CODE PIX (qr-pix.jpg) -->
       <div class="qr-card">
-        <p style="margin: 0 0 6px; font-size: 12px; font-weight: bold; color: var(--green);">
-          1. Pagar via Pix
-        </p>
+        <p style="margin: 0 0 6px; font-size: 12px; font-weight: bold; color: var(--green);">1. Pagar via Pix</p>
         <img class="qr-card-img" src="/qr-pix.jpg" alt="QR Pix" onerror="this.src='/qr-pix.png';">
-        <p style="margin: 6px 0 0; font-size: 10px; color: #888;">
-          Aponte a câmera do banco
-        </p>
+        <p style="margin: 6px 0 0; font-size: 10px; color: #888;">Aponte a câmera do banco</p>
       </div>
 
-      <!-- 2. QR CODE WHATSAPP (qr.png) -->
       <div class="qr-card">
-        <p style="margin: 0 0 6px; font-size: 12px; font-weight: bold; color: #25d366;">
-          2. Enviar Comprovante
-        </p>
+        <p style="margin: 0 0 6px; font-size: 12px; font-weight: bold; color: #25d366;">2. Enviar Comprovante</p>
         <img class="qr-card-img" src="/qr.png" alt="QR WhatsApp" onerror="this.src='/qr (1).png';">
-        <p style="margin: 6px 0 0; font-size: 10px; color: #888;">
-          Aponte a câmera do celular
-        </p>
+        <p style="margin: 6px 0 0; font-size: 10px; color: #888;">Aponte a câmera do celular</p>
       </div>
-
     </div>
 
-    <div class="whatsapp-box">
-      WhatsApp: (64) 99225-9727
-    </div>
+    <div class="whatsapp-box">WhatsApp: (64) 99225-9727</div>
 
     <div id="polling-container" class="polling-status">
       <span class="status-dot" style="background: #0088f0; box-shadow: 0 0 8px #0088f0;"></span>
@@ -429,8 +424,8 @@
     </div>
 
     <div class="modal-buttons">
-      <button id="btn-clear-cart" class="btn-sec" type="button">LIMPAR</button>
-      <button id="btn-close-cart" class="btn-sec" type="button">FECHAR</button>
+      <button id="btn-clear-cart" class="btn-sec" type="button" tabindex="0">LIMPAR</button>
+      <button id="btn-close-cart" class="btn-sec" type="button" tabindex="0">FECHAR</button>
     </div>
   </div>
 </div>
@@ -438,27 +433,27 @@
 <script>
 "use strict";
 
-const isPS4Browser = /PlayStation 4/i.test(navigator.userAgent);
-let allPackages = [];
-let games = [];
-let ps4ClientIp = "";
-let isServerOnline = false;
-let pollingInterval = null;
-let countdownTimer = null;
+var isPS4Browser = /PlayStation 4/i.test(navigator.userAgent);
+var allPackages = [];
+var games = [];
+var ps4ClientIp = "";
+var isServerOnline = false;
+var pollingInterval = null;
+var countdownTimer = null;
 
-let cart = JSON.parse(localStorage.getItem("ps4_store_cart") || "[]");
+var cart = JSON.parse(localStorage.getItem("ps4_store_cart") || "[]");
 
 function getOrCreateConsoleId() {
-  let cid = localStorage.getItem("ps4_store_cid");
+  var cid = localStorage.getItem("ps4_store_cid");
   if (!cid) {
-    const part = () => Math.random().toString(36).substring(2, 6).toUpperCase();
+    var part = function() { return Math.random().toString(36).substring(2, 6).toUpperCase(); };
     cid = "PS4-" + part() + "-" + part();
     localStorage.setItem("ps4_store_cid", cid);
   }
   return cid;
 }
 
-const myConsoleId = getOrCreateConsoleId();
+var myConsoleId = getOrCreateConsoleId();
 
 function updateCartTopButton() {
   document.getElementById("top-cart-badge").textContent = cart.length;
@@ -469,21 +464,74 @@ function saveCart() {
   updateCartTopButton();
 }
 
+function cleanGameTitle(rawTitle) {
+  if (!rawTitle) return "";
+  return rawTitle
+    .replace(/\[.*?\]|\(.*?\)/g, "")
+    .replace(/(?:v\d+\.\d+|DLC|UPDATE|EXPANSION|ADD-?ON|PATCH).*/i, "")
+    .trim();
+}
+
+function groupKey(pkg) {
+  if (pkg.parentKey) return String(pkg.parentKey).trim().toUpperCase();
+  
+  var title = cleanGameTitle(pkg.title);
+  if (title.length >= 3) {
+    return title.toUpperCase();
+  }
+
+  var contentId = String(pkg.contentId || "").trim().toUpperCase();
+  if (contentId) {
+    var match = contentId.match(/CUSA\d+/i);
+    if (match) return match[0].toUpperCase();
+  }
+  return (pkg.title || ("PKG_" + pkg.id)).trim().toUpperCase();
+}
+
+function buildCatalog(packages) {
+  var groups = new Map();
+  for (var i = 0; i < packages.length; i++) {
+    var pkg = packages[i];
+    var key = groupKey(pkg);
+    var cleanTitle = cleanGameTitle(pkg.title) || pkg.title || key;
+
+    if (!groups.has(key)) {
+      groups.set(key, { 
+        id: pkg.id, 
+        key: key, 
+        title: cleanTitle, 
+        cover: pkg.iconUrl || "",
+        associatedKeys: [groupKey(pkg), (pkg.contentId || "").toUpperCase()]
+      });
+    } else {
+      var existing = groups.get(key);
+      if (!existing.cover && pkg.iconUrl) existing.cover = pkg.iconUrl;
+      var cat = (pkg.catalogType || pkg.category || "").toUpperCase();
+      if (cat === "GAME" && pkg.iconUrl) existing.cover = pkg.iconUrl;
+      existing.associatedKeys.push(pkg.contentId || "");
+    }
+  }
+
+  return Array.from(groups.values()).sort(function(a, b) {
+    return a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" });
+  });
+}
+
 function toggleCart(game) {
-  const index = cart.findIndex(it => it.key === game.key);
+  var index = cart.findIndex(function(it) { return it.key === game.key; });
   if (index >= 0) {
     cart.splice(index, 1);
-    showNotice(`Removido do carrinho: ${game.title}`);
+    showNotice("Removido do carrinho: " + game.title);
   } else {
-    cart.push({ key: game.key, title: game.title, id: game.id, cover: game.cover });
-    showNotice(`✓ Adicionado ao carrinho: ${game.title}`, "success");
+    cart.push({ key: game.key, title: game.title, id: game.id, cover: game.cover, associated: game.associatedKeys });
+    showNotice("✓ Adicionado ao carrinho: " + game.title, "success");
   }
   saveCart();
   renderCatalog();
 }
 
 function removeFromCart(key) {
-  cart = cart.filter(it => it.key !== key);
+  cart = cart.filter(function(it) { return it.key !== key; });
   saveCart();
   renderCatalog();
   if (cart.length === 0) {
@@ -494,12 +542,12 @@ function removeFromCart(key) {
 }
 
 function initPs4Ip() {
-  const saved = localStorage.getItem("ps4_ip") || "";
+  var saved = localStorage.getItem("ps4_ip") || "";
   if (saved) document.getElementById("ps4-ip").value = saved;
 }
 
 function savePs4Ip() {
-  const ip = document.getElementById("ps4-ip").value.trim();
+  var ip = document.getElementById("ps4-ip").value.trim();
   if (!ip) {
     showNotice("Informe o IP do PS4.", "error");
     return;
@@ -513,25 +561,25 @@ function getTargetIp() {
 }
 
 function formatSize(bytes) {
-  const value = Number(bytes);
+  var value = Number(bytes);
   if (!Number.isFinite(value) || value <= 0) return "";
   if (value < 1024 * 1024 * 1024) return (value / (1024 * 1024)).toFixed(2) + " MB";
   return (value / (1024 * 1024 * 1024)).toFixed(2) + " GB";
 }
 
 async function checkStatus() {
-  const badge = document.getElementById("server-status");
-  const text = document.getElementById("server-status-text");
+  var badge = document.getElementById("server-status");
+  var text = document.getElementById("server-status-text");
   try {
-    const res = await fetch("/api/status", { cache: "no-store" });
+    var res = await fetch("/api/status", { cache: "no-store" });
     if (!res.ok) throw new Error();
-    const data = await res.json();
+    var data = await res.json();
     isServerOnline = true;
     badge.className = "server-status status-online";
     ps4ClientIp = data.clientIp || "";
     text.textContent = "Servidor Online — " + (data.localAddress ? data.localAddress + ":" + data.port : "Porta " + data.port);
 
-    const ipInput = document.getElementById("ps4-ip");
+    var ipInput = document.getElementById("ps4-ip");
     if (isPS4Browser && !localStorage.getItem("ps4_ip") && !ipInput.value && ps4ClientIp) {
       ipInput.value = ps4ClientIp;
       localStorage.setItem("ps4_ip", ps4ClientIp);
@@ -543,41 +591,12 @@ async function checkStatus() {
   }
 }
 
-function groupKey(pkg) {
-  const contentId = String(pkg.contentId || "").trim().toUpperCase();
-  if (contentId) {
-    const match = contentId.match(/CUSA\d+/i);
-    if (match) return match[0].toUpperCase();
-    const prefix = contentId.split("_00-")[0];
-    if (prefix) return prefix;
-  }
-  return (pkg.title || ("PKG_" + pkg.id)).trim().toUpperCase();
-}
-
-function buildCatalog(packages) {
-  const groups = new Map();
-  for (const pkg of packages) {
-    const key = groupKey(pkg);
-    if (!groups.has(key)) {
-      groups.set(key, { 
-        id: pkg.id, 
-        key: key, 
-        title: pkg.title || key, 
-        cover: pkg.iconUrl || "",
-        size: pkg.size || 0
-      });
-    } else {
-      const existing = groups.get(key);
-      if (!existing.cover && pkg.iconUrl) existing.cover = pkg.iconUrl;
-    }
-  }
-  return Array.from(groups.values()).sort((a, b) => a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" }));
-}
-
 function renderCatalog() {
-  const container = document.getElementById("catalog");
-  const query = document.getElementById("search").value.trim().toLowerCase();
-  const filtered = games.filter(g => !query || g.title.toLowerCase().includes(query) || g.key.toLowerCase().includes(query));
+  var container = document.getElementById("catalog");
+  var query = document.getElementById("search").value.trim().toLowerCase();
+  var filtered = games.filter(function(g) {
+    return !query || g.title.toLowerCase().indexOf(query) !== -1 || g.key.toLowerCase().indexOf(query) !== -1;
+  });
 
   container.innerHTML = "";
   if (!filtered.length) {
@@ -585,38 +604,40 @@ function renderCatalog() {
     return;
   }
 
-  for (const game of filtered) {
-    const card = document.createElement("article");
+  filtered.forEach(function(game) {
+    var card = document.createElement("article");
     card.className = "game-card";
+    card.setAttribute("tabindex", "0");
 
-    const coverWrap = document.createElement("div");
+    var coverWrap = document.createElement("div");
     coverWrap.className = "cover-wrap";
     if (game.cover) {
-      const img = document.createElement("img");
+      var img = document.createElement("img");
       img.className = "cover"; img.src = game.cover; img.loading = "lazy";
-      img.onerror = () => {
-        coverWrap.innerHTML = `<div class="cover-placeholder">${game.key}</div>`;
+      img.onerror = function() {
+        coverWrap.innerHTML = '<div class="cover-placeholder">' + game.title + '</div>';
       };
       coverWrap.appendChild(img);
     } else {
-      coverWrap.innerHTML = `<div class="cover-placeholder">${game.key}</div>`;
+      coverWrap.innerHTML = '<div class="cover-placeholder">' + game.title + '</div>';
     }
 
-    const content = document.createElement("div");
+    var content = document.createElement("div");
     content.className = "game-content";
 
-    const title = document.createElement("h2");
+    var title = document.createElement("h2");
     title.className = "game-title"; title.textContent = game.title;
 
-    const id = document.createElement("p");
+    var id = document.createElement("p");
     id.className = "game-id"; id.textContent = game.key;
 
-    const inCart = cart.some(it => it.key === game.key);
-    const btn = document.createElement("button");
+    var inCart = cart.some(function(it) { return it.key === game.key; });
+    var btn = document.createElement("button");
     btn.className = "btn-cart-action" + (inCart ? " in-cart" : "");
     btn.type = "button";
+    btn.setAttribute("tabindex", "0");
     btn.textContent = inCart ? "✓ NO CARRINHO (REMOVER)" : "+ ADICIONAR AO CARRINHO";
-    btn.onclick = () => toggleCart(game);
+    btn.onclick = function() { toggleCart(game); };
 
     content.appendChild(title);
     content.appendChild(id);
@@ -625,15 +646,12 @@ function renderCatalog() {
     card.appendChild(coverWrap);
     card.appendChild(content);
     container.appendChild(card);
-  }
+  });
 }
 
-// =========================================================================
-// GESTÃO DOS 15 MINUTOS E ABA DE DOWNLOADS (PERSISTÊNCIA COMPLETA)
-// =========================================================================
 function activateGrantedAccess(approvedGames) {
-  const expiresAt = Date.now() + (15 * 60 * 1000); // 15 minutos de tolerância
-  const grantData = {
+  var expiresAt = Date.now() + (15 * 60 * 1000);
+  var grantData = {
     expiresAt: expiresAt,
     games: approvedGames
   };
@@ -643,11 +661,11 @@ function activateGrantedAccess(approvedGames) {
 }
 
 function checkStoredGrant() {
-  const raw = localStorage.getItem("ps4_store_grant");
+  var raw = localStorage.getItem("ps4_store_grant");
   if (!raw) return;
 
   try {
-    const grant = JSON.parse(raw);
+    var grant = JSON.parse(raw);
     if (Date.now() < grant.expiresAt) {
       startSessionCountdown();
     } else {
@@ -661,11 +679,11 @@ function checkStoredGrant() {
 function startSessionCountdown() {
   if (countdownTimer) clearInterval(countdownTimer);
 
-  const btnTop = document.getElementById("btn-top-downloads");
+  var btnTop = document.getElementById("btn-top-downloads");
   btnTop.classList.add("visible");
 
   function tick() {
-    const raw = localStorage.getItem("ps4_store_grant");
+    var raw = localStorage.getItem("ps4_store_grant");
     if (!raw) {
       clearInterval(countdownTimer);
       btnTop.classList.remove("visible");
@@ -673,8 +691,8 @@ function startSessionCountdown() {
       return;
     }
 
-    const grant = JSON.parse(raw);
-    const diff = grant.expiresAt - Date.now();
+    var grant = JSON.parse(raw);
+    var diff = grant.expiresAt - Date.now();
 
     if (diff <= 0) {
       clearInterval(countdownTimer);
@@ -685,42 +703,40 @@ function startSessionCountdown() {
       return;
     }
 
-    const min = Math.floor(diff / 60000);
-    const sec = Math.floor((diff % 60000) / 1000);
-    const formatted = `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+    var min = Math.floor(diff / 60000);
+    var sec = Math.floor((diff % 60000) / 1000);
+    var formatted = String(min).padStart(2, "0") + ":" + String(sec).padStart(2, "0");
 
-    document.getElementById("top-timer-badge").textContent = `(${formatted})`;
-    document.getElementById("downloads-timer-badge").textContent = `⏳ ${formatted} RESTANTES`;
+    document.getElementById("top-timer-badge").textContent = "(" + formatted + ")";
+    document.getElementById("downloads-timer-badge").textContent = "⏳ " + formatted + " RESTANTES";
   }
 
   tick();
   countdownTimer = setInterval(tick, 1000);
 }
 
-// RENDERIZA TODOS OS ARQUIVOS VINCULADOS AO CUSA (BASE, UPDATE, DLCS)
 function showDownloadsView() {
-  const raw = localStorage.getItem("ps4_store_grant");
+  var raw = localStorage.getItem("ps4_store_grant");
   if (!raw) {
     showNotice("Nenhum acesso ativo no momento.", "error");
     return;
   }
 
-  const grant = JSON.parse(raw);
-  const approvedKeys = (grant.games || []).map(it => it.key.toUpperCase());
+  var grant = JSON.parse(raw);
+  var approvedKeys = (grant.games || []).map(function(it) { return it.key.toUpperCase(); });
 
   document.getElementById("view-catalog").style.display = "none";
-  const viewDownloads = document.getElementById("view-downloads");
+  var viewDownloads = document.getElementById("view-downloads");
   viewDownloads.classList.add("active");
 
-  const listContainer = document.getElementById("downloads-list");
+  var listContainer = document.getElementById("downloads-list");
   listContainer.innerHTML = "";
 
-  const actionText = isPS4Browser ? "INSTALAR VIA DPI" : "BAIXAR FICHEIRO";
+  var actionText = isPS4Browser ? "INSTALAR VIA DPI" : "BAIXAR FICHEIRO";
 
-  // Busca em allPackages todos os arquivos que pertencem a estes CUSAs (Base, Update, DLCs)
-  const availableFiles = allPackages.filter(pkg => {
-    const key = groupKey(pkg).toUpperCase();
-    return approvedKeys.includes(key);
+  var availableFiles = allPackages.filter(function(pkg) {
+    var key = groupKey(pkg).toUpperCase();
+    return approvedKeys.indexOf(key) !== -1;
   });
 
   if (availableFiles.length === 0) {
@@ -728,50 +744,51 @@ function showDownloadsView() {
     return;
   }
 
-  // Ordena: GAME -> UPDATE -> DLC
-  availableFiles.sort((a, b) => {
-    const order = { "GAME": 1, "UPDATE": 2, "DLC": 3 };
-    const typeA = order[(a.catalogType || a.category || "GAME").toUpperCase()] || 4;
-    const typeB = order[(b.catalogType || b.category || "GAME").toUpperCase()] || 4;
+  availableFiles.sort(function(a, b) {
+    var order = { "GAME": 1, "UPDATE": 2, "DLC": 3 };
+    var typeA = order[(a.catalogType || a.category || "GAME").toUpperCase()] || 4;
+    var typeB = order[(b.catalogType || b.category || "GAME").toUpperCase()] || 4;
     return typeA - typeB;
   });
 
-  availableFiles.forEach(pkg => {
-    const card = document.createElement("div");
+  availableFiles.forEach(function(pkg) {
+    var card = document.createElement("div");
     card.className = "download-item-card";
 
-    const img = document.createElement("img");
+    var img = document.createElement("img");
     img.className = "download-cover";
-    img.src = pkg.iconUrl || `/api/package-icon/${pkg.id}`;
-    img.onerror = () => { img.style.display = "none"; };
+    img.src = pkg.iconUrl || ("/api/package-icon/" + pkg.id);
+    img.onerror = function() { img.style.display = "none"; };
 
-    const typeTag = (pkg.catalogType || pkg.category || "PKG").toUpperCase();
-    const sizeFormatted = pkg.size ? ` • ${formatSize(pkg.size)}` : "";
-    const versionFormatted = pkg.version ? ` • v${pkg.version}` : "";
+    var typeTag = (pkg.catalogType || pkg.category || "PKG").toUpperCase();
+    var sizeFormatted = pkg.size ? " • " + formatSize(pkg.size) : "";
+    var versionFormatted = pkg.version ? " • v" + pkg.version : "";
 
-    const info = document.createElement("div");
+    var info = document.createElement("div");
     info.className = "download-info";
-    info.innerHTML = `
-      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-        <span class="badge-type">${typeTag}</span>
-        <h3 class="download-title" style="margin: 0;">${pkg.title}</h3>
-      </div>
-      <p class="download-sub" style="margin: 0; color: #888; font-size: 12px;">
-        ${pkg.contentId || groupKey(pkg)} ${versionFormatted} ${sizeFormatted}
-      </p>
-    `;
+    info.innerHTML = 
+      '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">' +
+        '<span class="badge-type">' + typeTag + '</span>' +
+        '<h3 class="download-title" style="margin: 0;">' + pkg.title + '</h3>' +
+      '</div>' +
+      '<p class="download-sub" style="margin: 0; color: #888; font-size: 12px;">' +
+        (pkg.contentId || groupKey(pkg)) + versionFormatted + sizeFormatted +
+      '</p>';
 
-    const btnInstall = document.createElement("button");
+    var btnInstall = document.createElement("button");
     btnInstall.className = "btn-install";
     btnInstall.type = "button";
+    btnInstall.setAttribute("tabindex", "0");
     btnInstall.textContent = actionText;
-    btnInstall.onclick = () => {
-      if (isPS4Browser) {
-        triggerDpiInstall(pkg.id, btnInstall);
-      } else {
-        window.open(`/download?id=${pkg.id}&consoleId=${encodeURIComponent(myConsoleId)}`, "_blank");
-      }
-    };
+    btnInstall.onclick = (function(pId, btnRef) {
+      return function() {
+        if (isPS4Browser) {
+          triggerDpiInstall(pId, btnRef);
+        } else {
+          window.open("/download?id=" + pId + "&consoleId=" + encodeURIComponent(myConsoleId), "_blank");
+        }
+      };
+    })(pkg.id, btnInstall);
 
     card.appendChild(img);
     card.appendChild(info);
@@ -786,7 +803,7 @@ function backToCatalog() {
 }
 
 async function triggerDpiInstall(pkgId, button) {
-  const targetIp = getTargetIp();
+  var targetIp = getTargetIp();
   if (!targetIp) {
     showNotice("Por favor, informe o IP do PS4 na barra superior!", "error");
     document.getElementById("ps4-ip").focus();
@@ -794,16 +811,16 @@ async function triggerDpiInstall(pkgId, button) {
   }
 
   button.disabled = true;
-  const originalText = button.textContent;
+  var originalText = button.textContent;
   button.textContent = "A ENVIAR...";
 
   try {
-    const res = await fetch("/api/install-dpi", {
+    var res = await fetch("/api/install-dpi", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pkgId: pkgId, ip: targetIp, consoleId: myConsoleId })
     });
-    const data = await res.json();
+    var data = await res.json();
     if (data.success) {
       button.textContent = "INICIADO!";
       showNotice("✓ Instalação enviada ao PS4! Verifique as Notificações do console.", "success");
@@ -815,14 +832,13 @@ async function triggerDpiInstall(pkgId, button) {
     button.textContent = "ERRO";
     showNotice("Falha de conexão com o servidor.", "error");
   } finally {
-    setTimeout(() => {
+    setTimeout(function() {
       button.disabled = false;
       button.textContent = originalText;
     }, 5000);
   }
 }
 
-// ABERTURA DO CHECKOUT (CALCULA VALORES E SUBMETE AO APP AUTOMATICAMENTE)
 function openCartModal() {
   if (cart.length === 0) {
     showNotice("O seu carrinho está vazio! Toque em '+ ADICIONAR AO CARRINHO' nos jogos.");
@@ -830,28 +846,25 @@ function openCartModal() {
   }
 
   document.getElementById("display-console-id").textContent = myConsoleId;
-  const list = document.getElementById("cart-items-list");
+  var list = document.getElementById("cart-items-list");
   list.innerHTML = "";
 
-  cart.forEach((item, index) => {
-    const row = document.createElement("div");
+  cart.forEach(function(item, index) {
+    var row = document.createElement("div");
     row.className = "summary-row";
-    row.innerHTML = `
-      <span><strong>${index + 1}.</strong> ${item.title}</span>
-      <div style="display: flex; align-items: center;">
-        <span style="font-weight: bold; color: var(--green);">R$ 10,00</span>
-        <button class="btn-remove-item" onclick="removeFromCart('${item.key}')">✕</button>
-      </div>
-    `;
+    row.innerHTML = 
+      '<span><strong>' + (index + 1) + '.</strong> ' + item.title + '</span>' +
+      '<div style="display: flex; align-items: center;">' +
+        '<span style="font-weight: bold; color: var(--green);">R$ 10,00</span>' +
+        '<button class="btn-remove-item" tabindex="0" onclick="removeFromCart(\'' + item.key + '\')">✕</button>' +
+      '</div>';
     list.appendChild(row);
   });
 
-  const total = cart.length * 10;
-  document.getElementById("cart-total-price").textContent = `R$ ${total.toFixed(2).replace(".", ",")}`;
+  var total = cart.length * 10;
+  document.getElementById("cart-total-price").textContent = "R$ " + total.toFixed(2).replace(".", ",");
 
-  // Submete o lote para o painel de aprovação no celular
   submitBatchRequest();
-
   document.getElementById("cart-overlay").classList.add("visible");
   startPollingCart();
 }
@@ -869,7 +882,7 @@ async function submitBatchRequest() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         consoleId: myConsoleId,
-        games: cart.map(it => ({ gameKey: it.key, title: it.title })),
+        games: cart.map(function(it) { return { gameKey: it.key, title: it.title }; }),
         clientIp: getTargetIp()
       })
     });
@@ -881,17 +894,16 @@ function startPollingCart() {
   pollingInterval = setInterval(checkCartStatus, 10000);
 }
 
-// DETECTA QUANDO VOCÊ CLICAR EM APROVAR NO CELULAR
 async function checkCartStatus() {
   if (cart.length === 0) return;
   try {
-    const keysParam = cart.map(it => it.key).join(",");
-    const res = await fetch(`/api/check-access?consoleId=${encodeURIComponent(myConsoleId)}&gameKeys=${encodeURIComponent(keysParam)}`, {
+    var keysParam = cart.map(function(it) { return it.key; }).join(",");
+    var res = await fetch("/api/check-access?consoleId=" + encodeURIComponent(myConsoleId) + "&gameKeys=" + encodeURIComponent(keysParam), {
       cache: "no-store"
     });
-    const data = await res.json();
+    var data = await res.json();
     if (data.approved) {
-      const approvedGames = [...cart];
+      var approvedGames = cart.slice(0);
       cart = [];
       saveCart();
       closeCartModal();
@@ -901,17 +913,18 @@ async function checkCartStatus() {
   } catch (_) {}
 }
 
-function showNotice(msg, type = "") {
-  const el = document.getElementById("notice");
+function showNotice(msg, type) {
+  type = type || "";
+  var el = document.getElementById("notice");
   el.textContent = msg;
   el.className = "notice visible " + type;
-  setTimeout(() => el.classList.remove("visible"), 5000);
+  setTimeout(function() { el.classList.remove("visible"); }, 5000);
 }
 
 async function loadPackages() {
   try {
-    const res = await fetch("/api/packages", { cache: "no-store" });
-    const data = await res.json();
+    var res = await fetch("/api/packages", { cache: "no-store" });
+    var data = await res.json();
     allPackages = data.packages || [];
     games = buildCatalog(allPackages);
     renderCatalog();
@@ -920,12 +933,12 @@ async function loadPackages() {
 }
 
 document.getElementById("search").addEventListener("input", renderCatalog);
-document.getElementById("refresh").addEventListener("click", () => { checkStatus(); loadPackages(); });
+document.getElementById("refresh").addEventListener("click", function() { checkStatus(); loadPackages(); });
 document.getElementById("btn-top-cart").addEventListener("click", openCartModal);
 document.getElementById("btn-top-downloads").addEventListener("click", showDownloadsView);
 document.getElementById("btn-close-cart").addEventListener("click", closeCartModal);
 document.getElementById("btn-back-catalog").addEventListener("click", backToCatalog);
-document.getElementById("btn-clear-cart").addEventListener("click", () => {
+document.getElementById("btn-clear-cart").addEventListener("click", function() {
   cart = [];
   saveCart();
   closeCartModal();
@@ -935,12 +948,12 @@ document.getElementById("btn-clear-cart").addEventListener("click", () => {
 document.getElementById("btn-save-ip").addEventListener("click", savePs4Ip);
 document.getElementById("ps4-ip").addEventListener("change", savePs4Ip);
 
-document.addEventListener("DOMContentLoaded", async () => {
+document.addEventListener("DOMContentLoaded", async function() {
   if (isPS4Browser) initPs4Ip();
   updateCartTopButton();
   await checkStatus();
   await loadPackages();
-  checkStoredGrant(); // Verifica se já tem uma liberação ativa em andamento ao carregar
+  checkStoredGrant();
   setInterval(checkStatus, 5000);
 });
 </script>
