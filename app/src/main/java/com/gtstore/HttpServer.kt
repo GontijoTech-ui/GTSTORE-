@@ -1,6 +1,7 @@
 package com.gtstore
 
 import android.content.Context
+import android.os.Environment
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -17,7 +18,6 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Modelo de dados com o estado atual do servidor HTTP.
- * Utilizado por MainActivity e GTStoreService via getStatus().
  */
 data class ServerStatus(
     val running: Boolean = false,
@@ -53,7 +53,7 @@ object OrderManager {
     private val orders = ConcurrentHashMap<String, Order>()
 
     fun createOrder(items: List<String>, targetIp: String): Order {
-        val id = UUID.randomUUID().toString().substring(0, 8)
+        val id = UUID.randomUUID().toString().substring(0, 8).uppercase()
         val order = Order(id = id, items = items, targetPs4Ip = targetIp)
         orders[id] = order
         return order
@@ -85,36 +85,17 @@ class HttpServer(
     private val activeConnectionsCount = AtomicInteger(0)
     private val threadPool = Executors.newCachedThreadPool()
 
-    // =========================================================================
-    // PROPRIEDADES E MÉTODOS DE COMPATIBILIDADE (MainActivity e GTStoreService)
-    // =========================================================================
-
-    /**
-     * Função chamada pela MainActivity e GTStoreService: server.isRunning()
-     */
     fun isRunning(): Boolean = serverRunning
 
-    /**
-     * Propriedade de acesso direto ao estado de execução: server.running
-     */
     val running: Boolean
         get() = serverRunning
 
-    /**
-     * Retorna o endereço IP local do dispositivo na rede Wi-Fi / Hotspot.
-     */
     val localAddress: String
         get() = getLocalIpAddress()
 
-    /**
-     * Quantidade de conexões ativas no momento.
-     */
     val activeConnections: Int
         get() = activeConnectionsCount.get()
 
-    /**
-     * Fornece o snapshot de status esperado por MainActivity.kt e GTStoreService.kt.
-     */
     fun getStatus(): ServerStatus {
         return ServerStatus(
             running = serverRunning,
@@ -227,7 +208,7 @@ class HttpServer(
                 }
             }
 
-            routeRequest(method, fullPath, headers, body, output)
+            routeRequest(method, fullPath, headers, body, socket, output)
 
         } catch (e: Exception) {
             Log.w(tag, "Falha na requisição: ${e.message}")
@@ -243,6 +224,7 @@ class HttpServer(
         fullPath: String,
         headers: Map<String, String>,
         body: String,
+        socket: Socket,
         output: OutputStream
     ) {
         val uriPath = if (fullPath.contains("?")) fullPath.substringBefore("?") else fullPath
@@ -250,35 +232,58 @@ class HttpServer(
         val queryParams = parseQueryParams(queryString)
 
         when {
-            // 1. Checkout (criado pelo console do PS4)
+            // Status do Servidor (consumido por checkServerStatus do index.html)
+            method == "GET" && uriPath == "/api/status" -> {
+                val clientIp = socket.inetAddress?.hostAddress ?: "127.0.0.1"
+                val res = JSONObject().apply {
+                    put("online", true)
+                    put("clientIp", clientIp)
+                }
+                sendJsonResponse(output, 200, res.toString())
+            }
+
+            // Catálogo de Pacotes (consumido por loadPackages do index.html)
+            method == "GET" && uriPath == "/api/packages" -> {
+                handleGetPackages(headers, output)
+            }
+
+            // Manifesto JSON dinâmico para o instalador do PS4
+            method == "GET" && uriPath.startsWith("/json-public/") -> {
+                val rawId = uriPath.removePrefix("/json-public/").removeSuffix(".json")
+                handleManifestJson(rawId, headers, output)
+            }
+
+            // Checkout e criação de pedido
             method == "POST" && uriPath == "/api/order/create" -> {
                 handleOrderCreate(body, output)
             }
 
-            // 2. Consulta de status (polling pelo PS4)
+            // Consulta de status do pedido (polling)
             method == "GET" && uriPath == "/api/order/status" -> {
                 val orderId = queryParams["id"]
+                val proto = headers["x-forwarded-proto"] ?: "http"
                 val host = headers["host"] ?: "127.0.0.1:$port"
-                handleOrderStatus(orderId, host, output)
+                val baseUrl = "$proto://$host"
+                handleOrderStatus(orderId, baseUrl, output)
             }
 
-            // 3. Listagem de pedidos na aba administrativa
+            // Listagem de pedidos no painel administrativo
             method == "GET" && uriPath == "/api/admin/orders" -> {
                 handleAdminOrdersList(output)
             }
 
-            // 4. Decisão do administrador (autorizar ou recusar)
+            // Decisão do administrador (aprovar ou recusar)
             method == "POST" && uriPath == "/api/admin/order/approve" -> {
                 handleAdminOrderDecision(body, output)
             }
 
-            // 5. Download e Streaming de arquivos PKG com suporte a Range (HTTP 206)
+            // Download fatiado de arquivos PKG com suporte a Range (HTTP 206)
             method == "GET" && uriPath.startsWith("/download/") -> {
                 val filename = URLDecoder.decode(uriPath.removePrefix("/download/"), "UTF-8")
                 handleFileStream(filename, headers, output)
             }
 
-            // 6. Arquivos estáticos da pasta assets/ (HTML, JS, CSS, Imagens)
+            // Arquivos estáticos da pasta assets/ (HTML, JS, CSS, Imagens)
             method == "GET" -> {
                 handleStaticAsset(uriPath, output)
             }
@@ -292,6 +297,64 @@ class HttpServer(
     // =========================================================================
     // ENDPOINTS DE API (JSON)
     // =========================================================================
+
+    private fun handleGetPackages(headers: Map<String, String>, output: OutputStream) {
+        val downloadFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val files = downloadFolder.listFiles { file ->
+            file.isFile && file.name.endsWith(".pkg", ignoreCase = true)
+        } ?: emptyArray()
+
+        val proto = headers["x-forwarded-proto"] ?: "http"
+        val host = headers["host"] ?: "127.0.0.1:$port"
+        val baseUrl = "$proto://$host"
+
+        val jsonArray = JSONArray()
+        files.forEachIndexed { index, file ->
+            val item = JSONObject().apply {
+                put("id", index)
+                put("catalogIndex", index)
+                put("title", file.nameWithoutExtension)
+                put("fileName", file.name)
+                put("size", file.length())
+                put("category", "gd")
+                put("type", "GAME")
+                put("url", "$baseUrl/download/${file.name}")
+            }
+            jsonArray.put(item)
+        }
+
+        val res = JSONObject().apply { put("items", jsonArray) }
+        sendJsonResponse(output, 200, res.toString())
+    }
+
+    private fun handleManifestJson(rawId: String, headers: Map<String, String>, output: OutputStream) {
+        val downloadFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val files = downloadFolder.listFiles { file ->
+            file.isFile && file.name.endsWith(".pkg", ignoreCase = true)
+        } ?: emptyArray()
+
+        val idx = rawId.toIntOrNull()
+        val targetFile = if (idx != null && idx in files.indices) {
+            files[idx]
+        } else {
+            files.firstOrNull { it.name.contains(rawId, ignoreCase = true) }
+        }
+
+        if (targetFile == null) {
+            sendJsonResponse(output, 404, """{"error": "Pacote não localizado"}""")
+            return
+        }
+
+        val proto = headers["x-forwarded-proto"] ?: "http"
+        val host = headers["host"] ?: "127.0.0.1:$port"
+        val pkgDownloadUrl = "$proto://$host/download/${targetFile.name}"
+
+        val manifest = JSONObject().apply {
+            put("type", "direct")
+            put("packages", JSONArray().put(pkgDownloadUrl))
+        }
+        sendJsonResponse(output, 200, manifest.toString())
+    }
 
     private fun handleOrderCreate(body: String, output: OutputStream) {
         try {
@@ -316,7 +379,7 @@ class HttpServer(
         }
     }
 
-    private fun handleOrderStatus(orderId: String?, host: String, output: OutputStream) {
+    private fun handleOrderStatus(orderId: String?, baseUrl: String, output: OutputStream) {
         if (orderId.isNullOrBlank()) {
             sendJsonResponse(output, 400, """{"error": "ID ausente"}""")
             return
@@ -328,13 +391,12 @@ class HttpServer(
             return
         }
 
-        // Gera URLs públicas usando o Host da requisição recebida (WAN ou LAN)
         val itemsArray = JSONArray()
         order.items.forEach { item ->
             val pkgUrl = if (item.startsWith("http://") || item.startsWith("https://")) {
                 item
             } else {
-                "http://$host/download/$item"
+                "$baseUrl/download/$item"
             }
             itemsArray.put(pkgUrl)
         }
@@ -410,9 +472,7 @@ class HttpServer(
     }
 
     private fun handleFileStream(filename: String, headers: Map<String, String>, output: OutputStream) {
-        val downloadFolder = android.os.Environment.getExternalStoragePublicDirectory(
-            android.os.Environment.DIRECTORY_DOWNLOADS
-        )
+        val downloadFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         val file = File(downloadFolder, filename)
 
         if (!file.exists() || !file.canRead()) {
@@ -425,7 +485,6 @@ class HttpServer(
 
         try {
             if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
-                // Suporte a HTTP 206 Partial Content (requerido para o PS4)
                 val ranges = rangeHeader.substring(6).split("-")
                 val start = ranges[0].toLongOrNull() ?: 0L
                 val end = if (ranges.size > 1 && ranges[1].isNotBlank()) ranges[1].toLong() else fileLength - 1
