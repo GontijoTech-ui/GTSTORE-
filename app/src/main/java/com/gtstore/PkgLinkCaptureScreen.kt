@@ -45,10 +45,6 @@ data class PkgCaptureResult(
     val fileName: String
 )
 
-private const val BROWSER_USER_AGENT =
-    "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
-
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun PkgLinkCaptureScreen(
@@ -109,6 +105,7 @@ fun PkgLinkCaptureScreen(
                 host.contains("mocha") ||
                 host.contains("matchaup") ||
                 host.contains("cloudflare") ||
+                host.contains("challenges.cloudflare") ||
                 host.contains("hcaptcha")
 
         return isSource || isAllowed || isCommonCdn
@@ -221,7 +218,10 @@ fun PkgLinkCaptureScreen(
                     isVerticalScrollBarEnabled = true
                     isHorizontalScrollBarEnabled = false
 
-                    settings.userAgentString = BROWSER_USER_AGENT
+                    // Ajusta o User-Agent nativo para remover a assinatura de WebView Version/4.0
+                    val defaultUa = settings.userAgentString
+                    settings.userAgentString = defaultUa.replace("; wv", "").replace("Version/4.0 ", "")
+
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
@@ -277,6 +277,19 @@ fun PkgLinkCaptureScreen(
                             favicon: android.graphics.Bitmap?
                         ) {
                             super.onPageStarted(view, url, favicon)
+
+                            // Mascara propriedades que identificam automação Web
+                            view.evaluateJavascript(
+                                """
+                                (function() {
+                                    try {
+                                        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                                        window.chrome = window.chrome || { runtime: {} };
+                                    } catch(e) {}
+                                })();
+                                """.trimIndent(), null
+                            )
+
                             val isNotIntermediate = !url.contains("filekeeper.net", ignoreCase = true)
                             val isPkg = url.substringBefore("?").endsWith(".pkg", ignoreCase = true)
 
@@ -298,10 +311,14 @@ fun PkgLinkCaptureScreen(
                                 currentPageUrl = url
                             }
 
+                            // Dispara atualização de layout caso a lista demore a compilar
                             view.evaluateJavascript(
                                 """
                                 (function() {
-                                    window.dispatchEvent(new Event('resize'));
+                                    try {
+                                        window.dispatchEvent(new Event('resize'));
+                                        window.dispatchEvent(new Event('scroll'));
+                                    } catch(e) {}
                                 })();
                                 """.trimIndent(), null
                             )
