@@ -1,16 +1,18 @@
 package com.gtstore
 
 import android.content.Context
-import android.os.Environment
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.*
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -47,7 +49,7 @@ data class Order(
 )
 
 /**
- * Gerenciador thread-safe em memória para sincronização entre PS4 e Admin.
+ * Gestor thread-safe em memória para sincronização entre o PS4 e o Administrador.
  */
 object OrderManager {
     private val orders = ConcurrentHashMap<String, Order>()
@@ -73,7 +75,7 @@ object OrderManager {
 }
 
 /**
- * Servidor HTTP integrado para Android.
+ * Servidor HTTP integrado para Android associado ao CatalogManager.
  */
 class HttpServer(
     val context: Context,
@@ -84,6 +86,11 @@ class HttpServer(
     private var serverRunning = false
     private val activeConnectionsCount = AtomicInteger(0)
     private val threadPool = Executors.newCachedThreadPool()
+
+    // Acesso ao catálogo persistido
+    private val catalogManager by lazy {
+        CatalogManager(context.applicationContext)
+    }
 
     fun isRunning(): Boolean = serverRunning
 
@@ -129,7 +136,7 @@ class HttpServer(
                 }
             } catch (e: Exception) {
                 if (serverRunning) {
-                    Log.e(tag, "Erro no loop de escuta do servidor HTTP: ${e.message}")
+                    Log.e(tag, "Erro no ciclo de escuta do servidor HTTP: ${e.message}")
                 }
             } finally {
                 serverRunning = false
@@ -144,7 +151,7 @@ class HttpServer(
             serverSocket = null
             Log.i(tag, "Servidor GTSTORE finalizado.")
         } catch (e: Exception) {
-            Log.e(tag, "Erro ao encerrar socket: ${e.message}")
+            Log.e(tag, "Erro ao encerrar o socket: ${e.message}")
         }
     }
 
@@ -156,7 +163,7 @@ class HttpServer(
         try {
             val input = socket.getInputStream()
             val output = socket.getOutputStream()
-            val reader = BufferedReader(InputStreamReader(input))
+            val reader = BufferedReader(InputStreamReader(input, StandardCharsets.ISO_8859_1))
 
             val requestLine = reader.readLine() ?: run {
                 socket.close()
@@ -172,7 +179,6 @@ class HttpServer(
             val method = parts[0].uppercase()
             val fullPath = parts[1]
 
-            // Leitura de Cabeçalhos HTTP
             val headers = mutableMapOf<String, String>()
             var line: String?
             while (reader.readLine().also { line = it } != null) {
@@ -185,14 +191,12 @@ class HttpServer(
                 }
             }
 
-            // Tratamento de preflight CORS (OPTIONS)
             if (method == "OPTIONS") {
                 sendCorsOk(output)
                 socket.close()
                 return
             }
 
-            // Leitura do corpo (quando método for POST)
             var body = ""
             if (method == "POST") {
                 val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
@@ -232,7 +236,7 @@ class HttpServer(
         val queryParams = parseQueryParams(queryString)
 
         when {
-            // Status do Servidor (consumido por checkServerStatus do index.html)
+            // Estado do servidor
             method == "GET" && uriPath == "/api/status" -> {
                 val clientIp = socket.inetAddress?.hostAddress ?: "127.0.0.1"
                 val res = JSONObject().apply {
@@ -242,32 +246,39 @@ class HttpServer(
                 sendJsonResponse(output, 200, res.toString())
             }
 
-            // Catálogo de Pacotes (consumido por loadPackages do index.html)
+            // Catálogo obtido via CatalogManager com as respetivas URLs externas
             method == "GET" && uriPath == "/api/packages" -> {
-                handleGetPackages(headers, output)
+                handleGetPackages(output)
             }
 
-            // Manifesto JSON dinâmico para o instalador DPI / RPI do PS4
+            // Capa/Ícone do item registado no catálogo
+            method == "GET" && uriPath.startsWith("/api/package-icon/") -> {
+                val id = uriPath.removePrefix("/api/package-icon/").split("/").firstOrNull()?.toIntOrNull()
+                if (id != null) {
+                    handlePackageIcon(id, output)
+                } else {
+                    sendJsonResponse(output, 400, """{"error": "ID inválido"}""")
+                }
+            }
+
+            // Manifesto JSON dinâmico para a instalação direta via DPI
             method == "GET" && (uriPath.startsWith("/json/") || uriPath.startsWith("/json-public/")) -> {
                 val rawId = uriPath
                     .removePrefix("/json-public/")
                     .removePrefix("/json/")
                     .removeSuffix(".json")
-                handleManifestJson(rawId, headers, output)
+                handleManifestJson(rawId, output)
             }
 
-            // Checkout e criação de pedido
+            // Checkout / Criação de Pedido
             method == "POST" && uriPath == "/api/order/create" -> {
                 handleOrderCreate(body, output)
             }
 
-            // Consulta de status do pedido (polling)
+            // Polling de estado do pedido
             method == "GET" && uriPath == "/api/order/status" -> {
                 val orderId = queryParams["id"]
-                val proto = headers["x-forwarded-proto"] ?: "http"
-                val host = headers["host"] ?: "127.0.0.1:$port"
-                val baseUrl = "$proto://$host"
-                handleOrderStatus(orderId, baseUrl, output)
+                handleOrderStatus(orderId, output)
             }
 
             // Listagem de pedidos no painel administrativo
@@ -275,18 +286,12 @@ class HttpServer(
                 handleAdminOrdersList(output)
             }
 
-            // Decisão do administrador (aprovar ou recusar)
+            // Decisão administrativa (aprovação ou rejeição)
             method == "POST" && uriPath == "/api/admin/order/approve" -> {
                 handleAdminOrderDecision(body, output)
             }
 
-            // Download fatiado de arquivos PKG com suporte a Range (HTTP 206)
-            method == "GET" && uriPath.startsWith("/download/") -> {
-                val filename = URLDecoder.decode(uriPath.removePrefix("/download/"), "UTF-8")
-                handleFileStream(filename, headers, output)
-            }
-
-            // Arquivos estáticos da pasta assets/ (HTML, JS, CSS, Imagens)
+            // Ficheiros estáticos da pasta assets/ (HTML, JS, CSS, Imagens)
             method == "GET" -> {
                 handleStaticAsset(uriPath, output)
             }
@@ -297,80 +302,112 @@ class HttpServer(
         }
     }
 
-    // =========================================================
-    // ENDPOINTS DE API (JSON)
-    // =========================================================
+    // =========================================================================
+    // ENDPOINTS DE CATÁLOGO E MANIFESTO
+    // =========================================================================
 
-    private fun handleGetPackages(headers: Map<String, String>, output: OutputStream) {
-        val downloadFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val files = downloadFolder.listFiles { file ->
-            file.isFile && file.name.endsWith(".pkg", ignoreCase = true)
-        } ?: emptyArray()
+    private fun handleGetPackages(output: OutputStream) {
+        val packages = catalogManager.getAll()
+        val array = JSONArray()
 
-        val proto = headers["x-forwarded-proto"] ?: "http"
-        val host = headers["host"] ?: "127.0.0.1:$port"
-        val baseUrl = "$proto://$host"
-
-        val jsonArray = JSONArray()
-        files.forEachIndexed { index, file ->
-            val cusaMatch = Regex("CUSA\\d{5}", RegexOption.IGNORE_CASE).find(file.name)?.value?.uppercase() ?: "CUSA00000"
-            val item = JSONObject().apply {
-                put("id", index)
-                put("catalogIndex", index)
-                put("title", file.nameWithoutExtension)
-                put("fileName", file.name)
-                put("contentId", cusaMatch)
-                put("size", file.length())
-                put("category", "gd")
-                put("type", "GAME")
-                put("url", "$baseUrl/download/${file.name}")
-            }
-            jsonArray.put(item)
+        for (item in packages) {
+            val icon = catalogManager.getIcon(item)
+            val hasIcon = icon != null && icon.isNotEmpty()
+            array.put(
+                JSONObject().apply {
+                    put("id", item.catalogIndex)
+                    put("catalogIndex", item.catalogIndex)
+                    put("index", item.indexString)
+                    put("title", item.title)
+                    put("fileName", item.fileName)
+                    put("file", item.indexString + ".pkg")
+                    put("size", item.size)
+                    put("version", item.version)
+                    put("category", item.category)
+                    put("type", item.type)
+                    put("contentId", item.contentId)
+                    put("digest", item.digest)
+                    put("digestMatches", item.digestMatches)
+                    put("url", item.url)
+                    put("iconUrl", if (hasIcon) "/api/package-icon/${item.catalogIndex}" else "")
+                }
+            )
         }
 
-        val res = JSONObject().apply { put("items", jsonArray) }
+        val res = JSONObject().apply {
+            put("count", packages.size)
+            put("items", array)
+            put("packages", array)
+        }
         sendJsonResponse(output, 200, res.toString())
     }
 
-    private fun handleManifestJson(rawId: String, headers: Map<String, String>, output: OutputStream) {
-        val downloadFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val files = downloadFolder.listFiles { file ->
-            file.isFile && file.name.endsWith(".pkg", ignoreCase = true)
-        } ?: emptyArray()
-
-        val idx = rawId.toIntOrNull()
-        val targetFile = if (idx != null && idx in files.indices) {
-            files[idx]
-        } else {
-            files.firstOrNull { it.name.contains(rawId, ignoreCase = true) }
-        }
-
-        if (targetFile == null) {
-            sendJsonResponse(output, 404, """{"error": "Pacote não localizado"}""")
+    private fun handlePackageIcon(packageId: Int, output: OutputStream) {
+        val item = catalogManager.getByIndex(packageId)
+        if (item == null) {
+            sendJsonResponse(output, 404, """{"error": "Item não encontrado"}""")
             return
         }
 
-        val proto = headers["x-forwarded-proto"] ?: "http"
-        val host = headers["host"] ?: "127.0.0.1:$port"
-        val pkgDownloadUrl = "$proto://$host/download/${targetFile.name}"
-
-        // Formato oficial do DPI compatível com o payload.bin
-        val manifest = JSONObject().apply {
-            put("originalFileSize", targetFile.length())
-            put("packageDigest", "0000000000000000000000000000000000000000000000000000000000000000")
-            put("numberOfSplitFiles", 1)
-            put("pieces", JSONArray().put(JSONObject().apply {
-                put("url", pkgDownloadUrl)
-                put("fileOffset", 0)
-                put("fileSize", targetFile.length())
-                put("hashValue", "0000000000000000000000000000000000000000")
-            }))
-            // Compatibilidade retroativa com RPI
-            put("type", "direct")
-            put("packages", JSONArray().put(pkgDownloadUrl))
+        val icon = catalogManager.getIcon(item)
+        if (icon == null || icon.isEmpty()) {
+            sendJsonResponse(output, 404, """{"error": "Ícone indisponível"}""")
+            return
         }
+
+        val header = "HTTP/1.1 200 OK\r\n" +
+                "Content-Type: image/png\r\n" +
+                "Content-Length: ${icon.size}\r\n" +
+                "Access-Control-Allow-Origin: *\r\n" +
+                "Cache-Control: max-age=86400\r\n\r\n"
+        output.write(header.toByteArray())
+        output.write(icon)
+        output.flush()
+    }
+
+    private fun handleManifestJson(rawId: String, output: OutputStream) {
+        val idx = rawId.toIntOrNull()
+        val item = if (idx != null) {
+            catalogManager.getByIndex(idx)
+        } else {
+            catalogManager.getByContentId(rawId)
+        }
+
+        if (item == null) {
+            sendJsonResponse(output, 404, """{"error": "Item do catálogo não encontrado"}""")
+            return
+        }
+
+        if (item.url.isBlank()) {
+            sendJsonResponse(output, 422, """{"error": "Item sem URL configurada"}""")
+            return
+        }
+
+        val digest = if (item.digest.isNotBlank()) item.digest else "0000000000000000000000000000000000000000000000000000000000000000"
+
+        // Manifesto oficial do DPI com o URL externo do PKG
+        val manifest = JSONObject().apply {
+            put("originalFileSize", item.size)
+            put("packageDigest", digest)
+            put("numberOfSplitFiles", 1)
+            put("pieces", JSONArray().put(
+                JSONObject().apply {
+                    put("url", item.url)
+                    put("fileOffset", 0)
+                    put("fileSize", item.size)
+                    put("hashValue", "0000000000000000000000000000000000000000")
+                }
+            ))
+            put("type", "direct")
+            put("packages", JSONArray().put(item.url))
+        }
+
         sendJsonResponse(output, 200, manifest.toString())
     }
+
+    // =========================================================================
+    // GESTÃO DE PEDIDOS (ORDERMANAGER)
+    // =========================================================================
 
     private fun handleOrderCreate(body: String, output: OutputStream) {
         try {
@@ -395,7 +432,7 @@ class HttpServer(
         }
     }
 
-    private fun handleOrderStatus(orderId: String?, baseUrl: String, output: OutputStream) {
+    private fun handleOrderStatus(orderId: String?, output: OutputStream) {
         if (orderId.isNullOrBlank()) {
             sendJsonResponse(output, 400, """{"error": "ID ausente"}""")
             return
@@ -408,14 +445,7 @@ class HttpServer(
         }
 
         val itemsArray = JSONArray()
-        order.items.forEach { item ->
-            val pkgUrl = if (item.startsWith("http://") || item.startsWith("https://")) {
-                item
-            } else {
-                "$baseUrl/download/$item"
-            }
-            itemsArray.put(pkgUrl)
-        }
+        order.items.forEach { itemsArray.put(it) }
 
         val response = JSONObject().apply {
             put("id", order.id)
@@ -462,7 +492,7 @@ class HttpServer(
     }
 
     // =========================================================================
-    // ENTREGA DE ARQUIVOS E STREAMING DE PKG COM SUPORTE A RANGE (HTTP 206)
+    // FICHEIROS ESTÁTICOS
     // =========================================================================
 
     private fun handleStaticAsset(rawPath: String, output: OutputStream) {
@@ -483,68 +513,7 @@ class HttpServer(
                 output.flush()
             }
         } catch (_: Exception) {
-            sendJsonResponse(output, 404, """{"error": "Arquivo não encontrado nos assets"}""")
-        }
-    }
-
-    private fun handleFileStream(filename: String, headers: Map<String, String>, output: OutputStream) {
-        val downloadFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val file = File(downloadFolder, filename)
-
-        if (!file.exists() || !file.canRead()) {
-            sendJsonResponse(output, 404, """{"error": "Arquivo não encontrado para download"}""")
-            return
-        }
-
-        val fileLength = file.length()
-        val rangeHeader = headers["range"]
-
-        try {
-            if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
-                val ranges = rangeHeader.substring(6).split("-")
-                val start = ranges[0].toLongOrNull() ?: 0L
-                val end = if (ranges.size > 1 && ranges[1].isNotBlank()) ranges[1].toLong() else fileLength - 1
-                val contentLength = end - start + 1
-
-                val header = "HTTP/1.1 206 Partial Content\r\n" +
-                        "Content-Type: application/octet-stream\r\n" +
-                        "Accept-Ranges: bytes\r\n" +
-                        "Content-Range: bytes $start-$end/$fileLength\r\n" +
-                        "Content-Length: $contentLength\r\n" +
-                        "Access-Control-Allow-Origin: *\r\n\r\n"
-                output.write(header.toByteArray())
-
-                RandomAccessFile(file, "r").use { raf ->
-                    raf.seek(start)
-                    val buffer = ByteArray(64 * 1024)
-                    var remaining = contentLength
-                    while (remaining > 0) {
-                        val toRead = minOf(buffer.size.toLong(), remaining).toInt()
-                        val read = raf.read(buffer, 0, toRead)
-                        if (read == -1) break
-                        output.write(buffer, 0, read)
-                        remaining -= read
-                    }
-                }
-            } else {
-                val header = "HTTP/1.1 200 OK\r\n" +
-                        "Content-Type: application/octet-stream\r\n" +
-                        "Accept-Ranges: bytes\r\n" +
-                        "Content-Length: $fileLength\r\n" +
-                        "Access-Control-Allow-Origin: *\r\n\r\n"
-                output.write(header.toByteArray())
-
-                FileInputStream(file).use { fis ->
-                    val buffer = ByteArray(64 * 1024)
-                    var read: Int
-                    while (fis.read(buffer).also { read = it } != null && read != -1) {
-                        output.write(buffer, 0, read)
-                    }
-                }
-            }
-            output.flush()
-        } catch (e: Exception) {
-            Log.w(tag, "Conexão de streaming interrompida: ${e.message}")
+            sendJsonResponse(output, 404, """{"error": "Ficheiro não encontrado nos assets"}""")
         }
     }
 
@@ -572,7 +541,7 @@ class HttpServer(
 
     private fun sendJsonResponse(output: OutputStream, code: Int, json: String) {
         val statusText = if (code == 200) "OK" else if (code == 404) "Not Found" else "Bad Request"
-        val bytes = json.toByteArray(Charsets.UTF_8)
+        val bytes = json.toByteArray(StandardCharsets.UTF_8)
         val response = "HTTP/1.1 $code $statusText\r\n" +
                 "Content-Type: application/json; charset=utf-8\r\n" +
                 "Content-Length: ${bytes.size}\r\n" +
