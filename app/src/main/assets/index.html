@@ -30,7 +30,6 @@
     }
     button, input { font-family: inherit; }
 
-    /* Foco contínuo para navegação suave via D-Pad do controle do PS4 */
     button:focus, input:focus, .game-card:focus {
       outline: none !important;
       border-color: var(--border-focus) !important;
@@ -38,7 +37,6 @@
       transform: translateY(-2px);
     }
 
-    /* Barra Superior com efeito Frosted Glass */
     .header {
       width: 100%;
       background: rgba(5, 7, 11, 0.85);
@@ -126,7 +124,6 @@
     }
     .btn-save-ip:hover { background: var(--primary-hover); }
 
-    /* Barra de Pesquisa e Ferramentas */
     .container { width: 95%; max-width: 1400px; margin: 0 auto; padding: 24px 0 60px; }
     .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; }
     .search {
@@ -144,7 +141,6 @@
     }
     .refresh:hover { background: rgba(255, 255, 255, 0.1); }
 
-    /* Grid do Catálogo */
     .catalog {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px;
     }
@@ -185,7 +181,6 @@
     .btn-cart-action.in-cart { background: #ff334b; }
     .btn-cart-action:hover { opacity: 0.95; }
 
-    /* Aba de Downloads Liberados */
     .view-downloads {
       display: none; background: rgba(14, 18, 27, 0.85); border: 1px solid var(--border);
       border-radius: 16px; padding: 28px; margin-top: 10px; backdrop-filter: blur(16px);
@@ -218,6 +213,9 @@
       background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.15);
       color: #64b5f6; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px;
     }
+    .badge-type.badge-game { border-color: #35c759; color: #35c759; }
+    .badge-type.badge-update { border-color: #ff9f0a; color: #ff9f0a; }
+    .badge-type.badge-dlc { border-color: #0088f0; color: #64b5f6; }
 
     .btn-install {
       border: 0; border-radius: 8px; padding: 12px 20px; font-size: 13px;
@@ -226,7 +224,6 @@
     }
     .btn-install:hover, .btn-install:focus { background: #2cb04b; color: #fff; }
 
-    /* Modais e Overlays */
     .overlay {
       position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
       padding: 16px; background: rgba(2, 3, 5, 0.88); backdrop-filter: blur(10px);
@@ -357,7 +354,7 @@
 
   <div id="view-catalog">
     <div class="toolbar">
-      <input id="search" class="search" type="text" placeholder="Pesquisar por nome ou CUSA..." autocomplete="off" tabindex="0">
+      <input id="search" class="search" type="text" placeholder="Pesquisar jogo..." autocomplete="off" tabindex="0">
       <button id="refresh" class="refresh" type="button" tabindex="0">Atualizar</button>
     </div>
     <section id="catalog" class="catalog">
@@ -369,7 +366,7 @@
     <div class="downloads-header">
       <div>
         <h2 class="downloads-title">✓ FICHEIROS LIBERADOS</h2>
-        <p style="margin: 4px 0 0; color: #aaa; font-size: 13px;">Todos os ficheiros associados ao pacote escolhido:</p>
+        <p style="margin: 4px 0 0; color: #aaa; font-size: 13px;">Ordem recomendada de instalação: GAME &rarr; UPDATE &rarr; DLC</p>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span id="downloads-timer-badge" class="time-badge">⏳ 15:00 RESTANTES</span>
@@ -464,51 +461,72 @@ function saveCart() {
   updateCartTopButton();
 }
 
-function cleanGameTitle(rawTitle) {
-  if (!rawTitle) return "";
-  return rawTitle
-    .replace(/\[.*?\]|\(.*?\)/g, "")
-    .replace(/(?:v\d+\.\d+|DLC|UPDATE|EXPANSION|ADD-?ON|PATCH).*/i, "")
-    .trim();
+// Normaliza o tipo de pacote com tolerância
+function getNormalizedType(pkg) {
+  var raw = (pkg.catalogType || pkg.category || pkg.type || "").toUpperCase();
+  if (raw.indexOf("UPDATE") !== -1 || raw.indexOf("PATCH") !== -1) return "UPDATE";
+  if (raw.indexOf("DLC") !== -1 || raw.indexOf("ADDON") !== -1 || raw.indexOf("EXTRA") !== -1) return "DLC";
+  return "GAME";
 }
 
+// Limpa nome de jogo removendo menções a DLC, Update, CUSA e lixos comuns de títulos FPKG
+function cleanGameTitle(rawTitle) {
+  if (!rawTitle) return "";
+  var cleaned = rawTitle
+    .replace(/\[.*?\]|\(.*?\)/g, "") // Remove [CUSAXXXXX], [DLC], (v1.00)
+    .replace(/\b(cusa[-_ ]?\d{5})\b/gi, "") // Remove CUSAXXXXX solto
+    .replace(/\b(dlc|update|patch|addon|add-on|expansion|expansion pack)\b.*$/gi, "") // Remove do DLC em diante
+    .replace(/\bv\d+(\.\d+)?.*$/gi, "") // Remove v1.00 em diante
+    .replace(/[-_:]\s*$/g, "") // Remove pontuação restante no fim
+    .trim();
+  return cleaned || rawTitle.trim();
+}
+
+// Chave canônica unificada que junta Game, Updates e todas as DLCs (mesmo com CUSAs diferentes)
 function groupKey(pkg) {
+  if (pkg.gameKey) return String(pkg.gameKey).trim().toUpperCase();
   if (pkg.parentKey) return String(pkg.parentKey).trim().toUpperCase();
-  
-  var title = cleanGameTitle(pkg.title);
-  if (title.length >= 3) {
-    return title.toUpperCase();
+
+  var clean = cleanGameTitle(pkg.title);
+  if (clean.length >= 3) {
+    return clean.toUpperCase();
   }
 
   var contentId = String(pkg.contentId || "").trim().toUpperCase();
-  if (contentId) {
-    var match = contentId.match(/CUSA\d+/i);
-    if (match) return match[0].toUpperCase();
-  }
+  var match = contentId.match(/CUSA\d+/i);
+  if (match) return match[0].toUpperCase();
+
   return (pkg.title || ("PKG_" + pkg.id)).trim().toUpperCase();
 }
 
 function buildCatalog(packages) {
   var groups = new Map();
+
   for (var i = 0; i < packages.length; i++) {
     var pkg = packages[i];
     var key = groupKey(pkg);
+    var pkgType = getNormalizedType(pkg);
     var cleanTitle = cleanGameTitle(pkg.title) || pkg.title || key;
 
     if (!groups.has(key)) {
-      groups.set(key, { 
-        id: pkg.id, 
-        key: key, 
-        title: cleanTitle, 
-        cover: pkg.iconUrl || "",
-        associatedKeys: [groupKey(pkg), (pkg.contentId || "").toUpperCase()]
+      groups.set(key, {
+        id: pkg.id,
+        key: key,
+        title: cleanTitle,
+        cover: pkgType === "GAME" ? (pkg.iconUrl || "") : "",
+        hasBaseGame: (pkgType === "GAME")
       });
     } else {
-      var existing = groups.get(key);
-      if (!existing.cover && pkg.iconUrl) existing.cover = pkg.iconUrl;
-      var cat = (pkg.catalogType || pkg.category || "").toUpperCase();
-      if (cat === "GAME" && pkg.iconUrl) existing.cover = pkg.iconUrl;
-      existing.associatedKeys.push(pkg.contentId || "");
+      var current = groups.get(key);
+      // Garante que a capa e o título venham do pacote GAME principal
+      if (pkgType === "GAME") {
+        if (pkg.iconUrl) current.cover = pkg.iconUrl;
+        current.title = cleanTitle;
+        current.hasBaseGame = true;
+      } else if (!current.cover && pkg.iconUrl) {
+        // Fallback temporário apenas se nenhum GAME tiver capa ainda
+        current.cover = pkg.iconUrl;
+      }
     }
   }
 
@@ -523,7 +541,7 @@ function toggleCart(game) {
     cart.splice(index, 1);
     showNotice("Removido do carrinho: " + game.title);
   } else {
-    cart.push({ key: game.key, title: game.title, id: game.id, cover: game.cover, associated: game.associatedKeys });
+    cart.push({ key: game.key, title: game.title, id: game.id, cover: game.cover });
     showNotice("✓ Adicionado ao carrinho: " + game.title, "success");
   }
   saveCart();
@@ -625,11 +643,14 @@ function renderCatalog() {
     var content = document.createElement("div");
     content.className = "game-content";
 
+    // Exibe exclusivamente o nome do JOGO na página inicial
     var title = document.createElement("h2");
-    title.className = "game-title"; title.textContent = game.title;
+    title.className = "game-title"; 
+    title.textContent = game.title;
 
     var id = document.createElement("p");
-    id.className = "game-id"; id.textContent = game.key;
+    id.className = "game-id"; 
+    id.textContent = game.key;
 
     var inCart = cart.some(function(it) { return it.key === game.key; });
     var btn = document.createElement("button");
@@ -715,6 +736,7 @@ function startSessionCountdown() {
   countdownTimer = setInterval(tick, 1000);
 }
 
+// ABA DE DOWNLOADS: ESTRUTURA RIGOROSA GAME -> UPDATE -> DLC
 function showDownloadsView() {
   var raw = localStorage.getItem("ps4_store_grant");
   if (!raw) {
@@ -734,21 +756,24 @@ function showDownloadsView() {
 
   var actionText = isPS4Browser ? "INSTALAR VIA DPI" : "BAIXAR FICHEIRO";
 
+  // Busca todos os arquivos vinculados aos jogos aprovados (mesmo com CUSA diferente na DLC)
   var availableFiles = allPackages.filter(function(pkg) {
     var key = groupKey(pkg).toUpperCase();
     return approvedKeys.indexOf(key) !== -1;
   });
 
   if (availableFiles.length === 0) {
-    listContainer.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">Nenhum arquivo listado para este pacote.</div>';
+    listContainer.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">Nenhum ficheiro listado para este pacote.</div>';
     return;
   }
 
+  // Ordenação prioritária: 1. GAME -> 2. UPDATE -> 3. DLC
   availableFiles.sort(function(a, b) {
     var order = { "GAME": 1, "UPDATE": 2, "DLC": 3 };
-    var typeA = order[(a.catalogType || a.category || "GAME").toUpperCase()] || 4;
-    var typeB = order[(b.catalogType || b.category || "GAME").toUpperCase()] || 4;
-    return typeA - typeB;
+    var typeA = order[getNormalizedType(a)] || 4;
+    var typeB = order[getNormalizedType(b)] || 4;
+    if (typeA !== typeB) return typeA - typeB;
+    return (a.title || "").localeCompare(b.title || "");
   });
 
   availableFiles.forEach(function(pkg) {
@@ -760,15 +785,17 @@ function showDownloadsView() {
     img.src = pkg.iconUrl || ("/api/package-icon/" + pkg.id);
     img.onerror = function() { img.style.display = "none"; };
 
-    var typeTag = (pkg.catalogType || pkg.category || "PKG").toUpperCase();
+    var typeTag = getNormalizedType(pkg);
     var sizeFormatted = pkg.size ? " • " + formatSize(pkg.size) : "";
     var versionFormatted = pkg.version ? " • v" + pkg.version : "";
+
+    var badgeClass = "badge-type " + (typeTag === "GAME" ? "badge-game" : typeTag === "UPDATE" ? "badge-update" : "badge-dlc");
 
     var info = document.createElement("div");
     info.className = "download-info";
     info.innerHTML = 
       '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">' +
-        '<span class="badge-type">' + typeTag + '</span>' +
+        '<span class="' + badgeClass + '">' + typeTag + '</span>' +
         '<h3 class="download-title" style="margin: 0;">' + pkg.title + '</h3>' +
       '</div>' +
       '<p class="download-sub" style="margin: 0; color: #888; font-size: 12px;">' +
