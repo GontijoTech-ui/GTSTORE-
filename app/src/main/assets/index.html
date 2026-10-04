@@ -343,7 +343,7 @@
     </div>
     <div class="ps4-ip-bar">
       <span class="ps4-ip-label">🎮 IP PS4:</span>
-      <input id="ps4-ip" class="ps4-ip-input" type="text" placeholder="192.168.0.X" autocomplete="off" tabindex="0">
+      <input id="ps4-ip" class="ps4-ip-input" type="text" placeholder="127.0.0.1" autocomplete="off" tabindex="0">
       <button id="btn-save-ip" class="btn-save-ip" type="button" tabindex="0">SALVAR</button>
     </div>
   </div>
@@ -413,7 +413,7 @@
 
     <div id="polling-container" class="polling-status">
       <span class="status-dot" style="background: #0088f0; box-shadow: 0 0 8px #0088f0;"></span>
-      <span>Aguardando aprovação no painel do celular (a cada 10s)...</span>
+      <span>Aguardando aprovação no painel do celular (a cada 4s)...</span>
     </div>
 
     <div class="time-notice">
@@ -437,6 +437,7 @@ var ps4ClientIp = "";
 var isServerOnline = false;
 var pollingInterval = null;
 var countdownTimer = null;
+var isBatchSubmitted = false;
 
 var cart = JSON.parse(localStorage.getItem("ps4_store_cart") || "[]");
 
@@ -505,7 +506,6 @@ function extractCusa(pkg) {
   return "";
 }
 
-// Vincula Updates e DLCs (mesmo com CUSAs de outras regiões) ao jogo base correto
 function getGameFamilyKey(pkg) {
   var raw = String(pkg.title || "").toUpperCase();
   var clean = raw
@@ -539,7 +539,6 @@ function getGameFamilyKey(pkg) {
 function buildCatalog(packages) {
   var catalogMap = new Map();
 
-  // PASSAGEM 1: Apenas Jogos Base ('gd') criam cards no Catálogo da Home
   for (var i = 0; i < packages.length; i++) {
     var item = packages[i];
     if (isGameBase(item)) {
@@ -558,7 +557,6 @@ function buildCatalog(packages) {
     }
   }
 
-  // PASSAGEM 2: Agrupa CUSAs de DLCs e Updates ao card pai
   for (var j = 0; j < packages.length; j++) {
     var extra = packages[j];
     if (!isGameBase(extra)) {
@@ -588,12 +586,14 @@ function toggleCart(game) {
     cart.push({ key: game.key, title: game.title, id: game.id, cover: game.cover });
     showNotice("✓ Adicionado ao carrinho: " + game.title, "success");
   }
+  isBatchSubmitted = false;
   saveCart();
   renderCatalog();
 }
 
 function removeFromCart(key) {
   cart = cart.filter(function(it) { return it.key !== key; });
+  isBatchSubmitted = false;
   saveCart();
   renderCatalog();
   if (cart.length === 0) {
@@ -605,21 +605,25 @@ function removeFromCart(key) {
 
 function initPs4Ip() {
   var saved = localStorage.getItem("ps4_ip") || "";
-  if (saved) document.getElementById("ps4-ip").value = saved;
+  var inputEl = document.getElementById("ps4-ip");
+  if (saved) {
+    inputEl.value = saved;
+  } else {
+    inputEl.value = "127.0.0.1";
+  }
 }
 
 function savePs4Ip() {
   var ip = document.getElementById("ps4-ip").value.trim();
   if (!ip) {
-    showNotice("Informe o IP do PS4.", "error");
-    return;
+    ip = "127.0.0.1";
   }
   localStorage.setItem("ps4_ip", ip);
   showNotice("✓ IP do PS4 salvo: " + ip, "success");
 }
 
 function getTargetIp() {
-  return document.getElementById("ps4-ip").value.trim() || localStorage.getItem("ps4_ip") || ps4ClientIp;
+  return document.getElementById("ps4-ip").value.trim() || localStorage.getItem("ps4_ip") || "127.0.0.1";
 }
 
 function formatSize(bytes) {
@@ -639,12 +643,11 @@ async function checkStatus() {
     isServerOnline = true;
     badge.className = "server-status status-online";
     ps4ClientIp = data.clientIp || "";
-    text.textContent = "Servidor Online — " + (data.localAddress ? data.localAddress + ":" + data.port : "Porta " + data.port);
+    text.textContent = "Servidor Online";
 
     var ipInput = document.getElementById("ps4-ip");
-    if (isPS4Browser && !localStorage.getItem("ps4_ip") && !ipInput.value && ps4ClientIp) {
-      ipInput.value = ps4ClientIp;
-      localStorage.setItem("ps4_ip", ps4ClientIp);
+    if (!localStorage.getItem("ps4_ip") && !ipInput.value) {
+      ipInput.value = isPS4Browser ? "127.0.0.1" : (ps4ClientIp || "127.0.0.1");
     }
   } catch (_) {
     isServerOnline = false;
@@ -783,7 +786,6 @@ function startSessionCountdown() {
   countdownTimer = setInterval(tick, 1000);
 }
 
-// ABA DE DOWNLOADS: AGRUPADO POR JOGO (Jogo 1 Game -> Update -> DLC, Jogo 2 Game -> Update -> DLC)
 function showDownloadsView() {
   var raw = localStorage.getItem("ps4_store_grant");
   if (!raw) {
@@ -803,7 +805,6 @@ function showDownloadsView() {
 
   var actionText = isPS4Browser ? "INSTALAR VIA DPI" : "BAIXAR FICHEIRO";
 
-  // Filtra todos os ficheiros autorizados
   var availableFiles = allPackages.filter(function(pkg) {
     var fam = getGameFamilyKey(pkg).toUpperCase();
     return approvedFamilyKeys.indexOf(fam) !== -1;
@@ -814,17 +815,14 @@ function showDownloadsView() {
     return;
   }
 
-  // ORDENAÇÃO: 1º Por Jogo/Família | 2º Por GAME -> UPDATE -> DLC
   availableFiles.sort(function(a, b) {
     var famA = getGameFamilyKey(a).toUpperCase();
     var famB = getGameFamilyKey(b).toUpperCase();
 
-    // Se forem jogos diferentes, agrupa pelo nome da família do jogo
     if (famA !== famB) {
       return famA.localeCompare(famB);
     }
 
-    // Se pertencerem ao mesmo jogo, ordena: GAME (1) -> UPDATE (2) -> DLC (3)
     var order = { "GAME": 1, "UPDATE": 2, "DLC": 3 };
     var typeA = order[getPackageTypeTag(a)] || 4;
     var typeB = order[getPackageTypeTag(b)] || 4;
@@ -833,7 +831,6 @@ function showDownloadsView() {
       return typeA - typeB;
     }
 
-    // Desempate alfabético caso haja múltiplos ficheiros do mesmo tipo (ex: várias DLCs)
     return (a.title || "").localeCompare(b.title || "");
   });
 
@@ -891,18 +888,37 @@ function backToCatalog() {
   document.getElementById("view-catalog").style.display = "block";
 }
 
+// INSTALAÇÃO EXECUTADA DIRETAMENTE PELO BROWSER DO CONSOLE
 async function triggerDpiInstall(pkgId, button) {
   var targetIp = getTargetIp();
-  if (!targetIp) {
-    showNotice("Por favor, informe o IP do PS4 na barra superior!", "error");
-    document.getElementById("ps4-ip").focus();
-    return;
-  }
-
   button.disabled = true;
   var originalText = button.textContent;
   button.textContent = "A ENVIAR...";
 
+  var manifestUrl = window.location.origin + "/json-public/" + pkgId + ".json";
+
+  // TENTATIVA 1: O browser do PS4 envia diretamente para o GoldHEN local (Porta 12800)
+  try {
+    var goldHenRes = await fetch("http://127.0.0.1:12800/api/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "direct",
+        packages: [manifestUrl]
+      })
+    });
+
+    if (goldHenRes.ok) {
+      button.textContent = "INICIADO!";
+      showNotice("✓ Instalação iniciada via GoldHEN! Verifique as Notificações do PS4.", "success");
+      setTimeout(function() { button.disabled = false; button.textContent = originalText; }, 5000);
+      return;
+    }
+  } catch (_) {
+    // Caso a API local 12800 não esteja ativa, faz fallback para o servidor
+  }
+
+  // TENTATIVA 2: Fallback através do servidor (se estiver na mesma rede local)
   try {
     var res = await fetch("/api/install-dpi", {
       method: "POST",
@@ -912,14 +928,14 @@ async function triggerDpiInstall(pkgId, button) {
     var data = await res.json();
     if (data.success) {
       button.textContent = "INICIADO!";
-      showNotice("✓ Instalação enviada ao PS4! Verifique as Notificações do console.", "success");
+      showNotice("✓ Instalação enviada ao PS4!", "success");
     } else {
       button.textContent = "FALHOU";
       showNotice("✗ " + (data.error || "Erro ao iniciar instalação."), "error");
     }
   } catch (_) {
     button.textContent = "ERRO";
-    showNotice("Falha de conexão com o servidor.", "error");
+    showNotice("Falha de conexão com o instalador do PS4.", "error");
   } finally {
     setTimeout(function() {
       button.disabled = false;
@@ -930,7 +946,7 @@ async function triggerDpiInstall(pkgId, button) {
 
 function openCartModal() {
   if (cart.length === 0) {
-    showNotice("O seu carrinho está vazio! Toque em '+ ADICIONAR AO CARRINHO' nos jogos.");
+    showNotice("O seu carrinho está vazio! Adicione jogos ao carrinho.");
     return;
   }
 
@@ -953,20 +969,23 @@ function openCartModal() {
   var total = cart.length * 10;
   document.getElementById("cart-total-price").textContent = "R$ " + total.toFixed(2).replace(".", ",");
 
-  submitBatchRequest();
+  // Só envia se o lote ainda não tiver sido despachado
+  if (!isBatchSubmitted) {
+    submitBatchRequest();
+  }
+
   document.getElementById("cart-overlay").classList.add("visible");
   startPollingCart();
 }
 
 function closeCartModal() {
-  if (pollingInterval) clearInterval(pollingInterval);
-  pollingInterval = null;
   document.getElementById("cart-overlay").classList.remove("visible");
 }
 
 async function submitBatchRequest() {
+  if (cart.length === 0) return;
   try {
-    await fetch("/api/request-cart-access", {
+    var res = await fetch("/api/request-cart-access", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -975,12 +994,16 @@ async function submitBatchRequest() {
         clientIp: getTargetIp()
       })
     });
+    if (res.ok) {
+      isBatchSubmitted = true;
+    }
   } catch (_) {}
 }
 
 function startPollingCart() {
   if (pollingInterval) clearInterval(pollingInterval);
-  pollingInterval = setInterval(checkCartStatus, 10000);
+  // Checa a cada 4 segundos
+  pollingInterval = setInterval(checkCartStatus, 4000);
 }
 
 async function checkCartStatus() {
@@ -992,6 +1015,10 @@ async function checkCartStatus() {
     });
     var data = await res.json();
     if (data.approved) {
+      clearInterval(pollingInterval);
+      pollingInterval = null;
+      isBatchSubmitted = false;
+
       var approvedGames = cart.slice(0);
       cart = [];
       saveCart();
@@ -1014,7 +1041,6 @@ async function loadPackages() {
   try {
     var res = await fetch("/api/packages", { cache: "no-store" });
     var data = await res.json();
-    // Suporta tanto o array 'items' do JSON como 'packages' da API
     allPackages = data.items || data.packages || [];
     games = buildCatalog(allPackages);
     renderCatalog();
@@ -1030,6 +1056,7 @@ document.getElementById("btn-close-cart").addEventListener("click", closeCartMod
 document.getElementById("btn-back-catalog").addEventListener("click", backToCatalog);
 document.getElementById("btn-clear-cart").addEventListener("click", function() {
   cart = [];
+  isBatchSubmitted = false;
   saveCart();
   closeCartModal();
   renderCatalog();
@@ -1045,6 +1072,7 @@ document.addEventListener("DOMContentLoaded", async function() {
   await loadPackages();
   checkStoredGrant();
   setInterval(checkStatus, 5000);
+  startPollingCart();
 });
 </script>
 </body>
