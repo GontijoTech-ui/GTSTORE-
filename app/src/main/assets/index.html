@@ -461,116 +461,126 @@ function saveCart() {
   updateCartTopButton();
 }
 
-function getNormalizedType(pkg) {
-  var raw = (pkg.catalogType || pkg.category || pkg.type || "").toUpperCase();
-  if (raw.indexOf("UPDATE") !== -1 || raw.indexOf("PATCH") !== -1) return "UPDATE";
-  if (raw.indexOf("DLC") !== -1 || raw.indexOf("ADDON") !== -1 || raw.indexOf("EXTRA") !== -1) return "DLC";
-  return "GAME";
+// 1. CLASSIFICAÇÃO RIGOROSA POR METADADOS DO SFO
+function getPackageMetadataType(pkg) {
+  var cat = String(pkg.category || pkg.catalogType || pkg.type || "").trim().toLowerCase();
+  if (cat === "gp" || cat.indexOf("patch") !== -1 || cat.indexOf("update") !== -1) {
+    return "UPDATE";
+  }
+  if (cat === "ac" || cat.indexOf("dlc") !== -1 || cat.indexOf("addon") !== -1) {
+    return "DLC";
+  }
+  return "GAME"; // 'gd'
 }
 
+// 2. EXTRAÇÃO DO CUSA DE 9 DÍGITOS VIA CONTENT_ID / SFO
 function extractCusa(pkg) {
-  var str = (pkg.contentId || "") + " " + (pkg.title || "") + " " + (pkg.key || "");
-  var match = str.match(/CUSA[-_ ]?(\d{5})/i);
-  return match ? ("CUSA" + match[1]).toUpperCase() : "";
+  if (pkg.titleId && /^CUSA\d{5}$/i.test(pkg.titleId)) {
+    return pkg.titleId.toUpperCase();
+  }
+  var contentId = String(pkg.contentId || "").trim().toUpperCase();
+  var match = contentId.match(/CUSA\d{5}/i);
+  if (match) return match[0].toUpperCase();
+
+  var raw = (pkg.key || "") + " " + (pkg.parentKey || "");
+  var rawMatch = raw.match(/CUSA\d{5}/i);
+  if (rawMatch) return rawMatch[0].toUpperCase();
+
+  return "";
 }
 
-// Reconhecimento de nomes de jogos pelas DLCs conhecidas ou Title ID
-function detectKnownGame(pkg) {
-  var title = (pkg.title || "").toLowerCase();
-  var cusa = extractCusa(pkg);
+// 3. EXTRAÇÃO DA CHAVE DE FAMÍLIA (Permite que CUSAs regionais diferentes pertençam ao mesmo jogo)
+function getFamilyKey(pkg) {
+  if (pkg.parentKey) return String(pkg.parentKey).trim().toUpperCase();
+  if (pkg.gameKey) return String(pkg.gameKey).trim().toUpperCase();
 
-  // Resident Evil 2
-  if (title.indexOf("soundtrack swap") !== -1 || title.indexOf("resident evil 2") !== -1 || title.indexOf("re2") !== -1 || cusa === "CUSA09193" || cusa === "CUSA09171") {
-    return {
-      key: "RESIDENT_EVIL_2",
-      title: "Resident Evil 2",
-      cover: "https://image.api.playstation.com/vulcan/img/rnd/202011/0402/T9rB8k7yM1u0bK0vW8oE1bX8.png"
-    };
-  }
-
-  // Resident Evil 7
-  if (title.indexOf("banned footage") !== -1 || title.indexOf("not a hero") !== -1 || title.indexOf("end of zoe") !== -1 || title.indexOf("biohazard 7") !== -1 || title.indexOf("resident evil 7") !== -1 || cusa === "CUSA03842" || cusa === "CUSA03962") {
-    return {
-      key: "RESIDENT_EVIL_7",
-      title: "Resident Evil 7: Biohazard",
-      cover: "https://image.api.playstation.com/vulcan/img/rnd/202011/0402/z4iJgHqG7Zf5yDk4bK0vW8oE.png"
-    };
-  }
-
-  // Fallout 4
-  if (title.indexOf("fallout") !== -1 || title.indexOf("nuka-world") !== -1 || title.indexOf("far harbor") !== -1 || title.indexOf("automatron") !== -1 || cusa === "CUSA02557" || cusa === "CUSA03448") {
-    return {
-      key: "FALLOUT_4",
-      title: "Fallout 4",
-      cover: "https://image.api.playstation.com/vulcan/img/rnd/202011/0402/F1aLl4oU7u0bK0vW8oE1bX8.png"
-    };
-  }
-
-  return null;
-}
-
-function cleanGameTitle(rawTitle) {
-  if (!rawTitle) return "";
-  var cleaned = rawTitle
+  // Usa o campo gameTitle vindo dos metadados ou limpa o título raiz
+  var title = String(pkg.gameTitle || pkg.title || "").trim();
+  var clean = title
     .replace(/\[.*?\]|\(.*?\)|「.*?」/g, "")
     .replace(/\b(cusa[-_ ]?\d{5})\b/gi, "")
-    .replace(/\b(dlc|update|patch|addon|add-on|soundtrack swap|expansion|pack)\b.*$/gi, "")
+    .replace(/\b(dlc|update|patch|addon|add-on|soundtrack|expansion|pack)\b.*$/gi, "")
     .replace(/\bv\d+(\.\d+)?.*$/gi, "")
     .replace(/[-_:\"]/g, " ")
     .trim();
-  return cleaned || rawTitle.trim();
-}
 
-function groupKey(pkg) {
-  if (pkg.gameKey) return String(pkg.gameKey).trim().toUpperCase();
-  if (pkg.parentKey) return String(pkg.parentKey).trim().toUpperCase();
-
-  var known = detectKnownGame(pkg);
-  if (known) return known.key;
-
-  var clean = cleanGameTitle(pkg.title);
-  if (clean.length >= 3) return clean.toUpperCase();
+  if (clean.length >= 3) {
+    return clean.toUpperCase();
+  }
 
   var cusa = extractCusa(pkg);
   if (cusa) return cusa;
 
-  return (pkg.title || ("PKG_" + pkg.id)).trim().toUpperCase();
+  return ("PKG_" + pkg.id).toUpperCase();
 }
 
+// 4. CONSTRUÇÃO DO CATÁLOGO POR METADADOS (Jogos Base definem capa e nome na Home)
 function buildCatalog(packages) {
-  var groups = new Map();
+  var familyMap = new Map();
 
+  // PASSAGEM 1: Mapeia estritamente os Jogos Base (GAME / gd)
   for (var i = 0; i < packages.length; i++) {
     var pkg = packages[i];
-    var key = groupKey(pkg);
-    var pkgType = getNormalizedType(pkg);
-    var known = detectKnownGame(pkg);
-    var cleanTitle = known ? known.title : (cleanGameTitle(pkg.title) || pkg.title || key);
+    var type = getPackageMetadataType(pkg);
+    var family = getFamilyKey(pkg);
     var cusa = extractCusa(pkg);
 
-    if (!groups.has(key)) {
-      groups.set(key, {
-        id: pkg.id,
-        key: key,
-        displayId: cusa || (known ? known.title : key),
-        title: cleanTitle,
-        cover: pkgType === "GAME" ? (pkg.iconUrl || "") : (known ? known.cover : (pkg.iconUrl || "")),
-        hasBaseGame: (pkgType === "GAME")
-      });
-    } else {
-      var current = groups.get(key);
-      if (pkgType === "GAME") {
-        current.title = cleanTitle;
-        if (pkg.iconUrl) current.cover = pkg.iconUrl;
-        if (cusa) current.displayId = cusa;
-        current.hasBaseGame = true;
-      } else if (!current.cover) {
-        current.cover = known ? known.cover : (pkg.iconUrl || "");
+    if (type === "GAME") {
+      if (!familyMap.has(family)) {
+        familyMap.set(family, {
+          id: pkg.id,
+          key: family,
+          primaryCusa: cusa || family,
+          title: pkg.title || family,
+          cover: pkg.iconUrl || "",
+          hasBaseGame: true,
+          associatedCusas: cusa ? [cusa] : []
+        });
+      } else {
+        var existing = familyMap.get(family);
+        if (cusa && existing.associatedCusas.indexOf(cusa) === -1) {
+          existing.associatedCusas.push(cusa);
+        }
+        if (!existing.cover && pkg.iconUrl) existing.cover = pkg.iconUrl;
+        if (!existing.hasBaseGame) {
+          existing.title = pkg.title;
+          existing.cover = pkg.iconUrl || existing.cover;
+          existing.hasBaseGame = true;
+        }
       }
     }
   }
 
-  return Array.from(groups.values()).sort(function(a, b) {
+  // PASSAGEM 2: Anexa Updates e DLCs (mesmo com CUSA diferente) à família correspondente
+  for (var j = 0; j < packages.length; j++) {
+    var item = packages[j];
+    var itemType = getPackageMetadataType(item);
+
+    if (itemType !== "GAME") {
+      var itemFamily = getFamilyKey(item);
+      var itemCusa = extractCusa(item);
+
+      if (familyMap.has(itemFamily)) {
+        var group = familyMap.get(itemFamily);
+        if (itemCusa && group.associatedCusas.indexOf(itemCusa) === -1) {
+          group.associatedCusas.push(itemCusa);
+        }
+      } else {
+        // Se houver apenas a DLC cadastrada no servidor sem o jogo base
+        familyMap.set(itemFamily, {
+          id: item.id,
+          key: itemFamily,
+          primaryCusa: itemCusa || itemFamily,
+          title: item.title || itemFamily,
+          cover: item.iconUrl || "",
+          hasBaseGame: false,
+          associatedCusas: itemCusa ? [itemCusa] : []
+        });
+      }
+    }
+  }
+
+  return Array.from(familyMap.values()).sort(function(a, b) {
     return a.title.localeCompare(b.title, "pt-BR", { sensitivity: "base" });
   });
 }
@@ -581,7 +591,13 @@ function toggleCart(game) {
     cart.splice(index, 1);
     showNotice("Removido do carrinho: " + game.title);
   } else {
-    cart.push({ key: game.key, title: game.title, id: game.id, cover: game.cover });
+    cart.push({ 
+      key: game.key, 
+      title: game.title, 
+      id: game.id, 
+      cover: game.cover,
+      associatedCusas: game.associatedCusas 
+    });
     showNotice("✓ Adicionado ao carrinho: " + game.title, "success");
   }
   saveCart();
@@ -653,7 +669,9 @@ function renderCatalog() {
   var container = document.getElementById("catalog");
   var query = document.getElementById("search").value.trim().toLowerCase();
   var filtered = games.filter(function(g) {
-    return !query || g.title.toLowerCase().indexOf(query) !== -1 || g.key.toLowerCase().indexOf(query) !== -1;
+    var matchesTitle = g.title.toLowerCase().indexOf(query) !== -1;
+    var matchesCusa = (g.associatedCusas || []).some(function(c) { return c.toLowerCase().indexOf(query) !== -1; });
+    return !query || matchesTitle || matchesCusa;
   });
 
   container.innerHTML = "";
@@ -689,7 +707,7 @@ function renderCatalog() {
 
     var id = document.createElement("p");
     id.className = "game-id"; 
-    id.textContent = game.displayId || game.key;
+    id.textContent = (game.associatedCusas && game.associatedCusas.length > 0) ? game.associatedCusas.join(" | ") : game.primaryCusa;
 
     var inCart = cart.some(function(it) { return it.key === game.key; });
     var btn = document.createElement("button");
@@ -775,6 +793,7 @@ function startSessionCountdown() {
   countdownTimer = setInterval(tick, 1000);
 }
 
+// 5. ABA DE DOWNLOADS: REÚNE TODAS AS DLCS DA MESMA FAMÍLIA (MESMO CUSAs DIFERENTES)
 function showDownloadsView() {
   var raw = localStorage.getItem("ps4_store_grant");
   if (!raw) {
@@ -783,7 +802,7 @@ function showDownloadsView() {
   }
 
   var grant = JSON.parse(raw);
-  var approvedKeys = (grant.games || []).map(function(it) { return it.key.toUpperCase(); });
+  var approvedFamilies = (grant.games || []).map(function(it) { return it.key.toUpperCase(); });
 
   document.getElementById("view-catalog").style.display = "none";
   var viewDownloads = document.getElementById("view-downloads");
@@ -794,9 +813,10 @@ function showDownloadsView() {
 
   var actionText = isPS4Browser ? "INSTALAR VIA DPI" : "BAIXAR FICHEIRO";
 
+  // Reúne todos os pacotes cuja família ou CUSA pertença aos jogos autorizados
   var availableFiles = allPackages.filter(function(pkg) {
-    var key = groupKey(pkg).toUpperCase();
-    return approvedKeys.indexOf(key) !== -1;
+    var fam = getFamilyKey(pkg).toUpperCase();
+    return approvedFamilies.indexOf(fam) !== -1;
   });
 
   if (availableFiles.length === 0) {
@@ -804,10 +824,11 @@ function showDownloadsView() {
     return;
   }
 
+  // Ordenação rígida por Metadados: 1. GAME -> 2. UPDATE -> 3. DLC
   availableFiles.sort(function(a, b) {
     var order = { "GAME": 1, "UPDATE": 2, "DLC": 3 };
-    var typeA = order[getNormalizedType(a)] || 4;
-    var typeB = order[getNormalizedType(b)] || 4;
+    var typeA = order[getPackageMetadataType(a)] || 4;
+    var typeB = order[getPackageMetadataType(b)] || 4;
     if (typeA !== typeB) return typeA - typeB;
     return (a.title || "").localeCompare(b.title || "");
   });
@@ -816,13 +837,12 @@ function showDownloadsView() {
     var card = document.createElement("div");
     card.className = "download-item-card";
 
-    var known = detectKnownGame(pkg);
     var img = document.createElement("img");
     img.className = "download-cover";
-    img.src = pkg.iconUrl || (known ? known.cover : ("/api/package-icon/" + pkg.id));
+    img.src = pkg.iconUrl || ("/api/package-icon/" + pkg.id);
     img.onerror = function() { img.style.display = "none"; };
 
-    var typeTag = getNormalizedType(pkg);
+    var typeTag = getPackageMetadataType(pkg);
     var sizeFormatted = pkg.size ? " • " + formatSize(pkg.size) : "";
     var versionFormatted = pkg.version ? " • v" + pkg.version : "";
 
@@ -836,7 +856,7 @@ function showDownloadsView() {
         '<h3 class="download-title" style="margin: 0;">' + pkg.title + '</h3>' +
       '</div>' +
       '<p class="download-sub" style="margin: 0; color: #888; font-size: 12px;">' +
-        (pkg.contentId || extractCusa(pkg) || groupKey(pkg)) + versionFormatted + sizeFormatted +
+        (pkg.contentId || extractCusa(pkg) || "PKG") + versionFormatted + sizeFormatted +
       '</p>';
 
     var btnInstall = document.createElement("button");
