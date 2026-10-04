@@ -5,15 +5,29 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.*
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Status do ciclo de vida de cada transação de checkout.
+ * Modelo de dados com o estado atual do servidor HTTP.
+ * Utilizado por MainActivity e GTStoreService via getStatus().
+ */
+data class ServerStatus(
+    val running: Boolean = false,
+    val port: Int = 8080,
+    val localAddress: String = "127.0.0.1",
+    val activeConnections: Int = 0
+)
+
+/**
+ * Estados do ciclo de vida das solicitações de checkout.
  */
 enum class OrderStatus {
     PENDING,
@@ -22,7 +36,7 @@ enum class OrderStatus {
 }
 
 /**
- * Representação do pedido contendo identificador, itens (PKGs) e status.
+ * Representação em memória de um pedido de checkout.
  */
 data class Order(
     val id: String,
@@ -33,7 +47,7 @@ data class Order(
 )
 
 /**
- * Repositório thread-safe em memória para sincronizar o console do cliente e a aba administrativa.
+ * Gerenciador thread-safe em memória para sincronização entre PS4 e Admin.
  */
 object OrderManager {
     private val orders = ConcurrentHashMap<String, Order>()
@@ -60,38 +74,90 @@ object OrderManager {
 
 /**
  * Servidor HTTP integrado para Android.
- * Gerencia rotas de API, entrega de assets Web (HTML/JS/CSS/Imagens) e streaming de PKGs.
  */
 class HttpServer(
-    private val context: Context,
-    private val port: Int = 8080
+    val context: Context,
+    var port: Int = 8080
 ) {
     private val tag = "GTStore-HttpServer"
     private var serverSocket: ServerSocket? = null
-    private var isRunning = false
+    private var serverRunning = false
+    private val activeConnectionsCount = AtomicInteger(0)
     private val threadPool = Executors.newCachedThreadPool()
 
+    // =========================================================================
+    // PROPRIEDADES E MÉTODOS DE COMPATIBILIDADE (MainActivity e GTStoreService)
+    // =========================================================================
+
+    /**
+     * Função chamada pela MainActivity e GTStoreService: server.isRunning()
+     */
+    fun isRunning(): Boolean = serverRunning
+
+    /**
+     * Propriedade de acesso direto ao estado de execução: server.running
+     */
+    val running: Boolean
+        get() = serverRunning
+
+    /**
+     * Retorna o endereço IP local do dispositivo na rede Wi-Fi / Hotspot.
+     */
+    val localAddress: String
+        get() = getLocalIpAddress()
+
+    /**
+     * Quantidade de conexões ativas no momento.
+     */
+    val activeConnections: Int
+        get() = activeConnectionsCount.get()
+
+    /**
+     * Fornece o snapshot de status esperado por MainActivity.kt e GTStoreService.kt.
+     */
+    fun getStatus(): ServerStatus {
+        return ServerStatus(
+            running = serverRunning,
+            port = port,
+            localAddress = localAddress,
+            activeConnections = activeConnections
+        )
+    }
+
+    // =========================================================================
+    // CICLO DE VIDA DO SERVIDOR
+    // =========================================================================
+
     fun start() {
-        if (isRunning) return
-        isRunning = true
+        if (serverRunning) return
+        serverRunning = true
         threadPool.execute {
             try {
                 serverSocket = ServerSocket(port)
-                Log.i(tag, "Servidor GTSTORE iniciado com sucesso na porta $port")
-                while (isRunning) {
+                Log.i(tag, "Servidor GTSTORE iniciado na porta $port")
+                while (serverRunning) {
                     val clientSocket = serverSocket?.accept() ?: break
-                    threadPool.execute { handleConnection(clientSocket) }
+                    activeConnectionsCount.incrementAndGet()
+                    threadPool.execute {
+                        try {
+                            handleConnection(clientSocket)
+                        } finally {
+                            activeConnectionsCount.decrementAndGet()
+                        }
+                    }
                 }
             } catch (e: Exception) {
-                if (isRunning) {
+                if (serverRunning) {
                     Log.e(tag, "Erro no loop de escuta do servidor HTTP: ${e.message}")
                 }
+            } finally {
+                serverRunning = false
             }
         }
     }
 
     fun stop() {
-        isRunning = false
+        serverRunning = false
         try {
             serverSocket?.close()
             serverSocket = null
@@ -100,6 +166,10 @@ class HttpServer(
             Log.e(tag, "Erro ao encerrar socket: ${e.message}")
         }
     }
+
+    // =========================================================================
+    // PROCESSAMENTO DE REQUISIÇÕES
+    // =========================================================================
 
     private fun handleConnection(socket: Socket) {
         try {
@@ -121,7 +191,7 @@ class HttpServer(
             val method = parts[0].uppercase()
             val fullPath = parts[1]
 
-            // Leitura de Cabeçalhos
+            // Leitura de Cabeçalhos HTTP
             val headers = mutableMapOf<String, String>()
             var line: String?
             while (reader.readLine().also { line = it } != null) {
@@ -141,7 +211,7 @@ class HttpServer(
                 return
             }
 
-            // Leitura do corpo (se presente em POST)
+            // Leitura do corpo (quando método for POST)
             var body = ""
             if (method == "POST") {
                 val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
@@ -157,11 +227,10 @@ class HttpServer(
                 }
             }
 
-            // Roteamento
             routeRequest(method, fullPath, headers, body, output)
 
         } catch (e: Exception) {
-            Log.w(tag, "Falha ao processar requisição: ${e.message}")
+            Log.w(tag, "Falha na requisição: ${e.message}")
         } finally {
             try {
                 socket.close()
@@ -181,7 +250,7 @@ class HttpServer(
         val queryParams = parseQueryParams(queryString)
 
         when {
-            // 1. Checkout (criação do pedido pelo PS4)
+            // 1. Checkout (criado pelo console do PS4)
             method == "POST" && uriPath == "/api/order/create" -> {
                 handleOrderCreate(body, output)
             }
@@ -198,18 +267,18 @@ class HttpServer(
                 handleAdminOrdersList(output)
             }
 
-            // 4. Aprovação ou rejeição de pedido na aba administrativa
+            // 4. Decisão do administrador (autorizar ou recusar)
             method == "POST" && uriPath == "/api/admin/order/approve" -> {
                 handleAdminOrderDecision(body, output)
             }
 
-            // 5. Download e Streaming de arquivos PKG com suporte a Range
+            // 5. Download e Streaming de arquivos PKG com suporte a Range (HTTP 206)
             method == "GET" && uriPath.startsWith("/download/") -> {
                 val filename = URLDecoder.decode(uriPath.removePrefix("/download/"), "UTF-8")
                 handleFileStream(filename, headers, output)
             }
 
-            // 6. Entrega de arquivos estáticos da pasta assets/ (HTML, JS, CSS, Imagens)
+            // 6. Arquivos estáticos da pasta assets/ (HTML, JS, CSS, Imagens)
             method == "GET" -> {
                 handleStaticAsset(uriPath, output)
             }
@@ -221,7 +290,7 @@ class HttpServer(
     }
 
     // =========================================================================
-    // TRATADORES DE ROTAS DE API
+    // ENDPOINTS DE API (JSON)
     // =========================================================================
 
     private fun handleOrderCreate(body: String, output: OutputStream) {
@@ -259,7 +328,7 @@ class HttpServer(
             return
         }
 
-        // Converte os itens em URLs públicas acessíveis pelo host atual (evita IP local estático)
+        // Gera URLs públicas usando o Host da requisição recebida (WAN ou LAN)
         val itemsArray = JSONArray()
         order.items.forEach { item ->
             val pkgUrl = if (item.startsWith("http://") || item.startsWith("https://")) {
@@ -315,13 +384,11 @@ class HttpServer(
     }
 
     // =========================================================================
-    // SERVIÇO DE ARQUIVOS (ASSETS E STREAMING DE PKG COM RANGE)
+    // ENTREGA DE ARQUIVOS E STREAMING DE PKG COM SUPORTE A RANGE
     // =========================================================================
 
     private fun handleStaticAsset(rawPath: String, output: OutputStream) {
         var assetPath = if (rawPath == "/" || rawPath.isBlank()) "index.html" else rawPath.removePrefix("/")
-        
-        // Remove barras duplicadas ou tentativas de path traversal
         assetPath = assetPath.replace("..", "").trimStart('/')
 
         try {
@@ -358,7 +425,7 @@ class HttpServer(
 
         try {
             if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
-                // Suporte a HTTP 206 Partial Content (requerido para o PS4 fazer download em blocos)
+                // Suporte a HTTP 206 Partial Content (requerido para o PS4)
                 val ranges = rangeHeader.substring(6).split("-")
                 val start = ranges[0].toLongOrNull() ?: 0L
                 val end = if (ranges.size > 1 && ranges[1].isNotBlank()) ranges[1].toLong() else fileLength - 1
@@ -385,7 +452,6 @@ class HttpServer(
                     }
                 }
             } else {
-                // Envio integral do arquivo
                 val header = "HTTP/1.1 200 OK\r\n" +
                         "Content-Type: application/octet-stream\r\n" +
                         "Accept-Ranges: bytes\r\n" +
@@ -403,13 +469,31 @@ class HttpServer(
             }
             output.flush()
         } catch (e: Exception) {
-            Log.w(tag, "Conexão de streaming interrompida pelo cliente: ${e.message}")
+            Log.w(tag, "Conexão de streaming interrompida: ${e.message}")
         }
     }
 
     // =========================================================================
-    // UTILITÁRIOS E RESPOSTAS HTTP
+    // UTILITÁRIOS
     // =========================================================================
+
+    private fun getLocalIpAddress(): String {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (iface.isLoopback || !iface.isUp) continue
+                val addresses = iface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val addr = addresses.nextElement()
+                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                        return addr.hostAddress ?: ""
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return "127.0.0.1"
+    }
 
     private fun sendJsonResponse(output: OutputStream, code: Int, json: String) {
         val statusText = if (code == 200) "OK" else if (code == 404) "Not Found" else "Bad Request"
