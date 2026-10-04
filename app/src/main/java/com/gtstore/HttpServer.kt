@@ -247,9 +247,12 @@ class HttpServer(
                 handleGetPackages(headers, output)
             }
 
-            // Manifesto JSON dinâmico para o instalador do PS4
-            method == "GET" && uriPath.startsWith("/json-public/") -> {
-                val rawId = uriPath.removePrefix("/json-public/").removeSuffix(".json")
+            // Manifesto JSON dinâmico para o instalador DPI / RPI do PS4
+            method == "GET" && (uriPath.startsWith("/json/") || uriPath.startsWith("/json-public/")) -> {
+                val rawId = uriPath
+                    .removePrefix("/json-public/")
+                    .removePrefix("/json/")
+                    .removeSuffix(".json")
                 handleManifestJson(rawId, headers, output)
             }
 
@@ -294,9 +297,9 @@ class HttpServer(
         }
     }
 
-    // =========================================================================
+    // =========================================================
     // ENDPOINTS DE API (JSON)
-    // =========================================================================
+    // =========================================================
 
     private fun handleGetPackages(headers: Map<String, String>, output: OutputStream) {
         val downloadFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
@@ -310,11 +313,13 @@ class HttpServer(
 
         val jsonArray = JSONArray()
         files.forEachIndexed { index, file ->
+            val cusaMatch = Regex("CUSA\\d{5}", RegexOption.IGNORE_CASE).find(file.name)?.value?.uppercase() ?: "CUSA00000"
             val item = JSONObject().apply {
                 put("id", index)
                 put("catalogIndex", index)
                 put("title", file.nameWithoutExtension)
                 put("fileName", file.name)
+                put("contentId", cusaMatch)
                 put("size", file.length())
                 put("category", "gd")
                 put("type", "GAME")
@@ -349,7 +354,18 @@ class HttpServer(
         val host = headers["host"] ?: "127.0.0.1:$port"
         val pkgDownloadUrl = "$proto://$host/download/${targetFile.name}"
 
+        // Formato oficial do DPI compatível com o payload.bin
         val manifest = JSONObject().apply {
+            put("originalFileSize", targetFile.length())
+            put("packageDigest", "0000000000000000000000000000000000000000000000000000000000000000")
+            put("numberOfSplitFiles", 1)
+            put("pieces", JSONArray().put(JSONObject().apply {
+                put("url", pkgDownloadUrl)
+                put("fileOffset", 0)
+                put("fileSize", targetFile.length())
+                put("hashValue", "0000000000000000000000000000000000000000")
+            }))
+            // Compatibilidade retroativa com RPI
             put("type", "direct")
             put("packages", JSONArray().put(pkgDownloadUrl))
         }
@@ -446,7 +462,7 @@ class HttpServer(
     }
 
     // =========================================================================
-    // ENTREGA DE ARQUIVOS E STREAMING DE PKG COM SUPORTE A RANGE
+    // ENTREGA DE ARQUIVOS E STREAMING DE PKG COM SUPORTE A RANGE (HTTP 206)
     // =========================================================================
 
     private fun handleStaticAsset(rawPath: String, output: OutputStream) {
