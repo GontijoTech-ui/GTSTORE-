@@ -583,7 +583,14 @@ function toggleCart(game) {
     cart.splice(index, 1);
     showNotice("Removido do carrinho: " + game.title);
   } else {
-    cart.push({ key: game.key, title: game.title, id: game.id, cover: game.cover });
+    cart.push({ 
+      key: game.key, 
+      title: game.title, 
+      id: game.id, 
+      cusa: game.cusa,
+      associatedCusas: game.associatedCusas || [],
+      cover: game.cover 
+    });
     showNotice("✓ Adicionado ao carrinho: " + game.title, "success");
   }
   isBatchSubmitted = false;
@@ -786,15 +793,32 @@ function startSessionCountdown() {
   countdownTimer = setInterval(tick, 1000);
 }
 
-function showDownloadsView() {
+// ABA DE DOWNLOADS COM FILTRAGEM RESILIENTE
+async function showDownloadsView() {
   var raw = localStorage.getItem("ps4_store_grant");
   if (!raw) {
     showNotice("Nenhum acesso ativo no momento.", "error");
     return;
   }
 
+  // Se a lista de pacotes ainda não carregou, aguarda a resposta da API
+  if (!allPackages || allPackages.length === 0) {
+    await loadPackages();
+  }
+
   var grant = JSON.parse(raw);
-  var approvedFamilyKeys = (grant.games || []).map(function(it) { return it.key.toUpperCase(); });
+  var approvedItems = grant.games || [];
+
+  // Coleta chaves, IDs e CUSAs para validação cruzada
+  var approvedKeys = approvedItems.map(function(it) { return String(it.key || "").toUpperCase().trim(); });
+  var approvedIds = approvedItems.map(function(it) { return it.id; }).filter(function(id) { return id !== undefined; });
+  var approvedCusas = [];
+  approvedItems.forEach(function(it) {
+    if (it.cusa) approvedCusas.push(String(it.cusa).toUpperCase().trim());
+    if (Array.isArray(it.associatedCusas)) {
+      it.associatedCusas.forEach(function(c) { approvedCusas.push(String(c).toUpperCase().trim()); });
+    }
+  });
 
   document.getElementById("view-catalog").style.display = "none";
   var viewDownloads = document.getElementById("view-downloads");
@@ -805,9 +829,17 @@ function showDownloadsView() {
 
   var actionText = isPS4Browser ? "INSTALAR VIA DPI" : "BAIXAR FICHEIRO";
 
+  // Filtra itens por FamilyKey, ID do catálogo ou CUSA
   var availableFiles = allPackages.filter(function(pkg) {
-    var fam = getGameFamilyKey(pkg).toUpperCase();
-    return approvedFamilyKeys.indexOf(fam) !== -1;
+    var fam = getGameFamilyKey(pkg).toUpperCase().trim();
+    var idx = getItemIndex(pkg);
+    var cusa = extractCusa(pkg).toUpperCase().trim();
+
+    var matchFamily = approvedKeys.indexOf(fam) !== -1;
+    var matchId = approvedIds.indexOf(idx) !== -1;
+    var matchCusa = cusa && (approvedKeys.indexOf(cusa) !== -1 || approvedCusas.indexOf(cusa) !== -1);
+
+    return matchFamily || matchId || matchCusa;
   });
 
   if (availableFiles.length === 0) {
@@ -815,6 +847,7 @@ function showDownloadsView() {
     return;
   }
 
+  // Ordenação: 1º Por Família do Jogo | 2º GAME -> UPDATE -> DLC
   availableFiles.sort(function(a, b) {
     var famA = getGameFamilyKey(a).toUpperCase();
     var famB = getGameFamilyKey(b).toUpperCase();
@@ -897,7 +930,7 @@ async function triggerDpiInstall(pkgId, button) {
 
   var manifestUrl = window.location.origin + "/json-public/" + pkgId + ".json";
 
-  // TENTATIVA 1: O browser do PS4 envia diretamente para o GoldHEN local (Porta 12800)
+  // TENTATIVA 1: Envio direto para o GoldHEN local (Porta 12800)
   try {
     var goldHenRes = await fetch("http://127.0.0.1:12800/api/install", {
       method: "POST",
@@ -914,11 +947,9 @@ async function triggerDpiInstall(pkgId, button) {
       setTimeout(function() { button.disabled = false; button.textContent = originalText; }, 5000);
       return;
     }
-  } catch (_) {
-    // Caso a API local 12800 não esteja ativa, faz fallback para o servidor
-  }
+  } catch (_) {}
 
-  // TENTATIVA 2: Fallback através do servidor (se estiver na mesma rede local)
+  // TENTATIVA 2: Fallback via rota do servidor (se estiver na mesma rede local)
   try {
     var res = await fetch("/api/install-dpi", {
       method: "POST",
@@ -969,7 +1000,6 @@ function openCartModal() {
   var total = cart.length * 10;
   document.getElementById("cart-total-price").textContent = "R$ " + total.toFixed(2).replace(".", ",");
 
-  // Só envia se o lote ainda não tiver sido despachado
   if (!isBatchSubmitted) {
     submitBatchRequest();
   }
@@ -1002,7 +1032,6 @@ async function submitBatchRequest() {
 
 function startPollingCart() {
   if (pollingInterval) clearInterval(pollingInterval);
-  // Checa a cada 4 segundos
   pollingInterval = setInterval(checkCartStatus, 4000);
 }
 
