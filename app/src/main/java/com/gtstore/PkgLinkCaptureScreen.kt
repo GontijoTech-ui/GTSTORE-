@@ -45,6 +45,10 @@ data class PkgCaptureResult(
     val fileName: String
 )
 
+private const val BROWSER_USER_AGENT =
+    "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun PkgLinkCaptureScreen(
@@ -105,7 +109,6 @@ fun PkgLinkCaptureScreen(
                 host.contains("mocha") ||
                 host.contains("matchaup") ||
                 host.contains("cloudflare") ||
-                host.contains("challenges.cloudflare") ||
                 host.contains("hcaptcha")
 
         return isSource || isAllowed || isCommonCdn
@@ -218,9 +221,12 @@ fun PkgLinkCaptureScreen(
                     isVerticalScrollBarEnabled = true
                     isHorizontalScrollBarEnabled = false
 
-                    // Ajusta o User-Agent nativo para remover a assinatura de WebView Version/4.0
                     val defaultUa = settings.userAgentString
-                    settings.userAgentString = defaultUa.replace("; wv", "").replace("Version/4.0 ", "")
+                    settings.userAgentString = if (defaultUa.isNotBlank()) {
+                        defaultUa.replace("; wv", "").replace("Version/4.0 ", "")
+                    } else {
+                        BROWSER_USER_AGENT
+                    }
 
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
@@ -278,7 +284,6 @@ fun PkgLinkCaptureScreen(
                         ) {
                             super.onPageStarted(view, url, favicon)
 
-                            // Mascara propriedades que identificam automação Web
                             view.evaluateJavascript(
                                 """
                                 (function() {
@@ -311,20 +316,66 @@ fun PkgLinkCaptureScreen(
                                 currentPageUrl = url
                             }
 
-                            // Dispara atualização de layout caso a lista demore a compilar
+                            /*
+                             * SCRIPT DE DESDOBRAMENTO (OPÇÃO 1):
+                             * 1. Remove classes de loading/esqueleto que travam o container.
+                             * 2. Localiza nós e elementos de arquivos que possam estar com display:none.
+                             * 3. Registra um observador contínuo para renderizar os cards assim que a API responder.
+                             */
                             view.evaluateJavascript(
                                 """
                                 (function() {
-                                    try {
-                                        window.dispatchEvent(new Event('resize'));
-                                        window.dispatchEvent(new Event('scroll'));
-                                    } catch(e) {}
+                                    function revealFiles() {
+                                        try {
+                                            // Remove esqueletos/barras de loading
+                                            const skeletons = document.querySelectorAll('[class*="skeleton"], [class*="animate-pulse"], [class*="loading-bar"]');
+                                            skeletons.forEach(el => {
+                                                el.style.display = 'none';
+                                            });
+
+                                            // Localiza divs e links de arquivos e força a visibilidade
+                                            const allElements = document.querySelectorAll('div, a, button');
+                                            allElements.forEach(el => {
+                                                const txt = (el.innerText || '').trim();
+                                                if (txt.includes('.pkg') || txt.includes('41.52 GB') || txt.includes('1 MB')) {
+                                                    el.style.display = 'block';
+                                                    el.style.visibility = 'visible';
+                                                    el.style.opacity = '1';
+                                                    el.style.minHeight = '48px';
+                                                    if (el.parentElement) {
+                                                        el.parentElement.style.display = 'block';
+                                                        el.parentElement.style.visibility = 'visible';
+                                                        el.parentElement.style.opacity = '1';
+                                                    }
+                                                }
+                                            });
+                                            window.dispatchEvent(new Event('resize'));
+                                        } catch(e) {}
+                                    }
+
+                                    revealFiles();
+
+                                    // Executa repetidamente nos primeiros segundos enquanto o JS da página monta o DOM
+                                    let attempts = 0;
+                                    const interval = setInterval(function() {
+                                        revealFiles();
+                                        attempts++;
+                                        if (attempts > 15) clearInterval(interval);
+                                    }, 600);
+
+                                    // Observa inserção dinâmica de novos nós no corpo da página
+                                    const observer = new MutationObserver(function() {
+                                        revealFiles();
+                                    });
+                                    if (document.body) {
+                                        observer.observe(document.body, { childList: true, subtree: true });
+                                    }
                                 })();
                                 """.trimIndent(), null
                             )
 
                             if (!captured && !processing) {
-                                status = "Página carregada."
+                                status = "Página carregada. Escolha o arquivo desejado."
                             }
                         }
                     }
@@ -347,6 +398,7 @@ fun PkgLinkCaptureScreen(
             }
         )
 
+        // Card superior com status
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -402,6 +454,7 @@ fun PkgLinkCaptureScreen(
             }
         }
 
+        // Rodapé de botões flutuantes
         Row(
             modifier = Modifier
                 .fillMaxWidth()
