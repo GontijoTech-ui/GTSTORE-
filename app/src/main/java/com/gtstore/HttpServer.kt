@@ -89,6 +89,17 @@ class HttpServer(
         return item.title.trim().uppercase()
     }
 
+    private fun getPublicBaseUrl(session: IHTTPSession): String {
+        val hostHeader = session.headers["host"] ?: ""
+        val forwardedProto = session.headers["x-forwarded-proto"] ?: "http"
+        return if (hostHeader.isNotBlank()) {
+            "$forwardedProto://$hostHeader"
+        } else {
+            val localIp = getLocalIpAddress() ?: "127.0.0.1"
+            "http://$localIp:$port"
+        }
+    }
+
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
         val method = session.method
@@ -111,8 +122,8 @@ class HttpServer(
                 // ROTA DE ÍCONES
                 uri.startsWith("/api/package-icon/") && method == Method.GET -> handlePackageIcon(uri)
 
-                // ROTA DO MANIFEST JSON PARA O PS4
-                uri.startsWith("/json/") && method == Method.GET -> handleManifestJson(uri)
+                // MANIFEST JSON COM URL PÚBLICA (SUPORTE A CLOUDFLARE/REMOTO)
+                (uri.startsWith("/json/") || uri.startsWith("/json-public/")) && method == Method.GET -> handleManifestJson(session, uri)
 
                 // SOLICITAÇÃO DE PACOTE (CARRINHO)
                 uri == "/api/request-cart-access" && method == Method.POST -> handleRequestCartAccess(session)
@@ -156,6 +167,7 @@ class HttpServer(
             put("port", port)
             put("localAddress", getLocalIpAddress() ?: "")
             put("clientIp", session.remoteIpAddress ?: "")
+            put("baseUrl", getPublicBaseUrl(session))
         }
         return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
     }
@@ -218,8 +230,8 @@ class HttpServer(
         return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Ícone não encontrado")
     }
 
-    private fun handleManifestJson(uri: String): Response {
-        val rawId = uri.removePrefix("/json/").removeSuffix(".json").substringBefore("?")
+    private fun handleManifestJson(session: IHTTPSession, uri: String): Response {
+        val rawId = uri.removePrefix("/json-public/").removePrefix("/json/").removeSuffix(".json").substringBefore("?")
         val packageId = rawId.toIntOrNull()
             ?: return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "ID inválido")
 
@@ -228,6 +240,13 @@ class HttpServer(
 
         if (item.url.isBlank()) {
             return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "URL do item ausente")
+        }
+
+        val baseUrl = getPublicBaseUrl(session)
+        val downloadUrl = if (item.url.startsWith("http://", ignoreCase = true) || item.url.startsWith("https://", ignoreCase = true)) {
+            item.url
+        } else {
+            "$baseUrl/download?id=${item.catalogIndex}"
         }
 
         val digest = if (item.digest.isNotBlank()) item.digest else ZERO_DIGEST
@@ -239,7 +258,7 @@ class HttpServer(
                 "pieces",
                 JSONArray().put(
                     JSONObject().apply {
-                        put("url", item.url)
+                        put("url", downloadUrl)
                         put("fileOffset", 0)
                         put("fileSize", item.size)
                         put("hashValue", "0000000000000000000000000000000000000000")
@@ -302,7 +321,7 @@ class HttpServer(
         val localIp = getLocalIpAddress()
             ?: return jsonError(500, "IP local do Android indisponível.")
 
-        val manifestUrl = "http://$localIp:$port/json/${item.catalogIndex}.json"
+        val manifestUrl = "${getPublicBaseUrl(session)}/json/${item.catalogIndex}.json"
         val localAddr = java.net.InetAddress.getByName(localIp)
 
         try {
@@ -316,7 +335,7 @@ class HttpServer(
 
                 val binSuccess = sendPayloadToBinLoader(ps4Ip, payload)
                 if (!binSuccess) {
-                    return jsonError(502, "Falha ao conectar no BinLoader (9090) do PS4. O exploit/GoldHEN está ativo?")
+                    return jsonError(502, "Falha ao conectar no BinLoader (9090) do PS4. O console está na mesma rede local?")
                 }
 
                 try {
@@ -334,7 +353,7 @@ class HttpServer(
                         """{"success":true,"message":"Instalação iniciada!"}"""
                     )
                 } catch (_: Exception) {
-                    return jsonError(504, "Tempo esgotado aguardando o PS4 responder.")
+                    return jsonError(504, "Tempo esgotado aguardando o PS4 responder ao callback.")
                 }
             }
         } catch (e: Exception) {
@@ -464,7 +483,10 @@ class HttpServer(
 
         val consoleId = json.optString("consoleId").trim()
         val gamesJson = json.optJSONArray("games") ?: JSONArray()
-        val clientIp = session.remoteIpAddress ?: ""
+        var clientIp = json.optString("clientIp").trim()
+        if (!isValidIp(clientIp)) {
+            clientIp = session.remoteIpAddress ?: ""
+        }
 
         if (consoleId.isNotBlank() && gamesJson.length() > 0) {
             val gamesList = mutableListOf<RequestedGame>()
