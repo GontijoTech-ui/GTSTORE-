@@ -783,7 +783,7 @@ function startSessionCountdown() {
   countdownTimer = setInterval(tick, 1000);
 }
 
-// ABA DE DOWNLOADS: REÚNE JOGO BASE, UPDATES E TODAS AS DLCS
+// ABA DE DOWNLOADS: AGRUPADO POR JOGO (Jogo 1 Game -> Update -> DLC, Jogo 2 Game -> Update -> DLC)
 function showDownloadsView() {
   var raw = localStorage.getItem("ps4_store_grant");
   if (!raw) {
@@ -803,6 +803,7 @@ function showDownloadsView() {
 
   var actionText = isPS4Browser ? "INSTALAR VIA DPI" : "BAIXAR FICHEIRO";
 
+  // Filtra todos os ficheiros autorizados
   var availableFiles = allPackages.filter(function(pkg) {
     var fam = getGameFamilyKey(pkg).toUpperCase();
     return approvedFamilyKeys.indexOf(fam) !== -1;
@@ -813,12 +814,26 @@ function showDownloadsView() {
     return;
   }
 
-  // 1. GAME -> 2. UPDATE -> 3. DLC
+  // ORDENAÇÃO: 1º Por Jogo/Família | 2º Por GAME -> UPDATE -> DLC
   availableFiles.sort(function(a, b) {
+    var famA = getGameFamilyKey(a).toUpperCase();
+    var famB = getGameFamilyKey(b).toUpperCase();
+
+    // Se forem jogos diferentes, agrupa pelo nome da família do jogo
+    if (famA !== famB) {
+      return famA.localeCompare(famB);
+    }
+
+    // Se pertencerem ao mesmo jogo, ordena: GAME (1) -> UPDATE (2) -> DLC (3)
     var order = { "GAME": 1, "UPDATE": 2, "DLC": 3 };
     var typeA = order[getPackageTypeTag(a)] || 4;
     var typeB = order[getPackageTypeTag(b)] || 4;
-    if (typeA !== typeB) return typeA - typeB;
+
+    if (typeA !== typeB) {
+      return typeA - typeB;
+    }
+
+    // Desempate alfabético caso haja múltiplos ficheiros do mesmo tipo (ex: várias DLCs)
     return (a.title || "").localeCompare(b.title || "");
   });
 
