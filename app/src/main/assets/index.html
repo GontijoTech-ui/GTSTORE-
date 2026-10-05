@@ -176,12 +176,12 @@
     .btn-cart-action.in-cart { background: #ff334b; }
 
     /* SEÇÃO DE DOWNLOADS */
-    .view-downloads, .view-admin {
+    .view-downloads {
       display: none; background: rgba(14, 18, 27, 0.85); border: 1px solid var(--border);
       border-radius: 16px; padding: 28px; margin-top: 10px; backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
     }
-    .view-downloads.active, .view-admin.active { display: block; }
+    .view-downloads.active { display: block; }
 
     .downloads-header {
       display: flex; justify-content: space-between; align-items: center;
@@ -324,10 +324,6 @@
         <span>🛒 CARRINHO</span>
         <span id="top-cart-badge" class="cart-badge">0</span>
       </button>
-
-      <button id="btn-top-admin" class="btn-action-top" type="button" tabindex="0" style="border-color: rgba(255, 159, 10, 0.4); color: #ff9f0a;">
-        <span>🛡️ ADMIN</span>
-      </button>
     </div>
   </div>
 
@@ -371,18 +367,6 @@
       </div>
     </div>
     <div id="downloads-list" class="downloads-grid"></div>
-  </div>
-
-  <!-- ABA: PAINEL ADMINISTRADOR -->
-  <div id="view-admin" class="view-admin">
-    <div class="downloads-header">
-      <div>
-        <h2 style="margin: 0; font-size: 22px; color: #ff9f0a; font-weight: 900;">🛡 PAINEL DO ADMINISTRADOR</h2>
-        <p style="margin: 4px 0 0; color: #8a94a6; font-size: 13px;">Gerenciamento de solicitações e liberação de pacotes em tempo real</p>
-      </div>
-      <button id="btn-back-from-admin" class="btn-back" type="button" tabindex="0">← VOLTAR AO CATÁLOGO</button>
-    </div>
-    <div id="admin-orders-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
   </div>
 </main>
 
@@ -440,7 +424,6 @@
   let games = [];
   let statusPollTimer = null;
   let countdownTimer = null;
-  let adminRefreshTimer = null;
   const POLL_INTERVAL_MS = 2500;
   const MAX_POLL_ATTEMPTS = 120; // 5 minutos
 
@@ -781,7 +764,6 @@
     const approvedIds = (grant.games || []).map(it => it.id);
 
     document.getElementById("view-catalog").style.display = "none";
-    document.getElementById("view-admin").classList.remove("active");
     const viewDl = document.getElementById("view-downloads");
     viewDl.classList.add("active");
 
@@ -836,7 +818,6 @@
     button.textContent = "ENVIANDO...";
 
     const targetIp = getPs4Ip() || "127.0.0.1";
-    // Manifest DPI oficial servido pelo Admin na rota /json/{id}.json
     const manifestUrl = window.location.origin + `/json/${getItemIndex(pkg)}.json`;
 
     try {
@@ -875,87 +856,11 @@
 
   function backToCatalog() {
     document.getElementById("view-downloads").classList.remove("active");
-    document.getElementById("view-admin").classList.remove("active");
     document.getElementById("view-catalog").style.display = "block";
   }
 
   // =========================================================================
-  // 6. PAINEL DE CONTROLE DO ADMINISTRADOR
-  // =========================================================================
-  function showAdminView() {
-    document.getElementById("view-catalog").style.display = "none";
-    document.getElementById("view-downloads").classList.remove("active");
-    document.getElementById("view-admin").classList.add("active");
-    carregarPedidosAdmin();
-
-    if (adminRefreshTimer) clearInterval(adminRefreshTimer);
-    adminRefreshTimer = setInterval(carregarPedidosAdmin, 3500);
-  }
-
-  async function carregarPedidosAdmin() {
-    const container = document.getElementById("admin-orders-list");
-    if (!container) return;
-
-    try {
-      const res = await fetch('/api/admin/orders?_t=' + Date.now(), { cache: 'no-store' });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-
-      container.innerHTML = "";
-      if (!data.orders || data.orders.length === 0) {
-        container.innerHTML = '<div style="color: #8a94a6; padding: 20px; text-align: center;">Nenhuma solicitação pendente no momento.</div>';
-        return;
-      }
-
-      data.orders.forEach(order => {
-        const row = document.createElement("div");
-        row.style.cssText = `
-          background: rgba(18, 24, 38, 0.85); border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 10px; padding: 14px; display: flex; justify-content: space-between;
-          align-items: center; gap: 12px;
-        `;
-        row.innerHTML = `
-          <div>
-            <div style="font-weight: 800; color: #fff; font-size: 14px;">Pedido #${order.id}</div>
-            <div style="font-size: 12px; color: #8a94a6; margin-top: 4px;">
-              Horário: ${new Date(order.timestamp).toLocaleTimeString()} | Itens: <b>${order.items ? order.items.length : 0}</b> ${order.ps4Ip ? `| PS4: ${order.ps4Ip}` : ''}
-            </div>
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <button onclick="window.gtDecidirPedido('${order.id}', 'approve')" 
-              style="background: #2ecc71; color: #05070b; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: 800; cursor: pointer;">
-              Autorizar
-            </button>
-            <button onclick="window.gtDecidirPedido('${order.id}', 'reject')" 
-              style="background: rgba(255, 69, 58, 0.15); color: #ff453a; border: 1px solid #ff453a; padding: 8px 12px; border-radius: 6px; font-weight: 700; cursor: pointer;">
-              Recusar
-            </button>
-          </div>
-        `;
-        container.appendChild(row);
-      });
-    } catch (_) {}
-  }
-
-  window.gtDecidirPedido = async function(orderId, acao) {
-    try {
-      const res = await fetch('/api/admin/order/approve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: orderId, action: acao })
-      });
-      const data = await res.json();
-      if (data.success) {
-        exibirNotificacao(`Pedido #${orderId} ${acao === 'approve' ? 'autorizado' : 'recusado'}!`, "success");
-        carregarPedidosAdmin();
-      }
-    } catch (e) {
-      exibirNotificacao("Erro ao responder: " + e.message, "error");
-    }
-  };
-
-  // =========================================================================
-  // 7. RENDERIZAÇÃO DO CATÁLOGO & STATUS
+  // 6. RENDERIZAÇÃO DO CATÁLOGO & STATUS
   // =========================================================================
   function renderCatalog() {
     const container = document.getElementById("catalog");
@@ -1028,7 +933,7 @@
   }
 
   // =========================================================================
-  // 8. HELPERS VISUAIS (MODAL & TOAST)
+  // 7. HELPERS VISUAIS (MODAL & TOAST)
   // =========================================================================
   function exibirModalProcessamento(textoHtml) {
     let modal = document.getElementById("gt-modal-proc");
@@ -1076,16 +981,14 @@
   }
 
   // =========================================================================
-  // 9. EVENTOS E INICIALIZAÇÃO
+  // 8. EVENTOS E INICIALIZAÇÃO
   // =========================================================================
   document.getElementById("search").addEventListener("input", renderCatalog);
   document.getElementById("refresh").addEventListener("click", () => { checkServerStatus(); loadPackages(); });
   document.getElementById("btn-top-cart").addEventListener("click", openCartModal);
   document.getElementById("btn-top-downloads").addEventListener("click", showDownloadsView);
-  document.getElementById("btn-top-admin").addEventListener("click", showAdminView);
   document.getElementById("btn-close-cart").addEventListener("click", closeCartModal);
   document.getElementById("btn-back-catalog").addEventListener("click", backToCatalog);
-  document.getElementById("btn-back-from-admin").addEventListener("click", backToCatalog);
   document.getElementById("btn-checkout-now").addEventListener("click", iniciarCheckout);
 
   document.getElementById("btn-clear-cart").addEventListener("click", () => {
