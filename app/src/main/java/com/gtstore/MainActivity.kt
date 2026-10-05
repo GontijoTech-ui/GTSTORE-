@@ -44,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -1640,7 +1641,33 @@ fun AdminScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val batches = AccessManager.pendingBatches
+    val catalogManager = remember(context) { CatalogManager(context) }
+
+    var pendingOrders by remember {
+        mutableStateOf(OrderManager.listPendingOrders())
+    }
+
+    DisposableEffect(Unit) {
+        val listener = {
+            pendingOrders = OrderManager.listPendingOrders()
+        }
+        OrderManager.addListener(listener)
+        pendingOrders = OrderManager.listPendingOrders()
+
+        onDispose {
+            OrderManager.removeListener(listener)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            val freshList = OrderManager.listPendingOrders()
+            if (freshList.size != pendingOrders.size || freshList != pendingOrders) {
+                pendingOrders = freshList
+            }
+            delay(1000)
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -1687,26 +1714,26 @@ fun AdminScreen(
                             modifier = Modifier
                                 .size(10.dp)
                                 .clip(CircleShape)
-                                .background(if (batches.isNotEmpty()) GreenLed else RedLed)
+                                .background(if (pendingOrders.isNotEmpty()) GreenLed else RedLed)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (batches.isNotEmpty()) "PACOTES PENDENTES" else "NENHUMA SOLICITAÇÃO",
+                            text = if (pendingOrders.isNotEmpty()) "PEDIDOS PENDENTES" else "NENHUMA SOLICITAÇÃO",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (batches.isNotEmpty()) GreenLed else TextMuted
+                            color = if (pendingOrders.isNotEmpty()) GreenLed else TextMuted
                         )
                     }
 
                     Text(
-                        text = "Carrinhos aguardando liberação: ${batches.size}",
+                        text = "Carrinhos aguardando liberação: ${pendingOrders.size}",
                         color = TextWhite,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
 
                     Text(
-                        text = "O acesso de cada pacote aprovado é liberado por 15 minutos.",
+                        text = "Ao aprovar, o cliente recebe a liberação imediata no navegador.",
                         color = TextMuted,
                         fontSize = 13.sp
                     )
@@ -1714,7 +1741,7 @@ fun AdminScreen(
             }
         }
 
-        if (batches.isEmpty()) {
+        if (pendingOrders.isEmpty()) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -1723,7 +1750,7 @@ fun AdminScreen(
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Text(
-                        text = "Aguardando novas solicitações de pacotes vindas do PS4...",
+                        text = "Aguardando solicitações de liberação vindas da loja...",
                         modifier = Modifier.padding(20.dp),
                         color = TextMuted,
                         fontSize = 15.sp
@@ -1732,9 +1759,9 @@ fun AdminScreen(
             }
         } else {
             items(
-                items = batches,
+                items = pendingOrders,
                 key = { it.id }
-            ) { batch ->
+            ) { order ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = CardBlack),
@@ -1751,7 +1778,7 @@ fun AdminScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "PACOTE (${batch.games.size} JOGOS)",
+                                text = "PEDIDO #${order.id} (${order.items.size} JOGOS)",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TextWhite
@@ -1792,32 +1819,24 @@ fun AdminScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "ID CONSOLE PS4:",
+                                        text = "IP ALVO PS4:",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = TextMuted
                                     )
 
                                     Text(
-                                        text = batch.consoleId,
-                                        fontSize = 15.sp,
+                                        text = if (order.targetPs4Ip.isNotBlank()) order.targetPs4Ip else "Não informado",
+                                        fontSize = 14.sp,
                                         fontWeight = FontWeight.Black,
                                         color = Color(0xFF64B5F6)
-                                    )
-                                }
-
-                                if (batch.clientIp.isNotBlank()) {
-                                    Text(
-                                        text = "IP do Console: ${batch.clientIp}",
-                                        fontSize = 11.sp,
-                                        color = Color(0xFF777777)
                                     )
                                 }
                             }
                         }
 
                         Text(
-                            text = "JOGOS SELECIONADOS NO CARRINHO:",
+                            text = "JOGOS SELECIONADOS:",
                             fontSize = 12.sp,
                             color = Color(0xFFDDDDDD),
                             fontWeight = FontWeight.Bold
@@ -1830,9 +1849,13 @@ fun AdminScreen(
                                 .background(Color(0xFF141414), RoundedCornerShape(8.dp))
                                 .padding(10.dp)
                         ) {
-                            batch.games.forEachIndexed { idx, game ->
+                            order.items.forEachIndexed { idx, itemKey ->
+                                val catalogItem = catalogManager.getByIndex(itemKey.toIntOrNull() ?: -1)
+                                    ?: catalogManager.getByContentId(itemKey)
+                                val itemTitle = catalogItem?.title ?: itemKey
+
                                 Text(
-                                    text = "${idx + 1}. ${game.title} (${game.gameKey})",
+                                    text = "${idx + 1}. $itemTitle",
                                     color = TextWhite,
                                     fontSize = 13.sp,
                                     maxLines = 1,
@@ -1849,8 +1872,9 @@ fun AdminScreen(
                         ) {
                             Button(
                                 onClick = {
-                                    AccessManager.approveBatch(batch.id)
-                                    Toast.makeText(context, "Pacote aprovado por 15 minutos!", Toast.LENGTH_SHORT).show()
+                                    OrderManager.updateStatus(order.id, OrderStatus.APPROVED)
+                                    pendingOrders = OrderManager.listPendingOrders()
+                                    Toast.makeText(context, "Pedido #${order.id} APROVADO!", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier
                                     .weight(1.3f)
@@ -1859,7 +1883,7 @@ fun AdminScreen(
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text(
-                                    text = "APROVAR (${batch.games.size})",
+                                    text = "APROVAR (${order.items.size})",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
                                     color = Color.Black
@@ -1868,8 +1892,9 @@ fun AdminScreen(
 
                             Button(
                                 onClick = {
-                                    AccessManager.rejectBatch(batch.id)
-                                    Toast.makeText(context, "Pacote recusado.", Toast.LENGTH_SHORT).show()
+                                    OrderManager.updateStatus(order.id, OrderStatus.REJECTED)
+                                    pendingOrders = OrderManager.listPendingOrders()
+                                    Toast.makeText(context, "Pedido #${order.id} RECUSADO.", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier
                                     .weight(0.9f)
@@ -1887,16 +1912,21 @@ fun AdminScreen(
 
                             Button(
                                 onClick = {
-                                    val gamesFormatted = batch.games.mapIndexed { idx, g -> "${idx + 1}. ${g.title} (${g.gameKey})" }.joinToString("\n")
+                                    val gamesFormatted = order.items.mapIndexed { idx, key ->
+                                        val catalogItem = catalogManager.getByIndex(key.toIntOrNull() ?: -1)
+                                            ?: catalogManager.getByContentId(key)
+                                        "${idx + 1}. ${catalogItem?.title ?: key}"
+                                    }.joinToString("\n")
+
                                     val sendIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
                                         putExtra(
                                             Intent.EXTRA_TEXT,
-                                            "Olá! O seu pacote de jogos foi liberado no console *${batch.consoleId}*!\n\n*Jogos Aprovados:*\n$gamesFormatted\n\n⚠️ Você tem *15 minutos* para iniciar os downloads na loja."
+                                            "Olá! O seu pedido *#${order.id}* foi liberado!\n\n*Jogos Liberados:*\n$gamesFormatted\n\n⚠️ Pode concluir a instalação no seu console."
                                         )
                                     }
                                     context.startActivity(
-                                        Intent.createChooser(sendIntent, "Notificar Pacote")
+                                        Intent.createChooser(sendIntent, "Notificar Cliente")
                                     )
                                 },
                                 modifier = Modifier
