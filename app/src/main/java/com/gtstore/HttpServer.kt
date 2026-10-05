@@ -1,6 +1,7 @@
 package com.gtstore
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -15,6 +16,7 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -49,15 +51,41 @@ data class Order(
 )
 
 /**
- * Gestor thread-safe em memória para sincronização entre o PS4 e o Administrador.
+ * Gestor thread-safe em memória com suporte a observadores para a interface nativa.
  */
 object OrderManager {
     private val orders = ConcurrentHashMap<String, Order>()
+    private val listeners = CopyOnWriteArrayList<() -> Unit>()
+
+    /**
+     * Regista um ouvinte para ser chamado sempre que um pedido for criado ou alterado.
+     */
+    fun addListener(listener: () -> Unit) {
+        listeners.add(listener)
+    }
+
+    /**
+     * Remove o ouvinte quando a tela/aba for destruída ou pausada.
+     */
+    fun removeListener(listener: () -> Unit) {
+        listeners.remove(listener)
+    }
+
+    private fun notifyListeners() {
+        listeners.forEach { listener ->
+            try {
+                listener.invoke()
+            } catch (e: Exception) {
+                Log.e("OrderManager", "Erro ao notificar ouvinte: ${e.message}")
+            }
+        }
+    }
 
     fun createOrder(items: List<String>, targetIp: String): Order {
         val id = UUID.randomUUID().toString().substring(0, 8).uppercase()
         val order = Order(id = id, items = items, targetPs4Ip = targetIp)
         orders[id] = order
+        notifyListeners() // Avisa a interface do Android imediatamente
         return order
     }
 
@@ -66,11 +94,16 @@ object OrderManager {
     fun updateStatus(id: String, status: OrderStatus): Boolean {
         val order = orders[id] ?: return false
         order.status = status
+        notifyListeners() // Avisa a interface da mudança de estado
         return true
     }
 
     fun listPendingOrders(): List<Order> {
         return orders.values.filter { it.status == OrderStatus.PENDING }.sortedByDescending { it.timestamp }
+    }
+
+    fun listAllOrders(): List<Order> {
+        return orders.values.sortedByDescending { it.timestamp }
     }
 }
 
@@ -385,7 +418,6 @@ class HttpServer(
 
         val digest = if (item.digest.isNotBlank()) item.digest else "0000000000000000000000000000000000000000000000000000000000000000"
 
-        // Manifesto oficial do DPI com o URL externo do PKG
         val manifest = JSONObject().apply {
             put("originalFileSize", item.size)
             put("packageDigest", digest)
@@ -421,6 +453,19 @@ class HttpServer(
             }
 
             val order = OrderManager.createOrder(items, targetIp)
+            Log.i(tag, ">>> [NOVO PEDIDO CHEGOU] ID: #${order.id} | Itens: ${items.size} | Alvo: $targetIp")
+
+            // Dispara Broadcast interno para a interface da Activity
+            try {
+                val intent = Intent("com.gtstore.ORDER_CHANGED").apply {
+                    putExtra("orderId", order.id)
+                    setPackage(context.packageName)
+                }
+                context.sendBroadcast(intent)
+            } catch (e: Exception) {
+                Log.w(tag, "Não foi possível disparar Broadcast: ${e.message}")
+            }
+
             val response = JSONObject().apply {
                 put("success", true)
                 put("orderId", order.id)
@@ -428,6 +473,7 @@ class HttpServer(
             }
             sendJsonResponse(output, 200, response.toString())
         } catch (e: Exception) {
+            Log.e(tag, "Falha em handleOrderCreate: ${e.message}")
             sendJsonResponse(output, 400, """{"success": false, "error": "${e.message}"}""")
         }
     }
@@ -484,6 +530,15 @@ class HttpServer(
 
             val newStatus = if (action == "approve") OrderStatus.APPROVED else OrderStatus.REJECTED
             val ok = OrderManager.updateStatus(orderId, newStatus)
+            Log.i(tag, ">>> [DECISAO DE PEDIDO] ID: #$orderId -> $newStatus")
+
+            try {
+                val intent = Intent("com.gtstore.ORDER_CHANGED").apply {
+                    putExtra("orderId", orderId)
+                    setPackage(context.packageName)
+                }
+                context.sendBroadcast(intent)
+            } catch (_: Exception) {}
 
             sendJsonResponse(output, 200, """{"success": $ok, "status": "${newStatus.name.lowercase()}"}""")
         } catch (e: Exception) {
