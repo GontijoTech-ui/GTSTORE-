@@ -293,17 +293,58 @@
       margin-top: 6px;
     }
 
-    .qr-grid { display: flex; gap: 8px; margin: 10px 0; }
-    .qr-card {
-      flex: 1; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border);
-      border-radius: 10px; padding: 8px; text-align: center;
+    /* BOTÕES DE PAGAMENTO MOBILE (PIX E WHATSAPP) */
+    .payment-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 12px 0;
     }
-    .qr-img { width: 100px; height: 100px; object-fit: contain; background: #fff; border-radius: 6px; padding: 2px; }
+    .btn-payment-action {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 8px;
+      color: #fff;
+      font-weight: 800;
+      font-size: 11px;
+      text-align: center;
+      text-decoration: none;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+    .btn-payment-action:active { transform: scale(0.96); }
+    .btn-payment-action.pix {
+      border-color: rgba(48, 209, 88, 0.35);
+      color: var(--green);
+      background: rgba(48, 209, 88, 0.05);
+    }
+    .btn-payment-action.pix:active {
+      background: rgba(48, 209, 88, 0.18);
+    }
+    .btn-payment-action.wpp {
+      border-color: rgba(37, 211, 102, 0.35);
+      color: #25d366;
+      background: rgba(37, 211, 102, 0.05);
+    }
+    .btn-payment-action.wpp:active {
+      background: rgba(37, 211, 102, 0.18);
+    }
+    .payment-action-icon {
+      font-size: 20px;
+      line-height: 1;
+    }
 
     .btn-checkout {
       width: 100%; background: var(--green); color: #020305; border: 0;
       border-radius: 10px; padding: 14px; font-size: 14px; font-weight: 900;
-      cursor: pointer; margin-top: 10px;
+      cursor: pointer; margin-top: 6px;
     }
     .btn-checkout:active { transform: scale(0.98); }
 
@@ -407,15 +448,17 @@
       </div>
     </div>
 
-    <div class="qr-grid">
-      <div class="qr-card">
-        <div style="font-size: 11px; font-weight: 800; color: var(--green); margin-bottom: 4px;">1. Pix</div>
-        <img class="qr-img" src="/qr-pix.jpg" alt="QR Pix" onerror="this.src='/qr-pix.png';">
-      </div>
-      <div class="qr-card">
-        <div style="font-size: 11px; font-weight: 800; color: #25d366; margin-bottom: 4px;">2. Comprovante</div>
-        <img class="qr-img" src="/qr.png" alt="WhatsApp" onerror="this.src='/qr (1).png';">
-      </div>
+    <!-- BOTÕES DE PAGAMENTO TÁTEIS -->
+    <div class="payment-grid">
+      <button id="btn-copy-pix" class="btn-payment-action pix" type="button">
+        <span class="payment-action-icon">📋</span>
+        <span id="txt-pix-btn">1. COPIAR PIX</span>
+      </button>
+
+      <a id="btn-send-wpp" class="btn-payment-action wpp" href="#" target="_blank" rel="noopener noreferrer">
+        <span class="payment-action-icon">💬</span>
+        <span>2. COMPROVANTE</span>
+      </a>
     </div>
 
     <button id="btn-checkout-now" class="btn-checkout" type="button">SOLICITAR LIBERAÇÃO</button>
@@ -431,6 +474,12 @@
 "use strict";
 
 (() => {
+  // =========================================================================
+  // CONFIGURAÇÕES DE PAGAMENTO
+  // =========================================================================
+  const CHAVE_OU_PAYLOAD_PIX = "cd1ab7d3-7a96-40c9-982e-45946208b21f";
+  const NUMERO_WHATSAPP = "5564999999999"; // Insira o seu número com DDI e DDD
+
   const isPS4Browser = /PlayStation 4/i.test(navigator.userAgent);
   let allPackages = [];
   let games = [];
@@ -586,7 +635,7 @@
   }
 
   // =========================================================================
-  // 3. CARRINHO DE COMPRAS
+  // 3. CARRINHO DE COMPRAS & CÓPIA PIX
   // =========================================================================
   function updateCartBadge() {
     document.getElementById("top-cart-badge").textContent = cart.length;
@@ -626,6 +675,37 @@
     else openCartModal();
   }
 
+  function copiarPix() {
+    const label = document.getElementById("txt-pix-btn");
+    const originalText = label.textContent;
+
+    const sucesso = () => {
+      label.textContent = "✓ COPIADO!";
+      exibirNotificacao("Chave Pix copiada com sucesso!", "success");
+      setTimeout(() => { label.textContent = originalText; }, 2500);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(CHAVE_OU_PAYLOAD_PIX).then(sucesso).catch(() => fallbackCopiarPix(sucesso));
+    } else {
+      fallbackCopiarPix(sucesso);
+    }
+  }
+
+  function fallbackCopiarPix(cbSucesso) {
+    const input = document.createElement("input");
+    input.value = CHAVE_OU_PAYLOAD_PIX;
+    document.body.appendChild(input);
+    input.select();
+    try {
+      document.execCommand("copy");
+      cbSucesso();
+    } catch (_) {
+      exibirNotificacao("Erro ao copiar automaticamente.", "error");
+    }
+    document.body.removeChild(input);
+  }
+
   function openCartModal() {
     if (cart.length === 0) {
       exibirNotificacao("O seu carrinho está vazio!", "warning");
@@ -649,7 +729,19 @@
     });
 
     const total = cart.length * 10;
-    document.getElementById("cart-total-price").textContent = "R$ " + total.toFixed(2).replace(".", ",");
+    const totalFormatado = "R$ " + total.toFixed(2).replace(".", ",");
+    document.getElementById("cart-total-price").textContent = totalFormatado;
+
+    // Atualiza a ligação do WhatsApp dinamicamente
+    const nomesJogos = cart.map((it, idx) => `${idx + 1}. ${it.title}`).join("\n");
+    const mensagemWpp = `Olá! Segue o comprovante de pagamento no GTSTORE.\n\n` +
+                        `🎮 Console: *${myConsoleId}*\n` +
+                        `📋 Pedido:\n${nomesJogos}\n\n` +
+                        `💰 Total: *${totalFormatado}*`;
+
+    const linkWpp = `https://wa.me/${NUMERO_WHATSAPP}?text=${encodeURIComponent(mensagemWpp)}`;
+    document.getElementById("btn-send-wpp").href = linkWpp;
+
     document.getElementById("cart-overlay").classList.add("visible");
   }
 
@@ -1091,6 +1183,7 @@
   document.getElementById("btn-close-cart").addEventListener("click", closeCartModal);
   document.getElementById("btn-back-catalog").addEventListener("click", backToCatalog);
   document.getElementById("btn-checkout-now").addEventListener("click", iniciarCheckout);
+  document.getElementById("btn-copy-pix").addEventListener("click", copiarPix);
 
   document.getElementById("btn-clear-cart").addEventListener("click", () => {
     cart = [];
