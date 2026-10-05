@@ -2,414 +2,427 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GTSTORE PS4</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GTSTORE Mobile</title>
   <style>
     :root {
-      --bg: #05070b;
-      --panel: rgba(14, 18, 27, 0.72);
-      --panel-card: rgba(18, 24, 38, 0.65);
+      --bg-base: #06080d;
+      --card-bg: rgba(17, 22, 33, 0.75);
+      --card-inner: rgba(10, 13, 20, 0.9);
       --border: rgba(255, 255, 255, 0.08);
-      --border-focus: #0070d1;
+      --border-active: #0070d1;
       --primary: #0070d1;
-      --primary-hover: #1f8eff;
-      --text: #f5f7fa;
-      --muted: #8a94a6;
-      --green: #2ecc71;
+      --primary-glow: rgba(0, 112, 209, 0.4);
+      --text: #f0f4f8;
+      --text-muted: #828c9a;
+      --green: #30d158;
       --orange: #ff9f0a;
       --red: #ff453a;
     }
 
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
       margin: 0; padding: 0; min-height: 100%;
-      background: radial-gradient(circle at 50% 0%, #0d1b2a 0%, #05070a 55%, #020305 100%) fixed;
+      background: radial-gradient(circle at 50% 0%, #0d1b2a 0%, #06080d 50%, #020305 100%) fixed;
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      letter-spacing: 0.2px;
     }
     button, input { font-family: inherit; }
 
-    button:focus, input:focus, .game-card:focus {
-      outline: none !important;
-      border-color: var(--border-focus) !important;
-      box-shadow: 0 0 0 3px rgba(0, 112, 209, 0.4), 0 8px 24px rgba(0, 112, 209, 0.35) !important;
-      transform: translateY(-2px);
-    }
-
-    /* HEADER */
-    .header {
-      width: 100%;
-      background: rgba(5, 7, 11, 0.85);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      border-bottom: 1px solid var(--border);
-      padding: 16px 24px;
+    /* HEADER APP-LIKE */
+    .app-header {
       position: sticky; top: 0; z-index: 100;
+      background: rgba(6, 8, 13, 0.88);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
     }
 
-    .header-top {
+    .header-main {
       display: flex; justify-content: space-between; align-items: center;
-      max-width: 1400px; margin: 0 auto;
+      max-width: 1200px; margin: 0 auto;
     }
 
-    .logo-container { display: flex; align-items: center; gap: 14px; }
-    .logo { height: 44px; width: auto; object-fit: contain; border-radius: 8px; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.6)); }
-    .brand-title {
-      font-size: 22px; font-weight: 900; letter-spacing: 1.5px;
+    .brand-wrap { display: flex; align-items: center; gap: 10px; }
+    .brand-logo {
+      height: 34px; width: 34px; object-fit: cover; border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    }
+    .brand-name {
+      font-size: 19px; font-weight: 900; letter-spacing: 1.2px; margin: 0;
       background: linear-gradient(90deg, #ffffff, #a5c7eb);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin: 0;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     }
 
-    .header-actions { display: flex; align-items: center; gap: 10px; }
+    .header-actions { display: flex; align-items: center; gap: 8px; }
 
-    .btn-action-top {
-      display: inline-flex; align-items: center; gap: 8px;
+    .btn-header-pill {
+      display: inline-flex; align-items: center; gap: 6px;
       background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border);
-      color: #fff; padding: 10px 18px; border-radius: 99px;
-      font-weight: 800; font-size: 13px; cursor: pointer; outline: none;
-      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      color: #fff; padding: 7px 14px; border-radius: 99px;
+      font-weight: 800; font-size: 12px; cursor: pointer; outline: none;
       transition: all 0.2s ease;
     }
-    .btn-action-top:hover, .btn-action-top:focus {
-      background: var(--primary); border-color: var(--primary-hover);
-      box-shadow: 0 0 14px rgba(0, 112, 209, 0.6);
-    }
+    .btn-header-pill:active { transform: scale(0.96); }
 
     .btn-top-downloads {
-      display: none; background: rgba(20, 53, 30, 0.65); border: 1px solid rgba(46, 204, 113, 0.5);
+      display: none; background: rgba(20, 53, 30, 0.8); border: 1px solid rgba(48, 209, 88, 0.5);
       color: var(--green);
     }
     .btn-top-downloads.visible { display: inline-flex; }
-    .btn-top-downloads:hover { background: var(--green); color: #020305; box-shadow: 0 0 16px rgba(46, 204, 113, 0.7); }
 
     .cart-badge {
-      background: #ff334b; color: #fff; font-size: 11px; font-weight: 900;
-      padding: 3px 8px; border-radius: 12px; min-width: 20px; text-align: center;
+      background: var(--red); color: #fff; font-size: 10px; font-weight: 900;
+      padding: 2px 6px; border-radius: 10px; min-width: 18px; text-align: center;
     }
 
-    .header-controls {
-      display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
-      gap: 14px; margin-top: 14px; max-width: 1400px; margin-left: auto; margin-right: auto;
+    /* BARRA DE CHIPS DE CONTROLE (IP E STATUS) */
+    .chips-bar {
+      display: flex; gap: 8px; align-items: center; overflow-x: auto;
+      padding-top: 10px; max-width: 1200px; margin: 0 auto;
+      scrollbar-width: none;
+    }
+    .chips-bar::-webkit-scrollbar { display: none; }
+
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border);
+      border-radius: 99px; padding: 4px 10px; font-size: 11px; font-weight: 600;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--orange); }
+    .status-online .chip-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .status-offline .chip-dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+    .chip-ip-input {
+      width: 100px; background: transparent; border: 0; color: #fff;
+      font-size: 11px; font-weight: 700; text-align: center; outline: none;
+    }
+    .chip-btn-save {
+      background: var(--primary); border: 0; border-radius: 6px;
+      color: #fff; font-size: 10px; font-weight: 800; padding: 2px 6px; cursor: pointer;
     }
 
-    .server-status, .ps4-ip-bar {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 6px 14px; border-radius: 99px; background: rgba(255, 255, 255, 0.04);
-      border: 1px solid var(--border); font-size: 12px;
-    }
+    /* CONTAINER PRINCIPAL */
+    .container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 14px 14px 80px; }
 
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); }
-    .status-online .status-dot { background: var(--green); box-shadow: 0 0 10px var(--green); }
-    .status-offline .status-dot { background: var(--red); box-shadow: 0 0 10px var(--red); }
-
-    .ps4-ip-label { font-weight: bold; color: var(--muted); }
-    .ps4-ip-input {
-      width: 130px; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--border);
-      border-radius: 8px; color: #fff; font-size: 12px; font-weight: bold;
-      text-align: center; padding: 4px 8px; outline: none;
+    /* TOOLBAR DE BUSCA */
+    .search-wrap {
+      display: flex; gap: 8px; margin-bottom: 16px;
     }
-    .btn-save-ip {
-      border: 0; border-radius: 8px; padding: 5px 12px; background: var(--primary);
-      color: #fff; font-size: 11px; font-weight: bold; cursor: pointer; outline: none;
-      transition: background 0.2s ease;
-    }
-    .btn-save-ip:hover { background: var(--primary-hover); }
-
-    /* CONTEÚDO */
-    .container { width: 95%; max-width: 1400px; margin: 0 auto; padding: 24px 0 60px; }
-    .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; }
-    .search {
-      flex: 1; padding: 14px 20px; border: 1px solid var(--border);
-      border-radius: 12px; background: var(--panel); color: var(--text);
-      font-size: 15px; outline: none; backdrop-filter: blur(8px);
+    .search-input {
+      flex: 1; padding: 12px 16px; border: 1px solid var(--border);
+      border-radius: 12px; background: var(--card-bg); color: #fff;
+      font-size: 14px; outline: none; backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px); transition: border-color 0.2s;
     }
-    .search:focus { border-color: var(--primary); }
-
-    .refresh {
-      border: 1px solid var(--border); border-radius: 12px; padding: 14px 22px;
-      background: rgba(255, 255, 255, 0.05); color: var(--text);
-      cursor: pointer; font-weight: 700; outline: none; transition: background 0.2s;
+    .search-input:focus { border-color: var(--primary); }
+    .btn-refresh {
+      border: 1px solid var(--border); border-radius: 12px; padding: 0 16px;
+      background: rgba(255, 255, 255, 0.05); color: #fff; font-weight: 700;
+      font-size: 13px; cursor: pointer;
     }
-    .refresh:hover { background: rgba(255, 255, 255, 0.1); }
 
-    /* GRADE DO CATÁLOGO */
-    .catalog {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px;
+    /* GRADE DE JOGOS (2 COLUNAS NO CELULAR) */
+    .catalog-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
     }
+    @media (min-width: 768px) {
+      .catalog-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; }
+    }
+
     .game-card {
-      display: flex; flex-direction: column; background: var(--panel-card);
-      border: 1px solid var(--border); border-radius: 14px; padding: 12px;
-      position: relative; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-      transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.25s ease, box-shadow 0.25s ease;
+      display: flex; flex-direction: column; background: var(--card-bg);
+      border: 1px solid var(--border); border-radius: 14px; padding: 10px;
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      transition: transform 0.2s ease, border-color 0.2s ease;
     }
-    .game-card:hover {
-      transform: translateY(-4px);
-      border-color: rgba(255, 255, 255, 0.2);
-      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
+    .game-card:active { transform: scale(0.98); }
+
+    .cover-box {
+      width: 100%; aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden;
+      background: #000; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      position: relative;
+    }
+    .cover-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .cover-placeholder {
+      display: flex; align-items: center; justify-content: center;
+      width: 100%; height: 100%; color: var(--text-muted); font-size: 12px;
+      font-weight: 700; text-align: center; padding: 8px;
     }
 
-    .cover-wrap {
-      width: 100%; aspect-ratio: 1 / 1; background: #000; border-radius: 10px;
-      overflow: hidden; display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 6px 14px rgba(0,0,0,0.6);
-    }
-    .cover { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .cover-placeholder { color: #888; font-size: 13px; font-weight: bold; text-align: center; padding: 10px; }
-
-    .game-content { display: flex; flex-direction: column; flex: 1; margin-top: 12px; }
+    .game-details { display: flex; flex-direction: column; flex: 1; margin-top: 10px; }
     .game-title {
-      margin: 0 0 6px; font-size: 15px; font-weight: 800; line-height: 1.35;
-      height: 40px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical; word-break: break-word; color: #ffffff;
+      font-size: 13px; font-weight: 800; line-height: 1.3; margin: 0 0 4px;
+      height: 34px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; color: #fff;
     }
-    .game-id { margin: 0 0 12px; color: var(--muted); font-size: 11px; letter-spacing: 0.5px; }
-
-    .btn-cart-action {
-      width: 100%; border: 0; border-radius: 8px; padding: 12px 8px;
-      background: var(--primary); color: #fff; font-size: 12px; font-weight: 800;
-      cursor: pointer; outline: none; text-align: center; transition: background 0.2s;
+    .game-cusa {
+      font-size: 10px; color: var(--text-muted); font-weight: 600;
+      margin: 0 0 10px; letter-spacing: 0.3px;
     }
-    .btn-cart-action.in-cart { background: #ff334b; }
 
-    /* SEÇÃO DE DOWNLOADS */
+    .btn-cart {
+      margin-top: auto; border: 0; border-radius: 8px; padding: 10px 6px;
+      background: var(--primary); color: #fff; font-size: 11px; font-weight: 800;
+      cursor: pointer; transition: all 0.2s ease;
+    }
+    .btn-cart.in-cart { background: var(--red); }
+    .btn-cart:active { transform: scale(0.96); }
+
+    /* SEÇÃO DE FICHEIROS LIBERADOS (LINHA DO TEMPO) */
     .view-downloads {
-      display: none; background: rgba(14, 18, 27, 0.85); border: 1px solid var(--border);
-      border-radius: 16px; padding: 28px; margin-top: 10px; backdrop-filter: blur(16px);
+      display: none; background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 18px; padding: 18px 14px; backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
     }
     .view-downloads.active { display: block; }
 
     .downloads-header {
+      display: flex; flex-direction: column; gap: 10px;
+      border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 16px;
+    }
+    .downloads-title-row {
       display: flex; justify-content: space-between; align-items: center;
-      border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 20px;
     }
-    .downloads-title { margin: 0; font-size: 22px; color: var(--green); font-weight: 900; }
-    .time-badge {
-      background: rgba(43, 29, 5, 0.7); border: 1px solid var(--orange); color: #ffbe53;
-      font-size: 13px; font-weight: bold; padding: 6px 16px; border-radius: 99px;
+    .downloads-title { margin: 0; font-size: 18px; font-weight: 900; color: var(--green); }
+    .timer-pill {
+      background: rgba(255, 159, 10, 0.15); border: 1px solid var(--orange);
+      color: #ffbe53; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 99px;
     }
-    .downloads-grid { display: flex; flex-direction: column; gap: 14px; }
-    .download-item-card {
-      display: flex; gap: 16px; background: rgba(255, 255, 255, 0.025);
-      border: 1px solid var(--border); border-radius: 12px; padding: 16px; align-items: center;
-    }
-    .download-cover { width: 68px; height: 68px; object-fit: cover; border-radius: 8px; background: #000; }
-    .download-info { flex: 1; }
-    .download-title { margin: 0 0 4px; font-size: 15px; font-weight: bold; }
-    .download-sub { margin: 0; font-size: 12px; color: var(--muted); }
 
-    .badge-type {
-      background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.15);
-      color: #64b5f6; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px;
+    .btn-back-catalog {
+      background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border);
+      color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 12px;
+      font-weight: 700; cursor: pointer; width: 100%;
     }
-    .badge-type.badge-game { border-color: #35c759; color: #35c759; }
-    .badge-type.badge-update { border-color: #ff9f0a; color: #ff9f0a; }
-    .badge-type.badge-dlc { border-color: #0088f0; color: #64b5f6; }
 
-    .btn-install {
-      border: 0; border-radius: 8px; padding: 12px 20px; font-size: 13px;
-      font-weight: 900; cursor: pointer; color: #020305; background: var(--green);
-      outline: none; text-align: center; white-space: nowrap; transition: all 0.2s;
+    .package-group { margin-bottom: 18px; }
+    .package-group-title {
+      font-size: 14px; font-weight: 900; color: #a5c7eb; margin: 0 0 10px;
+      text-transform: uppercase; letter-spacing: 0.5px;
     }
-    .btn-install:hover, .btn-install:focus { background: #2cb04b; color: #fff; }
 
-    /* MODAL DE CARRINHO */
+    .timeline-card {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--card-inner); border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px; margin-bottom: 8px;
+    }
+
+    .step-number {
+      font-size: 16px; font-weight: 900; color: var(--primary);
+      min-width: 26px; text-align: center;
+    }
+
+    .timeline-info { flex: 1; min-width: 0; }
+    .timeline-title {
+      font-size: 13px; font-weight: 800; margin: 0 0 4px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff;
+    }
+    .timeline-meta {
+      display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted);
+    }
+
+    .badge-kind {
+      padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 900;
+      letter-spacing: 0.4px; text-transform: uppercase;
+    }
+    .badge-kind.game { background: rgba(48, 209, 88, 0.15); border: 1px solid var(--green); color: var(--green); }
+    .badge-kind.update { background: rgba(255, 159, 10, 0.15); border: 1px solid var(--orange); color: var(--orange); }
+    .badge-kind.dlc { background: rgba(0, 112, 209, 0.15); border: 1px solid var(--primary); color: #64b5f6; }
+
+    .btn-send-step {
+      border: 0; border-radius: 8px; padding: 10px 14px; font-size: 11px;
+      font-weight: 900; cursor: pointer; color: #fff; background: var(--primary);
+      white-space: nowrap; flex-shrink: 0; transition: all 0.2s ease;
+    }
+    .btn-send-step:active { transform: scale(0.96); }
+
+    /* MODAL DE CARRINHO MOBILE-FIRST (BOTTOM SHEET) */
     .overlay {
-      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-      padding: 16px; background: rgba(2, 3, 5, 0.88); backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px); z-index: 1000;
+      position: fixed; inset: 0; display: none; align-items: flex-end; justify-content: center;
+      background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px); z-index: 1000;
     }
     .overlay.visible { display: flex; }
 
-    .modal {
-      width: 100%; max-width: 520px; background: #0c0f17; border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 16px; padding: 26px; text-align: center; max-height: 90vh; overflow-y: auto;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
+    .bottom-sheet {
+      width: 100%; max-width: 500px; background: #0c0f17;
+      border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 20px 20px 0 0;
+      padding: 20px 18px 30px; max-height: 85vh; overflow-y: auto;
+      box-shadow: 0 -10px 40px rgba(0,0,0,0.8);
+      animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .modal h2 { margin: 0 0 8px; font-size: 20px; }
-    .modal p { color: var(--muted); font-size: 13px; line-height: 1.4; margin: 6px 0; }
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
 
-    .console-badge {
-      background: rgba(0, 0, 0, 0.5); border: 1px dashed var(--primary); color: #64b5f6;
-      font-family: monospace; font-size: 14px; font-weight: bold;
-      padding: 6px 14px; border-radius: 6px; margin: 6px 0; display: inline-block;
+    .sheet-handle {
+      width: 40px; height: 4px; background: rgba(255, 255, 255, 0.2);
+      border-radius: 99px; margin: 0 auto 14px;
+    }
+
+    .sheet-title { margin: 0 0 6px; font-size: 18px; font-weight: 900; text-align: center; }
+    .console-box {
+      background: rgba(0,0,0,0.5); border: 1px dashed var(--primary); color: #64b5f6;
+      font-family: monospace; font-size: 12px; font-weight: bold;
+      padding: 6px 12px; border-radius: 6px; margin: 6px auto; display: block; width: fit-content;
     }
 
     .cart-summary {
-      background: rgba(0, 0, 0, 0.5); border: 1px solid var(--border); border-radius: 10px;
-      padding: 12px; margin: 12px 0; text-align: left; max-height: 160px; overflow-y: auto;
+      background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px; margin: 12px 0; max-height: 140px; overflow-y: auto;
     }
     .summary-row {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 6px 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 13px;
+      padding: 6px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 12px;
     }
-    .summary-row:last-child { border-bottom: none; }
-    .summary-total {
-      display: flex; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, 0.1);
-      margin-top: 8px; padding-top: 8px; font-weight: 900; font-size: 15px; color: var(--green);
-    }
-
-    .btn-remove-item {
-      background: transparent; border: 0; color: var(--red); font-weight: bold;
-      cursor: pointer; font-size: 14px; padding: 2px 6px; margin-left: 8px;
+    .summary-row:last-child { border-bottom: 0; }
+    .btn-del-item {
+      background: transparent; border: 0; color: var(--red); font-weight: 900;
+      font-size: 14px; padding: 0 6px; cursor: pointer;
     }
 
-    .qr-dual-container { display: flex; gap: 12px; justify-content: center; align-items: stretch; margin: 12px 0; }
+    .total-row {
+      display: flex; justify-content: space-between; font-weight: 900; font-size: 14px;
+      color: var(--green); padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1);
+      margin-top: 6px;
+    }
+
+    .qr-grid { display: flex; gap: 8px; margin: 10px 0; }
     .qr-card {
-      flex: 1; background: rgba(255, 255, 255, 0.025); border: 1px solid var(--border);
-      border-radius: 10px; padding: 10px; text-align: center;
+      flex: 1; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border);
+      border-radius: 10px; padding: 8px; text-align: center;
     }
-    .qr-card-img {
-      width: 130px; height: 130px; object-fit: contain; margin: 0 auto;
-      display: block; border-radius: 6px; background: #fff; padding: 4px;
-    }
+    .qr-img { width: 100px; height: 100px; object-fit: contain; background: #fff; border-radius: 6px; padding: 2px; }
 
-    .whatsapp-box {
-      background: rgba(24, 44, 30, 0.6); border: 1px solid var(--green); color: #4cd964;
-      padding: 10px; border-radius: 8px; font-weight: bold; font-size: 13px; margin: 8px 0;
-    }
-
-    .btn-main-checkout {
+    .btn-checkout {
       width: 100%; background: var(--green); color: #020305; border: 0;
-      border-radius: 10px; padding: 14px; font-size: 15px; font-weight: 900;
-      cursor: pointer; margin-top: 12px; transition: all 0.2s ease;
+      border-radius: 10px; padding: 14px; font-size: 14px; font-weight: 900;
+      cursor: pointer; margin-top: 10px;
     }
-    .btn-main-checkout:hover { background: #35c759; color: #fff; }
+    .btn-checkout:active { transform: scale(0.98); }
 
-    .modal-buttons { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
-    .btn-sec {
-      border: 0; border-radius: 8px; padding: 10px 16px; font-weight: bold;
-      cursor: pointer; outline: none; color: white; background: rgba(255, 255, 255, 0.08); font-size: 13px;
-      transition: background 0.2s;
+    .sheet-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .btn-sheet-sec {
+      flex: 1; border: 0; border-radius: 8px; padding: 10px;
+      background: rgba(255, 255, 255, 0.08); color: #fff; font-weight: 700;
+      font-size: 12px; cursor: pointer;
     }
-    .btn-sec:hover { background: rgba(255, 255, 255, 0.14); }
 
-    .btn-back {
-      background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border); color: #fff;
-      padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; outline: none;
+    /* TOAST */
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(17, 22, 33, 0.95); border: 1px solid var(--border);
+      border-left: 4px solid var(--primary); border-radius: 10px; padding: 10px 16px;
+      font-size: 12px; font-weight: 700; color: #fff; z-index: 10000;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8); display: none; width: 90%; max-width: 360px;
+      text-align: center;
     }
-    .btn-back:hover { background: rgba(255, 255, 255, 0.1); }
-
-    /* NOTIFICAÇÃO TOAST */
-    .notice {
-      display: none; margin-bottom: 16px; padding: 12px 16px; border-radius: 10px;
-      background: rgba(14, 18, 27, 0.9); color: #ffffff; font-size: 13px; font-weight: bold;
-      border-left: 4px solid var(--primary); backdrop-filter: blur(8px);
-    }
-    .notice.visible { display: block; }
-    .notice.error { border-left-color: var(--red); background: rgba(38, 16, 18, 0.9); color: #ff817a; }
-    .notice.success { border-left-color: var(--green); background: rgba(14, 32, 19, 0.9); color: #4cd964; }
+    .toast.visible { display: block; }
+    .toast.success { border-left-color: var(--green); color: #4cd964; }
+    .toast.error { border-left-color: var(--red); color: #ff817a; }
   </style>
 </head>
 <body>
 
-<header class="header">
-  <div class="header-top">
-    <div class="logo-container">
-      <img class="logo" src="/logo.jpg" alt="Logo" onerror="this.style.display='none';">
-      <h1 class="brand-title">GTSTORE</h1>
+<header class="app-header">
+  <div class="header-main">
+    <div class="brand-wrap">
+      <img class="brand-logo" src="/logo.jpg" alt="Logo" onerror="this.style.display='none';">
+      <h1 class="brand-name">GTSTORE</h1>
     </div>
 
     <div class="header-actions">
-      <button id="btn-top-downloads" class="btn-action-top btn-top-downloads" type="button" tabindex="0">
-        <span>⚡ FICHEIROS LIBERADOS</span>
+      <button id="btn-top-downloads" class="btn-header-pill btn-top-downloads" type="button">
+        <span>⚡ LIBERADOS</span>
         <span id="top-timer-badge">(15:00)</span>
       </button>
 
-      <button id="btn-top-cart" class="btn-action-top" type="button" tabindex="0">
-        <span>🛒 CARRINHO</span>
+      <button id="btn-top-cart" class="btn-header-pill" type="button">
+        <span>🛒</span>
         <span id="top-cart-badge" class="cart-badge">0</span>
       </button>
     </div>
   </div>
 
-  <div class="header-controls">
-    <div id="server-status" class="server-status">
-      <span class="status-dot"></span>
-      <span id="server-status-text">Verificando servidor...</span>
+  <div class="chips-bar">
+    <div id="server-status" class="chip status-online">
+      <span class="chip-dot"></span>
+      <span id="server-status-text">Online</span>
     </div>
-    <div class="ps4-ip-bar">
-      <span class="ps4-ip-label">🎮 IP PS4:</span>
-      <input id="ps4-ip" class="ps4-ip-input" type="text" placeholder="127.0.0.1" autocomplete="off" tabindex="0">
-      <button id="btn-save-ip" class="btn-save-ip" type="button" tabindex="0">SALVAR</button>
+
+    <div class="chip">
+      <span>🎮 PS4 IP:</span>
+      <input id="ps4-ip" class="chip-ip-input" type="text" placeholder="127.0.0.1" autocomplete="off">
+      <button id="btn-save-ip" class="chip-btn-save" type="button">OK</button>
     </div>
   </div>
 </header>
 
 <main class="container">
-  <div id="notice" class="notice"></div>
+  <div id="toast" class="toast"></div>
 
   <!-- ABA: CATÁLOGO -->
   <div id="view-catalog">
-    <div class="toolbar">
-      <input id="search" class="search" type="text" placeholder="Pesquisar jogo..." autocomplete="off" tabindex="0">
-      <button id="refresh" class="refresh" type="button" tabindex="0">Atualizar</button>
+    <div class="search-wrap">
+      <input id="search" class="search-input" type="text" placeholder="Pesquisar jogos, CUSA..." autocomplete="off">
+      <button id="refresh" class="btn-refresh" type="button">↻</button>
     </div>
-    <section id="catalog" class="catalog">
-      <div style="grid-column: 1/-1; text-align: center; color: #777; padding: 30px;">Carregando catálogo...</div>
+
+    <section id="catalog" class="catalog-grid">
+      <div style="grid-column: 1/-1; text-align: center; color: #888; padding: 40px 0;">Carregando catálogo...</div>
     </section>
   </div>
 
   <!-- ABA: FICHEIROS LIBERADOS -->
   <div id="view-downloads" class="view-downloads">
     <div class="downloads-header">
-      <div>
+      <div class="downloads-title-row">
         <h2 class="downloads-title">✓ FICHEIROS LIBERADOS</h2>
-        <p style="margin: 4px 0 0; color: #aaa; font-size: 13px;">Ordem recomendada: GAME &rarr; UPDATE &rarr; DLC</p>
+        <span id="downloads-timer-badge" class="timer-pill">⏳ 15:00</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 10px;">
-        <span id="downloads-timer-badge" class="time-badge">⏳ 15:00 RESTANTES</span>
-        <button id="btn-back-catalog" class="btn-back" type="button" tabindex="0">← VOLTAR AO CATÁLOGO</button>
-      </div>
+      <button id="btn-back-catalog" class="btn-back-catalog" type="button">← VOLTAR AO CATÁLOGO</button>
     </div>
-    <div id="downloads-list" class="downloads-grid"></div>
+    <div id="downloads-list"></div>
   </div>
 </main>
 
-<!-- MODAL DO CARRINHO -->
+<!-- MODAL CARRINHO (BOTTOM SHEET) -->
 <div id="cart-overlay" class="overlay">
-  <div class="modal">
-    <h2>Carrinho de Jogos</h2>
-    <p>Os itens selecionados serão autorizados para o console:</p>
-    
-    <div>
-      <span style="font-size: 11px; color: #888;">ID DESTE PS4:</span><br>
-      <div id="display-console-id" class="console-badge">PS4-CARREGANDO</div>
-    </div>
+  <div class="bottom-sheet">
+    <div class="sheet-handle"></div>
+    <h2 class="sheet-title">Carrinho de Jogos</h2>
+    <div id="display-console-id" class="console-box">PS4-CARREGANDO</div>
 
     <div class="cart-summary">
       <div id="cart-items-list"></div>
-      <div class="summary-total">
-        <span>TOTAL A PAGAR:</span>
+      <div class="total-row">
+        <span>TOTAL:</span>
         <span id="cart-total-price">R$ 0,00</span>
       </div>
     </div>
 
-    <div class="qr-dual-container">
+    <div class="qr-grid">
       <div class="qr-card">
-        <p style="margin: 0 0 6px; font-size: 12px; font-weight: bold; color: var(--green);">1. Pagar via Pix</p>
-        <img class="qr-card-img" src="/qr-pix.jpg" alt="QR Pix" onerror="this.src='/qr-pix.png';">
-        <p style="margin: 6px 0 0; font-size: 10px; color: #888;">Aponte a câmera do banco</p>
+        <div style="font-size: 11px; font-weight: 800; color: var(--green); margin-bottom: 4px;">1. Pix</div>
+        <img class="qr-img" src="/qr-pix.jpg" alt="QR Pix" onerror="this.src='/qr-pix.png';">
       </div>
-
       <div class="qr-card">
-        <p style="margin: 0 0 6px; font-size: 12px; font-weight: bold; color: #25d366;">2. Enviar Comprovante</p>
-        <img class="qr-card-img" src="/qr.png" alt="QR WhatsApp" onerror="this.src='/qr (1).png';">
-        <p style="margin: 6px 0 0; font-size: 10px; color: #888;">Aponte o WhatsApp</p>
+        <div style="font-size: 11px; font-weight: 800; color: #25d366; margin-bottom: 4px;">2. Comprovante</div>
+        <img class="qr-img" src="/qr.png" alt="WhatsApp" onerror="this.src='/qr (1).png';">
       </div>
     </div>
 
-    <div class="whatsapp-box">WhatsApp Suporte: (64) 99225-9727</div>
+    <button id="btn-checkout-now" class="btn-checkout" type="button">SOLICITAR LIBERAÇÃO</button>
 
-    <button id="btn-checkout-now" class="btn-main-checkout" type="button">SOLICITAR LIBERAÇÃO</button>
-
-    <div class="modal-buttons">
-      <button id="btn-clear-cart" class="btn-sec" type="button">LIMPAR</button>
-      <button id="btn-close-cart" class="btn-sec" type="button">FECHAR</button>
+    <div class="sheet-actions">
+      <button id="btn-clear-cart" class="btn-sheet-sec" type="button">LIMPAR</button>
+      <button id="btn-close-cart" class="btn-sheet-sec" type="button">FECHAR</button>
     </div>
   </div>
 </div>
@@ -418,19 +431,18 @@
 "use strict";
 
 (() => {
-  // --- ESTADO GLOBAL ---
   const isPS4Browser = /PlayStation 4/i.test(navigator.userAgent);
   let allPackages = [];
   let games = [];
   let statusPollTimer = null;
   let countdownTimer = null;
   const POLL_INTERVAL_MS = 2500;
-  const MAX_POLL_ATTEMPTS = 120; // 5 minutos
+  const MAX_POLL_ATTEMPTS = 120;
 
   let cart = JSON.parse(localStorage.getItem("gtstore_cart") || "[]");
 
   // =========================================================================
-  // 1. IDENTIFICADORES E IP LOCAL
+  // 1. IDENTIFICADORES E IP
   // =========================================================================
   function getOrCreateConsoleId() {
     let cid = localStorage.getItem("gtstore_cid");
@@ -448,14 +460,14 @@
   }
 
   function setPs4Ip(ip) {
-    const limpo = ip.trim();
-    localStorage.setItem("gtstore_ps4_ip", limpo);
+    const clean = ip.trim();
+    localStorage.setItem("gtstore_ps4_ip", clean);
     const input = document.getElementById("ps4-ip");
-    if (input) input.value = limpo;
+    if (input) input.value = clean;
   }
 
   // =========================================================================
-  // 2. AGRUPAMENTO E NORMALIZAÇÃO DE PACOTES
+  // 2. AGRUPAMENTO E NORMALIZAÇÃO
   // =========================================================================
   function getItemIndex(pkg) {
     return pkg.catalogIndex !== undefined ? pkg.catalogIndex : (pkg.id !== undefined ? pkg.id : 0);
@@ -469,17 +481,22 @@
   }
 
   function isGameBase(pkg) {
-    const cat = String(pkg.category || "").toLowerCase();
-    const type = String(pkg.type || "").toUpperCase();
-    return cat === "gd" || type === "GAME";
+    const cat = String(pkg.category || "").toLowerCase().trim();
+    const type = String(pkg.type || "").toUpperCase().trim();
+    return cat === "gd" || cat === "gda" || type === "GAME";
   }
 
   function getPackageTypeTag(pkg) {
-    const cat = String(pkg.category || "").toLowerCase();
-    const type = String(pkg.type || "").toUpperCase();
-    if (cat === "gd" || type === "GAME") return "GAME";
-    if (cat === "gp" || type === "UPDATE") return "UPDATE";
-    return "DLC";
+    const cat = String(pkg.category || "").toLowerCase().trim();
+    const type = String(pkg.type || "").toUpperCase().trim();
+    if (cat === "gd" || cat === "gda" || type === "GAME") return "GAME";
+    if (cat === "gp" || type === "UPDATE" || type === "PATCH") return "UPDATE";
+    if (cat === "ac" || type === "DLC" || type === "ADDCONT") return "DLC";
+
+    const text = (String(pkg.title || "") + " " + String(pkg.fileName || "")).toUpperCase();
+    if (text.includes("UPDATE") || text.includes("PATCH") || text.includes("ATUALIZA")) return "UPDATE";
+    if (text.includes("DLC") || text.includes("EXPANS") || text.includes("ADDON") || text.includes("ADD-ON")) return "DLC";
+    return "GAME";
   }
 
   function extractCusa(pkg) {
@@ -529,6 +546,7 @@
           id: getItemIndex(item),
           key: famKey,
           cusa: cusa,
+          contentId: item.contentId || "",
           title: cleanTitle,
           cover: getItemCoverUrl(item),
           associatedCusas: cusa ? [cusa] : []
@@ -540,11 +558,26 @@
       if (!isGameBase(extra)) {
         const extraFam = getGameFamilyKey(extra);
         const extraCusa = extractCusa(extra);
+        const extraContentId = String(extra.contentId || "").toUpperCase();
+
+        let parent = null;
         if (catalogMap.has(extraFam)) {
-          const parent = catalogMap.get(extraFam);
-          if (extraCusa && !parent.associatedCusas.includes(extraCusa)) {
-            parent.associatedCusas.push(extraCusa);
+          parent = catalogMap.get(extraFam);
+        } else {
+          for (const p of catalogMap.values()) {
+            if (extraCusa && p.cusa && extraCusa === p.cusa) {
+              parent = p;
+              break;
+            }
+            if (extraContentId && p.contentId && (extraContentId === p.contentId || (p.cusa && extraContentId.includes(p.cusa)))) {
+              parent = p;
+              break;
+            }
           }
+        }
+
+        if (parent && extraCusa && !parent.associatedCusas.includes(extraCusa)) {
+          parent.associatedCusas.push(extraCusa);
         }
       }
     });
@@ -575,6 +608,7 @@
         title: game.title,
         id: game.id,
         cusa: game.cusa,
+        contentId: game.contentId || "",
         associatedCusas: game.associatedCusas || [],
         cover: game.cover
       });
@@ -605,10 +639,10 @@
       const row = document.createElement("div");
       row.className = "summary-row";
       row.innerHTML = `
-        <span><strong>${index + 1}.</strong> ${item.title}</span>
+        <span style="font-weight:700;">${index + 1}. ${item.title}</span>
         <div style="display:flex; align-items:center;">
-          <span style="font-weight:bold; color:var(--green);">R$ 10,00</span>
-          <button class="btn-remove-item" onclick="window.gtRemoveCartItem('${item.key}')">✕</button>
+          <span style="font-weight:bold; color:var(--green); margin-right:4px;">R$ 10,00</span>
+          <button class="btn-del-item" onclick="window.gtRemoveCartItem('${item.key}')">✕</button>
         </div>
       `;
       list.appendChild(row);
@@ -626,7 +660,7 @@
   window.gtRemoveCartItem = removeFromCart;
 
   // =========================================================================
-  // 4. CHECKOUT E POLLING DE AUTORIZAÇÃO
+  // 4. CHECKOUT E POLLING
   // =========================================================================
   async function iniciarCheckout() {
     if (cart.length === 0) return;
@@ -647,8 +681,7 @@
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-
-      if (!data.success || !data.orderId) throw new Error(data.error || "ID de pedido inválido.");
+      if (!data.success || !data.orderId) throw new Error(data.error || "Erro no pedido.");
 
       atualizarMensagemModal(
         `Solicitação <b>#${data.orderId}</b> enviada!<br><br>` +
@@ -706,7 +739,7 @@
   }
 
   // =========================================================================
-  // 5. JANELA DE DOWNLOADS & INJEÇÃO DPI (PORTA 9090)
+  // 5. DOWNLOADS & STEPPER (1º GAME -> 2º UPDATE -> 3º DLC)
   // =========================================================================
   function activateGrantedAccess(approvedGames) {
     const expiresAt = Date.now() + (15 * 60 * 1000);
@@ -745,7 +778,7 @@
       const fmt = String(min).padStart(2, "0") + ":" + String(sec).padStart(2, "0");
 
       document.getElementById("top-timer-badge").textContent = `(${fmt})`;
-      document.getElementById("downloads-timer-badge").textContent = `⏳ ${fmt} RESTANTES`;
+      document.getElementById("downloads-timer-badge").textContent = `⏳ ${fmt}`;
     }
 
     tick();
@@ -760,8 +793,28 @@
     }
 
     const grant = JSON.parse(raw);
-    const approvedKeys = (grant.games || []).map(it => String(it.key || "").toUpperCase().trim());
-    const approvedIds = (grant.games || []).map(it => it.id);
+    const approvedGames = grant.games || [];
+    const approvedKeys = approvedGames.map(it => String(it.key || "").toUpperCase().trim());
+    const approvedIds = approvedGames.map(it => it.id);
+    const approvedCusas = [];
+    const approvedContentIds = [];
+
+    approvedGames.forEach(it => {
+      if (it.cusa) approvedCusas.push(String(it.cusa).toUpperCase().trim());
+      if (it.associatedCusas && Array.isArray(it.associatedCusas)) {
+        it.associatedCusas.forEach(c => approvedCusas.push(String(c).toUpperCase().trim()));
+      }
+      if (it.contentId) approvedContentIds.push(String(it.contentId).toUpperCase().trim());
+
+      const basePkg = allPackages.find(p => getItemIndex(p) === it.id);
+      if (basePkg) {
+        const c = extractCusa(basePkg);
+        if (c && !approvedCusas.includes(c)) approvedCusas.push(c);
+        if (basePkg.contentId && !approvedContentIds.includes(basePkg.contentId.toUpperCase())) {
+          approvedContentIds.push(basePkg.contentId.toUpperCase());
+        }
+      }
+    });
 
     document.getElementById("view-catalog").style.display = "none";
     const viewDl = document.getElementById("view-downloads");
@@ -771,44 +824,91 @@
     listContainer.innerHTML = "";
 
     const availableFiles = allPackages.filter(pkg => {
-      const fam = getGameFamilyKey(pkg).toUpperCase().trim();
       const idx = getItemIndex(pkg);
-      return approvedKeys.includes(fam) || approvedIds.includes(idx);
+      if (approvedIds.includes(idx)) return true;
+
+      const fam = getGameFamilyKey(pkg).toUpperCase().trim();
+      if (approvedKeys.includes(fam)) return true;
+
+      const cusa = extractCusa(pkg);
+      if (cusa && approvedCusas.includes(cusa)) return true;
+
+      const cid = String(pkg.contentId || "").toUpperCase().trim();
+      if (cid && approvedContentIds.some(acId => acId === cid || (cusa && acId.includes(cusa)))) return true;
+
+      return false;
     });
 
     if (availableFiles.length === 0) {
-      listContainer.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">Nenhum arquivo encontrado para este pacote.</div>';
+      listContainer.innerHTML = '<div style="color: #888; text-align: center; padding: 30px;">Nenhum arquivo encontrado.</div>';
       return;
     }
 
-    const order = { "GAME": 1, "UPDATE": 2, "DLC": 3 };
-    availableFiles.sort((a, b) => (order[getPackageTypeTag(a)] || 4) - (order[getPackageTypeTag(b)] || 4));
+    // Ordenação obrigatória: GAME -> UPDATE -> DLC
+    const orderPriority = { "GAME": 1, "UPDATE": 2, "DLC": 3 };
+    availableFiles.sort((a, b) => {
+      const famA = getGameFamilyKey(a);
+      const famB = getGameFamilyKey(b);
+      if (famA !== famB) return famA.localeCompare(famB);
+
+      const pA = orderPriority[getPackageTypeTag(a)] || 4;
+      const pB = orderPriority[getPackageTypeTag(b)] || 4;
+      if (pA !== pB) return pA - pB;
+
+      return getItemIndex(a) - getItemIndex(b);
+    });
+
+    let lastFam = null;
+    let stepNum = 1;
+    let currentGroupContainer = null;
 
     availableFiles.forEach((pkg, index) => {
+      const fam = getGameFamilyKey(pkg);
+      if (fam !== lastFam) {
+        lastFam = fam;
+        stepNum = 1;
+
+        const groupDiv = document.createElement("div");
+        groupDiv.className = "package-group";
+
+        if (approvedGames.length > 1) {
+          const groupTitle = document.createElement("div");
+          groupTitle.className = "package-group-title";
+          groupTitle.textContent = fam.replace(/_/g, " ");
+          groupDiv.appendChild(groupTitle);
+        }
+
+        listContainer.appendChild(groupDiv);
+        currentGroupContainer = groupDiv;
+      } else {
+        stepNum++;
+      }
+
       const card = document.createElement("div");
-      card.className = "download-item-card";
+      card.className = "timeline-card";
 
       const typeTag = getPackageTypeTag(pkg);
-      const badgeClass = "badge-type " + (typeTag === "GAME" ? "badge-game" : typeTag === "UPDATE" ? "badge-update" : "badge-dlc");
-      const sizeStr = pkg.size ? " • " + (pkg.size / (1024*1024*1024)).toFixed(2) + " GB" : "";
+      const badgeClass = "badge-kind " + (typeTag === "GAME" ? "game" : typeTag === "UPDATE" ? "update" : "dlc");
+      const sizeStr = pkg.size ? (pkg.size / (1024*1024*1024)).toFixed(2) + " GB" : "";
 
       card.innerHTML = `
-        <img class="download-cover" src="${getItemCoverUrl(pkg)}" onerror="this.style.display='none';">
-        <div class="download-info">
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div class="step-number">${stepNum}º</div>
+        <div class="timeline-info">
+          <h3 class="timeline-title">${pkg.title}</h3>
+          <div class="timeline-meta">
             <span class="${badgeClass}">${typeTag}</span>
-            <h3 class="download-title">${pkg.title}</h3>
+            <span>${sizeStr}</span>
+            <span>• ${extractCusa(pkg)}</span>
           </div>
-          <p class="download-sub">${extractCusa(pkg)}${sizeStr}</p>
         </div>
-        <button id="btn-dl-${index}" class="btn-install" type="button">ENVIAR AO PS4</button>
+        <button id="btn-dl-${index}" class="btn-send-step" type="button">ENVIAR</button>
       `;
 
       card.querySelector(`#btn-dl-${index}`).onclick = function() {
         injetarItemNoPs4(pkg, this);
       };
 
-      listContainer.appendChild(card);
+      currentGroupContainer.appendChild(card);
     });
   }
 
@@ -816,11 +916,15 @@
     const originalText = button.textContent;
     button.disabled = true;
     button.textContent = "ENVIANDO...";
+    button.style.background = "#555";
 
     const targetIp = getPs4Ip() || "127.0.0.1";
-    const manifestUrl = window.location.origin + `/json/${getItemIndex(pkg)}.json`;
+    const manifestUrl = `/json/${getItemIndex(pkg)}.json`;
 
     try {
+      const typeTag = getPackageTypeTag(pkg);
+      const catCode = pkg.category || (typeTag === "GAME" ? "gd" : typeTag === "UPDATE" ? "gp" : "ac");
+
       const res = await fetch('/api/local/inject', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -829,7 +933,7 @@
           manifestUrl: manifestUrl,
           title: pkg.title || "Jogo PS4",
           contentId: pkg.contentId || extractCusa(pkg) || "CUSA00000",
-          category: pkg.category || (isGameBase(pkg) ? "gd" : "gp"),
+          category: catCode,
           size: pkg.size || 0,
           iconUrl: getItemCoverUrl(pkg)
         })
@@ -838,19 +942,17 @@
       const data = await res.json();
       if (data.success) {
         button.textContent = "ENVIADO ✓";
-        button.style.background = "#0070d1";
-        button.style.color = "#fff";
-        exibirNotificacao("Payload DPI injetado com sucesso no PS4!", "success");
-        return;
+        button.style.background = "var(--green)";
+        button.style.color = "#000";
+        exibirNotificacao(`✓ ${pkg.title} enviado ao PS4!`, "success");
       } else {
-        throw new Error(data.error || "Falha na injeção do payload");
+        throw new Error(data.error || "Erro no envio");
       }
     } catch (err) {
-      console.warn("[GTSTORE] Falha na injeção via ponte local:", err);
       button.disabled = false;
-      button.textContent = "FALHOU";
+      button.textContent = "TENTAR";
       button.style.background = "var(--red)";
-      exibirNotificacao("Erro ao injetar DPI: " + err.message, "error");
+      exibirNotificacao("Erro: " + err.message, "error");
     }
   }
 
@@ -873,31 +975,30 @@
 
     container.innerHTML = "";
     if (!filtered.length) {
-      container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #777; padding: 30px;">Nenhum jogo encontrado.</div>';
+      container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #777; padding: 40px 0;">Nenhum jogo encontrado.</div>';
       return;
     }
 
     filtered.forEach(game => {
       const card = document.createElement("article");
       card.className = "game-card";
-      card.setAttribute("tabindex", "0");
 
       const inCart = cart.some(it => it.key === game.key);
 
       card.innerHTML = `
-        <div class="cover-wrap">
-          <img class="cover" src="${game.cover}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'cover-placeholder\\'>${game.title}</div>';">
+        <div class="cover-box">
+          <img class="cover-img" src="${game.cover}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'cover-placeholder\\'>${game.title}</div>';">
         </div>
-        <div class="game-content">
+        <div class="game-details">
           <h2 class="game-title">${game.title}</h2>
-          <p class="game-id">${game.associatedCusas.length > 0 ? game.associatedCusas.join(" • ") : game.cusa}</p>
-          <button class="btn-cart-action ${inCart ? 'in-cart' : ''}" type="button" tabindex="0">
-            ${inCart ? '✓ NO CARRINHO (REMOVER)' : '+ ADICIONAR AO CARRINHO'}
+          <p class="game-cusa">${game.associatedCusas.length > 0 ? game.associatedCusas.join(" • ") : game.cusa}</p>
+          <button class="btn-cart ${inCart ? 'in-cart' : ''}" type="button">
+            ${inCart ? 'REMOVER' : '+ ADICIONAR'}
           </button>
         </div>
       `;
 
-      card.querySelector(".btn-cart-action").onclick = () => toggleCart(game);
+      card.querySelector(".btn-cart").onclick = () => toggleCart(game);
       container.appendChild(card);
     });
   }
@@ -919,21 +1020,21 @@
       const res = await fetch("/api/status", { cache: "no-store" });
       if (!res.ok) throw new Error();
       const data = await res.json();
-      badge.className = "server-status status-online";
-      text.textContent = "Servidor Online";
+      badge.className = "chip status-online";
+      text.textContent = "Online";
 
       const ipInput = document.getElementById("ps4-ip");
       if (!localStorage.getItem("gtstore_ps4_ip") && !ipInput.value) {
         ipInput.value = isPS4Browser ? "127.0.0.1" : (data.clientIp || "127.0.0.1");
       }
     } catch (_) {
-      badge.className = "server-status status-offline";
-      text.textContent = "Servidor Offline";
+      badge.className = "chip status-offline";
+      text.textContent = "Offline";
     }
   }
 
   // =========================================================================
-  // 7. HELPERS VISUAIS (MODAL & TOAST)
+  // 7. TOAST & MODAL DE ESPERA
   // =========================================================================
   function exibirModalProcessamento(textoHtml) {
     let modal = document.getElementById("gt-modal-proc");
@@ -941,17 +1042,17 @@
       modal = document.createElement("div");
       modal.id = "gt-modal-proc";
       modal.style.cssText = `
-        position: fixed; inset: 0; background: rgba(3, 5, 8, 0.88); backdrop-filter: blur(8px);
+        position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px);
         display: flex; align-items: center; justify-content: center; z-index: 10000;
       `;
       modal.innerHTML = `
-        <div style="background: rgba(14, 18, 27, 0.95); border: 1px solid var(--primary);
-                    border-radius: 16px; padding: 32px; max-width: 440px; width: 88%; text-align: center; color: #fff;">
-          <div style="width: 38px; height: 38px; border: 4px solid rgba(0, 112, 209, 0.2);
-                      border-top-color: var(--primary); border-radius: 50%; margin: 0 auto 16px;
+        <div style="background: #0f131c; border: 1px solid var(--primary);
+                    border-radius: 16px; padding: 24px; max-width: 320px; width: 85%; text-align: center; color: #fff;">
+          <div style="width: 32px; height: 32px; border: 3px solid rgba(0, 112, 209, 0.2);
+                      border-top-color: var(--primary); border-radius: 50%; margin: 0 auto 12px;
                       animation: gt-spin 1s linear infinite;"></div>
-          <h3 style="margin: 0 0 10px; font-size: 18px;">Aguardando Liberação</h3>
-          <div id="gt-modal-msg" style="font-size: 13px; line-height: 1.5; color: #a5c7eb;"></div>
+          <h3 style="margin: 0 0 8px; font-size: 16px;">Aguardando Liberação</h3>
+          <div id="gt-modal-msg" style="font-size: 12px; line-height: 1.4; color: #a5c7eb;"></div>
         </div>
       `;
       const style = document.createElement("style");
@@ -974,14 +1075,14 @@
   }
 
   function exibirNotificacao(texto, tipo = "info") {
-    const el = document.getElementById("notice");
+    const el = document.getElementById("toast");
     el.textContent = texto;
-    el.className = "notice visible " + (tipo === "success" ? "success" : tipo === "error" ? "error" : "");
-    setTimeout(() => el.classList.remove("visible"), 4500);
+    el.className = "toast visible " + (tipo === "success" ? "success" : tipo === "error" ? "error" : "");
+    setTimeout(() => el.classList.remove("visible"), 3500);
   }
 
   // =========================================================================
-  // 8. EVENTOS E INICIALIZAÇÃO
+  // 8. EVENTOS
   // =========================================================================
   document.getElementById("search").addEventListener("input", renderCatalog);
   document.getElementById("refresh").addEventListener("click", () => { checkServerStatus(); loadPackages(); });
