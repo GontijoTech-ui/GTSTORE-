@@ -4,45 +4,60 @@ import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 
-data class OrderRequest(
+enum class OrderStatus {
+    PENDING,
+    APPROVED,
+    REJECTED
+}
+
+data class Order(
     val id: String = "",
-    val consoleId: String = "",
-    val ps4Ip: String = "",
-    val status: String = "pending",
+    val targetPs4Ip: String = "",
+    val status: OrderStatus = OrderStatus.PENDING,
     val createdAt: Long = 0L,
-    val items: List<String> = emptyList()
+    val items: List<String> = emptyList(),
+    val consoleId: String = ""
 )
 
 object OrderManager {
-    private val database = FirebaseDatabase.getInstance()
-    private val ordersRef = database.getReference("orders")
 
-    private val _pendingOrders = MutableStateFlow<List<OrderRequest>>(emptyList())
-    val pendingOrders: StateFlow<List<OrderRequest>> = _pendingOrders
+    private val database: FirebaseDatabase by lazy { FirebaseDatabase.getInstance() }
+    private val ordersRef by lazy { database.getReference("orders") }
+
+    private val listeners = mutableListOf<() -> Unit>()
+    private var cachedOrders: List<Order> = emptyList()
+    private var isListening = false
 
     /**
-     * Inicia a escuta em tempo real dos pedidos no Firebase.
-     * Assim que o cliente clicar no site, o app recebe o pedido imediatamente.
+     * Inicia a escuta em tempo real da nuvem Firebase.
      */
     fun startListening() {
+        if (isListening) return
+        isListening = true
+
         ordersRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                val list = mutableListOf<OrderRequest>()
+                val list = mutableListOf<Order>()
+
                 for (child in snapshot.children) {
-                    val status = child.child("status").getValue(String::class.java) ?: "pending"
-                    if (status == "pending") {
+                    val statusStr = child.child("status").getValue(String::class.java) ?: "pending"
+                    val status = when (statusStr.lowercase()) {
+                        "approved" -> OrderStatus.APPROVED
+                        "rejected" -> OrderStatus.REJECTED
+                        else -> OrderStatus.PENDING
+                    }
+
+                    if (status == OrderStatus.PENDING) {
                         val itemsList = mutableListOf<String>()
                         child.child("items").children.forEach { itemSnap ->
                             itemSnap.getValue(String::class.java)?.let { itemsList.add(it) }
                         }
 
-                        val order = OrderRequest(
+                        val order = Order(
                             id = child.key ?: "",
+                            targetPs4Ip = child.child("ps4Ip").getValue(String::class.java) ?: "",
                             consoleId = child.child("consoleId").getValue(String::class.java) ?: "PS4",
-                            ps4Ip = child.child("ps4Ip").getValue(String::class.java) ?: "127.0.0.1",
                             status = status,
                             createdAt = child.child("createdAt").getValue(Long::class.java) ?: 0L,
                             items = itemsList
@@ -50,33 +65,49 @@ object OrderManager {
                         list.add(order)
                     }
                 }
-                _pendingOrders.value = list.reversed() // Mais recentes no topo
+
+                cachedOrders = list.reversed()
+                notifyListeners()
             }
 
             override fun onCancelled(error: DatabaseError) {
-                // Erro de conexão ou regras
+                // Falha de leitura da base de dados
             }
         })
     }
 
-    /**
-     * Aprova o pedido e libera o download na tela do cliente.
-     */
-    fun approveOrder(orderId: String, onComplete: () -> Unit = {}) {
-        val updates = mapOf(
-            "status" to "approved",
-            "approvedAt" to System.currentTimeMillis()
-        )
-        ordersRef.child(orderId).updateChildren(updates).addOnCompleteListener {
-            onComplete()
+    fun listPendingOrders(): List<Order> = cachedOrders
+
+    fun addListener(listener: () -> Unit) {
+        if (!listeners.contains(listener)) {
+            listeners.add(listener)
         }
     }
 
+    fun removeListener(listener: () -> Unit) {
+        listeners.remove(listener)
+    }
+
+    private fun notifyListeners() {
+        listeners.forEach { it.invoke() }
+    }
+
     /**
-     * Recusa o pedido.
+     * Atualiza o estado na nuvem Firebase e liberta o download no PS4.
      */
-    fun rejectOrder(orderId: String, onComplete: () -> Unit = {}) {
-        ordersRef.child(orderId).child("status").setValue("rejected").addOnCompleteListener {
+    fun updateStatus(orderId: String, newStatus: OrderStatus, onComplete: () -> Unit = {}) {
+        val statusStr = when (newStatus) {
+            OrderStatus.APPROVED -> "approved"
+            OrderStatus.REJECTED -> "rejected"
+            OrderStatus.PENDING -> "pending"
+        }
+
+        val updates = mapOf(
+            "status" to statusStr,
+            "approvedAt" to System.currentTimeMillis()
+        )
+
+        ordersRef.child(orderId).updateChildren(updates).addOnCompleteListener {
             onComplete()
         }
     }
