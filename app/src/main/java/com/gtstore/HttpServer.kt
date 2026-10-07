@@ -14,11 +14,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.Executors
 
 /**
  * Modelo de dados com o estado atual do servidor HTTP.
@@ -29,83 +26,6 @@ data class ServerStatus(
     val localAddress: String = "127.0.0.1",
     val activeConnections: Int = 0
 )
-
-/**
- * Estados do ciclo de vida das solicitações de checkout.
- */
-enum class OrderStatus {
-    PENDING,
-    APPROVED,
-    REJECTED
-}
-
-/**
- * Representação em memória de um pedido de checkout.
- */
-data class Order(
-    val id: String,
-    val items: List<String>,
-    var targetPs4Ip: String = "",
-    var status: OrderStatus = OrderStatus.PENDING,
-    val timestamp: Long = System.currentTimeMillis()
-)
-
-/**
- * Gestor thread-safe em memória com suporte a observadores para a interface nativa.
- */
-object OrderManager {
-    private val orders = ConcurrentHashMap<String, Order>()
-    private val listeners = CopyOnWriteArrayList<() -> Unit>()
-
-    /**
-     * Regista um ouvinte para ser chamado sempre que um pedido for criado ou alterado.
-     */
-    fun addListener(listener: () -> Unit) {
-        listeners.add(listener)
-    }
-
-    /**
-     * Remove o ouvinte quando a tela/aba for destruída ou pausada.
-     */
-    fun removeListener(listener: () -> Unit) {
-        listeners.remove(listener)
-    }
-
-    private fun notifyListeners() {
-        listeners.forEach { listener ->
-            try {
-                listener.invoke()
-            } catch (e: Exception) {
-                Log.e("OrderManager", "Erro ao notificar ouvinte: ${e.message}")
-            }
-        }
-    }
-
-    fun createOrder(items: List<String>, targetIp: String): Order {
-        val id = UUID.randomUUID().toString().substring(0, 8).uppercase()
-        val order = Order(id = id, items = items, targetPs4Ip = targetIp)
-        orders[id] = order
-        notifyListeners() // Avisa a interface do Android imediatamente
-        return order
-    }
-
-    fun getOrder(id: String): Order? = orders[id]
-
-    fun updateStatus(id: String, status: OrderStatus): Boolean {
-        val order = orders[id] ?: return false
-        order.status = status
-        notifyListeners() // Avisa a interface da mudança de estado
-        return true
-    }
-
-    fun listPendingOrders(): List<Order> {
-        return orders.values.filter { it.status == OrderStatus.PENDING }.sortedByDescending { it.timestamp }
-    }
-
-    fun listAllOrders(): List<Order> {
-        return orders.values.sortedByDescending { it.timestamp }
-    }
-}
 
 /**
  * Servidor HTTP integrado para Android associado ao CatalogManager.
