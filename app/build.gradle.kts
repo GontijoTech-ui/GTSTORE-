@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -44,6 +45,10 @@ dependencies {
     implementation("androidx.compose.material3:material3")
 
     implementation("androidx.documentfile:documentfile:1.0.1")
+
+    // Firebase (Gerenciado via BoM)
+    implementation(platform("com.google.firebase:firebase-bom:33.4.0"))
+    implementation("com.google.firebase:firebase-database")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
