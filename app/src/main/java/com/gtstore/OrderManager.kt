@@ -1,10 +1,14 @@
 package com.gtstore
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
 import android.util.Log
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -96,12 +100,34 @@ object OrderManager {
     }
 
     /**
-     * Sincroniza a lista de jogos locais diretamente no nó /packages do Firebase.
+     * Sincroniza a lista de jogos locais e as respetivas capas diretamente no nó /packages do Firebase.
      */
-    fun syncCatalogToFirebase(items: List<CatalogItem>) {
+    fun syncCatalogToFirebase(items: List<CatalogItem>, catalogManager: CatalogManager) {
         try {
             val packagesRef = database.getReference("packages")
             val catalogPayload = items.map { item ->
+                // Lê os bytes da imagem local e converte em thumbnail leve Base64
+                val iconBytes = catalogManager.getIcon(item)
+                val iconBase64 = if (iconBytes != null && iconBytes.isNotEmpty()) {
+                    try {
+                        val bmp = BitmapFactory.decodeByteArray(iconBytes, 0, iconBytes.size)
+                        if (bmp != null) {
+                            val targetW = 260
+                            val targetH = (bmp.height.toFloat() / bmp.width * targetW).toInt().coerceAtLeast(1)
+                            val scaled = Bitmap.createScaledBitmap(bmp, targetW, targetH, true)
+                            val stream = ByteArrayOutputStream()
+                            scaled.compress(Bitmap.CompressFormat.JPEG, 80, stream)
+                            "data:image/jpeg;base64," + Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
+                        } else {
+                            "data:image/png;base64," + Base64.encodeToString(iconBytes, Base64.NO_WRAP)
+                        }
+                    } catch (_: Exception) {
+                        "data:image/png;base64," + Base64.encodeToString(iconBytes, Base64.NO_WRAP)
+                    }
+                } else {
+                    ""
+                }
+
                 mapOf(
                     "id" to item.catalogIndex,
                     "catalogIndex" to item.catalogIndex,
@@ -115,13 +141,14 @@ object OrderManager {
                     "type" to item.type,
                     "contentId" to item.contentId,
                     "digest" to item.digest,
-                    "url" to item.url
+                    "url" to item.url,
+                    "iconUrl" to iconBase64
                 )
             }
 
             packagesRef.setValue(catalogPayload)
                 .addOnSuccessListener {
-                    Log.i(TAG, "Catálogo sincronizado no Firebase com sucesso (${items.size} itens).")
+                    Log.i(TAG, "Catálogo com capas sincronizado no Firebase (${items.size} itens).")
                 }
                 .addOnFailureListener { error ->
                     Log.e(TAG, "Erro ao enviar catálogo para o Firebase: ${error.message}")
