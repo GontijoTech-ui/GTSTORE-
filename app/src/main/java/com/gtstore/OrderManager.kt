@@ -95,6 +95,42 @@ object OrderManager {
         }
     }
 
+    /**
+     * Sincroniza a lista de jogos locais diretamente no nó /packages do Firebase.
+     */
+    fun syncCatalogToFirebase(items: List<CatalogItem>) {
+        try {
+            val packagesRef = database.getReference("packages")
+            val catalogPayload = items.map { item ->
+                mapOf(
+                    "id" to item.catalogIndex,
+                    "catalogIndex" to item.catalogIndex,
+                    "index" to item.indexString,
+                    "title" to item.title,
+                    "fileName" to item.fileName,
+                    "file" to "${item.indexString}.pkg",
+                    "size" to item.size,
+                    "version" to item.version,
+                    "category" to item.category,
+                    "type" to item.type,
+                    "contentId" to item.contentId,
+                    "digest" to item.digest,
+                    "url" to item.url
+                )
+            }
+
+            packagesRef.setValue(catalogPayload)
+                .addOnSuccessListener {
+                    Log.i(TAG, "Catálogo sincronizado no Firebase com sucesso (${items.size} itens).")
+                }
+                .addOnFailureListener { error ->
+                    Log.e(TAG, "Erro ao enviar catálogo para o Firebase: ${error.message}")
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro na rotina de sincronização do catálogo: ${e.message}")
+        }
+    }
+
     fun addListener(listener: () -> Unit) {
         if (!listeners.contains(listener)) {
             listeners.add(listener)
@@ -121,7 +157,6 @@ object OrderManager {
         orders[id] = order
         notifyListeners()
 
-        // Sincroniza também na nuvem caso venha via HTTP local
         try {
             val payload = mapOf(
                 "consoleId" to "PS4",
