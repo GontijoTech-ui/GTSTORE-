@@ -63,6 +63,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -112,6 +113,16 @@ class MainActivity : ComponentActivity() {
 
         // Inicia a escuta em tempo real dos pedidos no Firebase Realtime Database
         OrderManager.startListening()
+
+        // Sincroniza silenciosamente o catálogo do telemóvel com o Firebase em segundo plano
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val localItems = CatalogManager(applicationContext).getAll()
+                if (localItems.isNotEmpty()) {
+                    OrderManager.syncCatalogToFirebase(localItems)
+                }
+            } catch (_: Exception) {}
+        }
 
         setContent {
             val colorScheme = darkColorScheme(
@@ -519,11 +530,16 @@ fun CatalogManagerScreen(
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
                         try {
-                            catalogManager.registerOrUpdateCaptured(
+                            val opResult = catalogManager.registerOrUpdateCaptured(
                                 sourceUrl = captureResult.sourceUrl,
                                 directUrl = captureResult.directUrl,
                                 fileName = captureResult.fileName
                             )
+                            // Atualiza a nuvem com o novo catálogo após a captura
+                            if (opResult.success) {
+                                OrderManager.syncCatalogToFirebase(catalogManager.getAll())
+                            }
+                            opResult
                         } catch (e: Exception) {
                             CatalogManager.OperationResult(
                                 success = false,
@@ -620,7 +636,12 @@ fun CatalogManagerScreen(
                                 scope.launch {
                                     val result = withContext(Dispatchers.IO) {
                                         try {
-                                            catalogManager.registerOrUpdate(normalizedUrl)
+                                            val opResult = catalogManager.registerOrUpdate(normalizedUrl)
+                                            // Atualiza a nuvem com o novo catálogo salvo diretamente
+                                            if (opResult.success) {
+                                                OrderManager.syncCatalogToFirebase(catalogManager.getAll())
+                                            }
+                                            opResult
                                         } catch (e: Exception) {
                                             CatalogManager.OperationResult(
                                                 success = false,
@@ -940,11 +961,15 @@ fun RegisteredCatalogScreen(
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
                         try {
-                            catalogManager.registerOrUpdateCaptured(
+                            val opResult = catalogManager.registerOrUpdateCaptured(
                                 sourceUrl = captureResult.sourceUrl,
                                 directUrl = captureResult.directUrl,
                                 fileName = captureResult.fileName
                             )
+                            if (opResult.success) {
+                                OrderManager.syncCatalogToFirebase(catalogManager.getAll())
+                            }
+                            opResult
                         } catch (e: Exception) {
                             CatalogManager.OperationResult(
                                 success = false,
@@ -1465,7 +1490,7 @@ fun SettingsScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF141414)),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text("VOLTAR", color = TextWhite, fontWeight = FontWeight.Bold)
+                Text("VOLTAR", color = TextWhite)
             }
             Spacer(modifier = Modifier.height(16.dp))
         }
