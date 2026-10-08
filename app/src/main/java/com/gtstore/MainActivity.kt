@@ -1469,8 +1469,8 @@ fun AdminScreen(
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
@@ -1482,7 +1482,7 @@ fun AdminScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = if (pendingOrders.isNotEmpty()) "PEDIDOS PENDENTES" else "NENHUMA SOLICITAÇÃO",
-                            fontSize = 16.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (pendingOrders.isNotEmpty()) GreenLed else TextMuted
                         )
@@ -1491,14 +1491,14 @@ fun AdminScreen(
                     Text(
                         text = "Carrinhos aguardando liberação: ${pendingOrders.size}",
                         color = TextWhite,
-                        fontSize = 15.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold
                     )
 
                     Text(
                         text = "Ao aprovar, o cliente recebe a liberação imediata no navegador.",
                         color = TextMuted,
-                        fontSize = 13.sp
+                        fontSize = 12.sp
                     )
                 }
             }
@@ -1525,92 +1525,60 @@ fun AdminScreen(
                 items = pendingOrders,
                 key = { it.id }
             ) { order ->
+                // CARD DO PEDIDO COMPACTO E MODERNO
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = CardBlack),
-                    border = BorderStroke(1.dp, Color(0xFF0070CC)),
+                    border = BorderStroke(1.dp, Color(0xFF1E293B)),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        // Linha superior: ID do Pedido + Etiqueta do IP PS4
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "PEDIDO #${order.id} (${order.items.size} JOGOS)",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextWhite
-                            )
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFFF9F0A))
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "AGUARDANDO",
-                                    color = Color(0xFFFF9F0A),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
+                                    text = "PEDIDO #${order.id.takeLast(8).uppercase()}",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextWhite
+                                )
+                                Text(
+                                    text = "${order.items.size} jogo(s) solicitado(s)",
+                                    fontSize = 11.sp,
+                                    color = TextMuted
+                                )
+                            }
+
+                            // Badge estilizado com o IP do console
+                            Surface(
+                                color = Color(0xFF0F172A),
+                                shape = RoundedCornerShape(6.dp),
+                                border = BorderStroke(1.dp, Color(0xFF1E3A8A))
+                            ) {
+                                Text(
+                                    text = "PS4: ${if (order.targetPs4Ip.isNotBlank()) order.targetPs4Ip else "N/D"}",
+                                    color = Color(0xFF60A5FA),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                             }
                         }
 
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F0F0F)),
-                            border = BorderStroke(1.dp, BorderDark),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "IP ALVO PS4:",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextMuted
-                                    )
-
-                                    Text(
-                                        text = if (order.targetPs4Ip.isNotBlank()) order.targetPs4Ip else "Não informado",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color(0xFF64B5F6)
-                                    )
-                                }
-                            }
-                        }
-
-                        Text(
-                            text = "JOGOS SELECIONADOS:",
-                            fontSize = 12.sp,
-                            color = Color(0xFFDDDDDD),
-                            fontWeight = FontWeight.Bold
-                        )
-
+                        // Lista condensada de jogos
                         Column(
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFF141414), RoundedCornerShape(8.dp))
-                                .padding(10.dp)
+                                .background(Color(0xFF111111), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             order.items.forEachIndexed { idx, itemKey ->
                                 val catalogItem = catalogManager.getByIndex(itemKey.toIntOrNull() ?: -1)
@@ -1619,19 +1587,18 @@ fun AdminScreen(
 
                                 Text(
                                     text = "${idx + 1}. $itemTitle",
-                                    color = TextWhite,
-                                    fontSize = 13.sp,
+                                    color = Color(0xFFE2E8F0),
+                                    fontSize = 12.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(2.dp))
-
+                        // Barra de botões de ação: sem cortes no texto e altura otimizada
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Button(
                                 onClick = {
@@ -1640,15 +1607,16 @@ fun AdminScreen(
                                     Toast.makeText(context, "Pedido #${order.id} APROVADO!", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier
-                                    .weight(1.3f)
-                                    .height(46.dp),
+                                    .weight(1.1f)
+                                    .height(38.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = GreenLed),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
                             ) {
                                 Text(
-                                    text = "APROVAR (${order.items.size})",
+                                    text = "APROVAR",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
+                                    fontSize = 11.sp,
                                     color = Color.Black
                                 )
                             }
@@ -1660,15 +1628,16 @@ fun AdminScreen(
                                     Toast.makeText(context, "Pedido #${order.id} RECUSADO.", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier
-                                    .weight(0.9f)
-                                    .height(46.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222222)),
-                                shape = RoundedCornerShape(8.dp)
+                                    .weight(1f)
+                                    .height(38.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF262626)),
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
                             ) {
                                 Text(
                                     text = "RECUSAR",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
+                                    fontSize = 11.sp,
                                     color = TextWhite
                                 )
                             }
@@ -1685,7 +1654,7 @@ fun AdminScreen(
                                         type = "text/plain"
                                         putExtra(
                                             Intent.EXTRA_TEXT,
-                                            "Olá! O seu pedido *#${order.id}* foi liberado!\n\n*Jogos Liberados:*\n$gamesFormatted\n\n⚠️ Pode concluir a instalação no seu console."
+                                            "Olá! O seu pedido *#${order.id}* foi liberado!\n\n*Jogos Liberados:*\n$gamesFormatted\n\n⚠️ Já pode concluir a instalação na sua consola."
                                         )
                                     }
                                     context.startActivity(
@@ -1693,15 +1662,17 @@ fun AdminScreen(
                                     )
                                 },
                                 modifier = Modifier
-                                    .weight(1.2f)
-                                    .height(46.dp),
+                                    .weight(1.1f)
+                                    .height(38.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
                             ) {
                                 Text(
                                     text = "WHATSAPP",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
+                                    fontSize = 10.sp,
+                                    color = TextWhite
                                 )
                             }
                         }
