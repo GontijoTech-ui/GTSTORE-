@@ -27,6 +27,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:label="GTSTORE"
         android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true"
         android:requestLegacyExternalStorage="true">
 
