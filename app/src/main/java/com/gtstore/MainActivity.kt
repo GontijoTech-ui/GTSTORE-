@@ -82,7 +82,6 @@ val TextMuted = Color(0xFFAAAAAA)
 
 enum class GTStoreScreen {
     DASHBOARD,
-    SERVIDOR,
     CATALOGO,
     CATALOGO_CADASTRADO,
     ADMIN,
@@ -102,9 +101,6 @@ fun normalizeInputUrl(raw: String): String {
 }
 
 class MainActivity : ComponentActivity() {
-
-    private val gtStoreHttpServer: HttpServer
-        get() = (application as GTStoreApplication).httpServer
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -140,84 +136,8 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = PureBlack
                 ) {
-                    GTStoreApp(
-                        httpServer = gtStoreHttpServer,
-                        onStartServer = ::startServerService,
-                        onStopServer = ::stopServerService
-                    )
+                    GTStoreApp()
                 }
-            }
-        }
-    }
-
-    private fun startServerService() {
-        val intent = Intent(this, GTStoreService::class.java).apply {
-            action = GTStoreService.ACTION_START
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-    }
-
-    private fun stopServerService() {
-        val intent = Intent(this, GTStoreService::class.java).apply {
-            action = GTStoreService.ACTION_STOP
-        }
-        startService(intent)
-    }
-}
-
-@Composable
-fun StatusCardLed(
-    title: String,
-    status: String,
-    isOnline: Boolean
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = CardBlack),
-        border = BorderStroke(1.dp, BorderDark),
-        shape = RoundedCornerShape(10.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(RedAccent)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = title,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = TextWhite
-                )
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(if (isOnline) GreenLed else RedLed)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = status,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = if (isOnline) GreenLed else RedLed
-                )
             }
         }
     }
@@ -295,11 +215,9 @@ fun RedMenuButton(
 
 @Composable
 fun Dashboard(
-    httpServer: HttpServer,
     onNavigate: (GTStoreScreen) -> Unit
 ) {
     val context = LocalContext.current
-    var serverRunning by remember { mutableStateOf(httpServer.isRunning()) }
 
     val logoBitmap = remember {
         try {
@@ -308,16 +226,6 @@ fun Dashboard(
             }
         } catch (_: Exception) {
             null
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            val isRunning = httpServer.isRunning()
-            if (serverRunning != isRunning) {
-                serverRunning = isRunning
-            }
-            delay(1000)
         }
     }
 
@@ -370,14 +278,6 @@ fun Dashboard(
         }
 
         item {
-            StatusCardLed(
-                title = "SERVIDOR",
-                status = if (serverRunning) "ONLINE" else "OFFLINE",
-                isOnline = serverRunning
-            )
-        }
-
-        item {
             StatusCardSimple(
                 title = "CATÁLOGO",
                 status = "PRONTO",
@@ -386,13 +286,6 @@ fun Dashboard(
         }
 
         item { Spacer(modifier = Modifier.height(4.dp)) }
-
-        item {
-            RedMenuButton(
-                text = "SERVIDOR",
-                onClick = { onNavigate(GTStoreScreen.SERVIDOR) }
-            )
-        }
 
         item {
             RedMenuButton(
@@ -427,26 +320,14 @@ fun Dashboard(
 }
 
 @Composable
-fun GTStoreApp(
-    httpServer: HttpServer,
-    onStartServer: () -> Unit,
-    onStopServer: () -> Unit
-) {
+fun GTStoreApp() {
     var currentScreen by remember { mutableStateOf(GTStoreScreen.DASHBOARD) }
 
     when (currentScreen) {
         GTStoreScreen.DASHBOARD -> Dashboard(
-            httpServer = httpServer,
             onNavigate = { target: GTStoreScreen -> currentScreen = target }
         )
-        GTStoreScreen.SERVIDOR -> ServerScreen(
-            httpServer = httpServer,
-            onStartServer = onStartServer,
-            onStopServer = onStopServer,
-            onBack = { currentScreen = GTStoreScreen.DASHBOARD }
-        )
         GTStoreScreen.CATALOGO -> CatalogManagerScreen(
-            httpServer = httpServer,
             onBack = { currentScreen = GTStoreScreen.DASHBOARD }
         )
         GTStoreScreen.CATALOGO_CADASTRADO -> RegisteredCatalogScreen(
@@ -463,7 +344,6 @@ fun GTStoreApp(
 
 @Composable
 fun CatalogManagerScreen(
-    httpServer: HttpServer,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1022,7 +902,7 @@ fun RegisteredCatalogScreen(
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    text = "${displayedItems.size} de ${allItems.size}",
+                    text = "${displayedItems.size} de${allItems.size}",
                     fontSize = 12.sp,
                     color = TextMuted
                 )
@@ -1364,7 +1244,7 @@ fun SettingsScreen(
                                 statusIcones = "A verificar capas em falta..."
                                 scope.launch {
                                     val total = catalogManager.restaurarIconesFaltantes { atual, totalItens, nome ->
-                                        statusIcones = "Recuperando ($atual/$totalItens): $nome"
+                                        statusIcones = "Recuperando ($atual/$totalItens):$nome"
                                     }
                                     restaurandoIcones = false
                                     statusIcones = "Concluído! $total capas recuperadas."
@@ -1380,612 +1260,4 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            text = if (restaurandoIcones) "A RECUPERAR..." else "RECUPERAR ÍCONES (TMDB)",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextWhite
-                        )
-                    }
-
-                    if (statusIcones.isNotBlank()) {
-                        Text(
-                            text = statusIcones,
-                            color = if (restaurandoIcones) Color(0xFF64B5F6) else GreenLed,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = CardBlack),
-                border = BorderStroke(1.dp, BorderDark),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = "LOGS DO SISTEMA",
-                        color = TextWhite,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Text(
-                        text = "Arquivo: ${AppLogger.getLogPath()}",
-                        color = TextMuted,
-                        fontSize = 11.sp
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                val text = AppLogger.getLogContent()
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("GTStore Log", text))
-                                Toast.makeText(context, "Log copiado!", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222222)),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("COPIAR LOG", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Button(
-                            onClick = {
-                                val text = AppLogger.getLogContent()
-                                val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, text)
-                                }
-                                context.startActivity(Intent.createChooser(sendIntent, "Enviar Log"))
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("COMPARTILHAR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Button(
-                        onClick = {
-                            AppLogger.clearLog()
-                            Toast.makeText(context, "Log limpo!", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(38.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF141414)),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("LIMPAR ARQUIVO DE LOG", color = TextMuted, fontSize = 11.sp)
-                    }
-                }
-            }
-        }
-
-        item {
-            Button(
-                onClick = onBack,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF141414)),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text("VOLTAR", color = TextWhite, fontWeight = FontWeight.Bold)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-    }
-}
-
-@Composable
-fun ServerScreen(
-    httpServer: HttpServer,
-    onStartServer: () -> Unit,
-    onStopServer: () -> Unit,
-    onBack: () -> Unit
-) {
-    var status by remember { mutableStateOf(httpServer.getStatus()) }
-    var message by remember { mutableStateOf("") }
-
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            val freshStatus = httpServer.getStatus()
-            if (status != freshStatus) {
-                status = freshStatus
-            }
-            delay(1000)
-        }
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(PureBlack)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(vertical = 8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(14.dp)
-                        .clip(CircleShape)
-                        .background(RedAccent)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = "PAINEL DO SERVIDOR",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextWhite
-                )
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = CardBlack),
-                border = BorderStroke(1.dp, BorderDark),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(14.dp)
-                                .clip(CircleShape)
-                                .background(if (status.running) GreenLed else RedLed)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = if (status.running) "SERVIDOR ONLINE" else "SERVIDOR OFFLINE",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (status.running) GreenLed else RedLed
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = "Porta: ${status.port}",
-                        color = TextWhite,
-                        fontSize = 15.sp
-                    )
-
-                    Text(
-                        text = "Endereço Local: ${status.localAddress}",
-                        color = TextWhite,
-                        fontSize = 15.sp
-                    )
-
-                    if (status.running) {
-                        Text(
-                            text = "URL: http://${status.localAddress}:${status.port}",
-                            color = Color(0xFF64B5F6),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    Text(
-                        text = "Conexões ativas: ${status.activeConnections}",
-                        color = TextMuted,
-                        fontSize = 14.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Button(
-                        onClick = {
-                            if (httpServer.isRunning()) {
-                                onStopServer()
-                                message = "Solicitação para parar o servidor enviada."
-                            } else {
-                                onStartServer()
-                                message = "Solicitação para iniciar o servidor enviada."
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (status.running) Color(0xFF333333) else RedAccent
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = if (status.running) "PARAR SERVIDOR" else "INICIAR SERVIDOR",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                    }
-
-                    if (message.isNotBlank()) {
-                        Text(
-                            text = message,
-                            color = TextMuted,
-                            fontSize = 13.sp
-                        )
-                    }
-
-                    Button(
-                        onClick = { status = httpServer.getStatus() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A1A1A)),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("ATUALIZAR STATUS", fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = onBack,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF141414)),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("VOLTAR", color = TextWhite)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun AdminScreen(
-    onBack: () -> Unit
-) {
-    val context = LocalContext.current
-    val catalogManager = remember(context) { CatalogManager(context) }
-
-    var pendingOrders by remember {
-        mutableStateOf(OrderManager.listPendingOrders())
-    }
-
-    DisposableEffect(Unit) {
-        val listener = {
-            pendingOrders = OrderManager.listPendingOrders()
-        }
-        OrderManager.addListener(listener)
-        pendingOrders = OrderManager.listPendingOrders()
-
-        onDispose {
-            OrderManager.removeListener(listener)
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            val freshList = OrderManager.listPendingOrders()
-            if (freshList.size != pendingOrders.size || freshList != pendingOrders) {
-                pendingOrders = freshList
-            }
-            delay(1000)
-        }
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(PureBlack)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(vertical = 8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(14.dp)
-                        .clip(CircleShape)
-                        .background(RedAccent)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = "ADMIN — CONTROLE DE ACESSO PS4",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextWhite
-                )
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = CardBlack),
-                border = BorderStroke(1.dp, BorderDark),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(if (pendingOrders.isNotEmpty()) GreenLed else RedLed)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (pendingOrders.isNotEmpty()) "PEDIDOS PENDENTES" else "NENHUMA SOLICITAÇÃO",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (pendingOrders.isNotEmpty()) GreenLed else TextMuted
-                        )
-                    }
-
-                    Text(
-                        text = "Carrinhos aguardando liberação: ${pendingOrders.size}",
-                        color = TextWhite,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    Text(
-                        text = "Ao aprovar, o cliente recebe a liberação imediata no navegador.",
-                        color = TextMuted,
-                        fontSize = 13.sp
-                    )
-                }
-            }
-        }
-
-        if (pendingOrders.isEmpty()) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = CardBlack),
-                    border = BorderStroke(1.dp, BorderDark),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text(
-                        text = "Aguardando solicitações de liberação vindas da loja...",
-                        modifier = Modifier.padding(20.dp),
-                        color = TextMuted,
-                        fontSize = 15.sp
-                    )
-                }
-            }
-        } else {
-            items(
-                items = pendingOrders,
-                key = { it.id }
-            ) { order ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = CardBlack),
-                    border = BorderStroke(1.dp, Color(0xFF0070CC)),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "PEDIDO #${order.id} (${order.items.size} JOGOS)",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextWhite
-                            )
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFFF9F0A))
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "AGUARDANDO",
-                                    color = Color(0xFFFF9F0A),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F0F0F)),
-                            border = BorderStroke(1.dp, BorderDark),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "IP ALVO PS4:",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextMuted
-                                    )
-
-                                    Text(
-                                        text = if (order.targetPs4Ip.isNotBlank()) order.targetPs4Ip else "Não informado",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color(0xFF64B5F6)
-                                    )
-                                }
-                            }
-                        }
-
-                        Text(
-                            text = "JOGOS SELECIONADOS:",
-                            fontSize = 12.sp,
-                            color = Color(0xFFDDDDDD),
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFF141414), RoundedCornerShape(8.dp))
-                                .padding(10.dp)
-                        ) {
-                            order.items.forEachIndexed { idx, itemKey ->
-                                val catalogItem = catalogManager.getByIndex(itemKey.toIntOrNull() ?: -1)
-                                    ?: catalogManager.getByContentId(itemKey)
-                                val itemTitle = catalogItem?.title ?: itemKey
-
-                                Text(
-                                    text = "${idx + 1}. $itemTitle",
-                                    color = TextWhite,
-                                    fontSize = 13.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(2.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    OrderManager.updateStatus(order.id, OrderStatus.APPROVED)
-                                    pendingOrders = OrderManager.listPendingOrders()
-                                    Toast.makeText(context, "Pedido #${order.id} APROVADO!", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier
-                                    .weight(1.3f)
-                                    .height(46.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = GreenLed),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text(
-                                    text = "APROVAR (${order.items.size})",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    color = Color.Black
-                                )
-                            }
-
-                            Button(
-                                onClick = {
-                                    OrderManager.updateStatus(order.id, OrderStatus.REJECTED)
-                                    pendingOrders = OrderManager.listPendingOrders()
-                                    Toast.makeText(context, "Pedido #${order.id} RECUSADO.", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier
-                                    .weight(0.9f)
-                                    .height(46.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222222)),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text(
-                                    text = "RECUSAR",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    color = TextWhite
-                                )
-                            }
-
-                            Button(
-                                onClick = {
-                                    val gamesFormatted = order.items.mapIndexed { idx, key ->
-                                        val catalogItem = catalogManager.getByIndex(key.toIntOrNull() ?: -1)
-                                            ?: catalogManager.getByContentId(key)
-                                        "${idx + 1}. ${catalogItem?.title ?: key}"
-                                    }.joinToString("\n")
-
-                                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(
-                                            Intent.EXTRA_TEXT,
-                                            "Olá! O seu pedido *#${order.id}* foi liberado!\n\n*Jogos Liberados:*\n$gamesFormatted\n\n⚠️ Pode concluir a instalação no seu console."
-                                        )
-                                    }
-                                    context.startActivity(
-                                        Intent.createChooser(sendIntent, "Notificar Cliente")
-                                    )
-                                },
-                                modifier = Modifier
-                                    .weight(1.2f)
-                                    .height(46.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text(
-                                    text = "WHATSAPP",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Button(
-                onClick = onBack,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF141414)),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text("VOLTAR", color = TextWhite)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-    }
-}
+                            text = if (restaurandoIcones) "A RECUPER
