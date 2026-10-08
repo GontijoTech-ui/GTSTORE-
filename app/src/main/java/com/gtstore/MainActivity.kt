@@ -12,7 +12,9 @@ import android.os.Environment
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -105,6 +108,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Habilita navegação e desenho de ponta a ponta (Edge-to-Edge)
+        enableEdgeToEdge()
+
         AppLogger.init(this)
 
         // Inicia a escuta em tempo real dos pedidos no Firebase Realtime Database
@@ -133,7 +139,9 @@ class MainActivity : ComponentActivity() {
 
             MaterialTheme(colorScheme = colorScheme) {
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .safeDrawingPadding(), // Garante espaçamento das barras de status e gestos
                     color = PureBlack
                 ) {
                     GTStoreApp()
@@ -237,7 +245,7 @@ fun Dashboard(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        item { Spacer(modifier = Modifier.height(24.dp)) }
+        item { Spacer(modifier = Modifier.height(16.dp)) }
 
         item {
             Column(
@@ -315,13 +323,18 @@ fun Dashboard(
             )
         }
 
-        item { Spacer(modifier = Modifier.height(24.dp)) }
+        item { Spacer(modifier = Modifier.height(20.dp)) }
     }
 }
 
 @Composable
 fun GTStoreApp() {
     var currentScreen by remember { mutableStateOf(GTStoreScreen.DASHBOARD) }
+
+    // Intercepta o gesto nativo de voltar e retorna ao Dashboard
+    BackHandler(enabled = currentScreen != GTStoreScreen.DASHBOARD) {
+        currentScreen = GTStoreScreen.DASHBOARD
+    }
 
     when (currentScreen) {
         GTStoreScreen.DASHBOARD -> Dashboard(
@@ -356,6 +369,11 @@ fun CatalogManagerScreen(
     var message by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
     var captureSourceUrl by remember { mutableStateOf<String?>(null) }
+
+    // Gesto nativo: se a captura de link estiver aberta, fecha apenas a captura
+    BackHandler(enabled = captureSourceUrl != null) {
+        captureSourceUrl = null
+    }
 
     var recentSources by remember {
         mutableStateOf<List<String>>(
@@ -799,6 +817,11 @@ fun RegisteredCatalogScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var sortAlphabetical by remember { mutableStateOf(true) }
+
+    // Gesto nativo: se a captura estiver aberta, fecha a captura
+    BackHandler(enabled = captureSourceUrl != null) {
+        captureSourceUrl = null
+    }
 
     LaunchedEffect(Unit) {
         allItems = withContext(Dispatchers.IO) {
