@@ -3,9 +3,7 @@ package com.gtstore
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
-import android.os.Message
 import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -36,7 +34,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,11 +42,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import java.net.HttpURLConnection
-import java.net.URL
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 data class PkgCaptureResult(
     val sourceUrl: String,
@@ -57,6 +49,7 @@ data class PkgCaptureResult(
     val fileName: String
 )
 
+// Desativado: métodos vazios para não criar arquivos nem gravar em disco
 private class MochaDiagnosticLogger(
     private val context: Context
 ) {
@@ -65,7 +58,7 @@ private class MochaDiagnosticLogger(
     fun finish() {}
 }
 
-@SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
+@SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun PkgLinkCaptureScreen(
     sourceUrl: String,
@@ -87,7 +80,6 @@ fun PkgLinkCaptureScreen(
     var browser by remember { mutableStateOf<WebView?>(null) }
 
     val capturedList = remember { mutableStateListOf<String>() }
-    val coroutineScope = rememberCoroutineScope()
 
     val sourceHost = remember(sourceUrl) {
         try {
@@ -105,22 +97,7 @@ fun PkgLinkCaptureScreen(
         }
     }
 
-    fun isDownloadOrPkgUrl(url: String): Boolean {
-        val lower = url.trim().lowercase()
-        if (lower.isBlank()) return false
-
-        val cleanPath = lower.substringBefore("?")
-        val isPkgExtension = cleanPath.endsWith(".pkg") || lower.contains(".pkg?")
-        val isAkiraDownloadNode = lower.contains("download.akirabox") ||
-                (lower.contains("akirabox") && (lower.contains("/dl/") || lower.contains("/get/") || lower.contains("/download")))
-        val isVikingFileNode = lower.contains("vikingfile.com/d/")
-
-        return isPkgExtension || isAkiraDownloadNode || isVikingFileNode
-    }
-
     fun isDomainPermitted(url: String): Boolean {
-        if (isDownloadOrPkgUrl(url)) return true
-
         val host = try {
             Uri.parse(url).host?.lowercase() ?: ""
         } catch (_: Exception) {
@@ -140,7 +117,6 @@ fun PkgLinkCaptureScreen(
         val isCommonCdn = host.contains("filekeeper") ||
                 host.contains("dlproxy") ||
                 host.contains("akirabox") ||
-                host.contains("vikingfile") ||
                 host.contains("mocha") ||
                 host.contains("matchaup") ||
                 host.contains("cloudflare") ||
@@ -208,199 +184,47 @@ fun PkgLinkCaptureScreen(
         status = "Aguardando download do PKG..."
     }
 
-    suspend fun resolveFinalUrl(originalUrl: String, defaultUa: String): String = withContext(Dispatchers.IO) {
-        var currentUrl = originalUrl
-        var redirects = 0
-
-        try {
-            while (redirects < 5) {
-                val urlObj = URL(currentUrl)
-                val connection = urlObj.openConnection() as HttpURLConnection
-                connection.instanceFollowRedirects = false
-                connection.requestMethod = "GET"
-                
-                connection.setRequestProperty("User-Agent", defaultUa)
-                val cookies = CookieManager.getInstance().getCookie(currentUrl)
-                if (!cookies.isNullOrBlank()) {
-                    connection.setRequestProperty("Cookie", cookies)
-                }
-
-                connection.connect()
-
-                val responseCode = connection.responseCode
-                if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP || 
-                    responseCode == HttpURLConnection.HTTP_MOVED_PERM || 
-                    responseCode == 307 || 
-                    responseCode == 308) {
-                    
-                    val location = connection.getHeaderField("Location")
-                    connection.disconnect()
-                    
-                    if (!location.isNullOrBlank()) {
-                        currentUrl = if (location.startsWith("/")) {
-                            "${urlObj.protocol}://${urlObj.host}${location}"
-                        } else {
-                            location
-                        }
-                        redirects++
-                        continue
-                    }
-                }
-                
-                connection.disconnect()
-                break
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        
-        return@withContext currentUrl
-    }
-
     fun handleCapturedUrl(
         url: String,
         contentDisposition: String? = null,
-        mimeType: String? = null,
-        userAgent: String = browser?.settings?.userAgentString ?: ""
+        mimeType: String? = null
     ) {
         val isHttp = url.startsWith("http://", ignoreCase = true)
         val isHttps = url.startsWith("https://", ignoreCase = true)
         if (!isHttp && !isHttps) return
 
         if (capturedList.contains(url)) return
-        
-        status = "Resolvendo link final da CDN..."
-        
-        coroutineScope.launch {
-            val finalUrl = resolveFinalUrl(url, userAgent)
-            
-            withContext(Dispatchers.Main) {
-                if (capturedList.contains(finalUrl)) return@withContext
-                capturedList.add(finalUrl)
+        capturedList.add(url)
 
-                val guessedFileName = URLUtil.guessFileName(finalUrl, contentDisposition, mimeType)
-                val finalFileName = guessedFileName.trim().ifBlank { "download.pkg" }
+        val guessedFileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+        val finalFileName = guessedFileName.trim().ifBlank { "download.pkg" }
 
-                val finalSourceUrl = originPageUrl.trim().ifBlank {
-                    currentPageUrl.trim().ifBlank { sourceUrl }
-                }
-
-                captured = true
-                status = "Capturado (${capturedList.size}): $finalFileName"
-
-                AppLogger.log("[PkgLinkCaptureScreen] Link base: $url")
-                AppLogger.log("[PkgLinkCaptureScreen] Link resolvido (CDN): $finalUrl")
-
-                val result = PkgCaptureResult(
-                    sourceUrl = finalSourceUrl,
-                    directUrl = finalUrl,
-                    fileName = finalFileName
-                )
-
-                onCaptured(result) {}
-
-                browser?.removeCallbacks(null)
-                browser?.postDelayed({
-                    if (!processing && capturedList.isNotEmpty()) {
-                        processing = true
-                        status = "Todos os ${capturedList.size} ficheiros foram registados!"
-                        finishProcessingAndReturn()
-                    }
-                }, 3000)
-            }
+        val finalSourceUrl = originPageUrl.trim().ifBlank {
+            currentPageUrl.trim().ifBlank { sourceUrl }
         }
-    }
 
-    class BridgeInterface(private val onUrlFound: (String, String?) -> Unit) {
-        @JavascriptInterface
-        fun onCapturedUrl(url: String, fileName: String?) {
-            if (url.isNotBlank()) {
-                onUrlFound(url, fileName)
+        captured = true
+        status = "Capturado (${capturedList.size}): $finalFileName"
+
+        AppLogger.log("[PkgLinkCaptureScreen] Link capturado (${capturedList.size}): $url")
+        AppLogger.log("[PkgLinkCaptureScreen] Nome: $finalFileName | Origem: $finalSourceUrl")
+
+        val result = PkgCaptureResult(
+            sourceUrl = finalSourceUrl,
+            directUrl = url,
+            fileName = finalFileName
+        )
+
+        onCaptured(result) {}
+
+        browser?.removeCallbacks(null)
+        browser?.postDelayed({
+            if (!processing && capturedList.isNotEmpty()) {
+                processing = true
+                status = "Todos os ${capturedList.size} ficheiros foram registados!"
+                finishProcessingAndReturn()
             }
-        }
-    }
-
-    fun injectCaptureScript(view: WebView) {
-        // Bloco JS modificado para nao conter nenhuma aspa dupla (") para evitar bugs do Kotlin AST
-        val js = """
-            (function() {
-                try {
-                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                    window.chrome = window.chrome || { runtime: {} };
-
-                    function isTargetDownload(u) {
-                        if (!u) return false;
-                        const s = u.toLowerCase();
-                        return s.includes('.pkg') || 
-                               s.includes('download.akirabox') || 
-                               (s.includes('akirabox') && (s.includes('/dl/') || s.includes('/get/'))) ||
-                               s.includes('vikingfile.com/d/');
-                    }
-
-                    window.open = function(url) {
-                        if (url && isTargetDownload(url)) {
-                            try { window.GTStoreCapture.onCapturedUrl(url, ''); } catch(e) {}
-                        }
-                        return null; 
-                    };
-
-                    const sanitizeTargets = () => {
-                        document.querySelectorAll('a[target]').forEach(a => a.removeAttribute('target'));
-                    };
-                    sanitizeTargets();
-
-                    if (!window._gtFetchPatched) {
-                        window._gtFetchPatched = true;
-                        const origFetch = window.fetch;
-                        window.fetch = async function(...args) {
-                            const response = await origFetch.apply(this, args);
-                            try {
-                                const clone = response.clone();
-                                clone.text().then(text => {
-                                    const match = text.match(/https?:\/\/\S+\.pkg\S*/i) ||
-                                                  text.match(/https?:\/\/\S*(?:download\.akirabox|akirabox\.(?:com|to|xyz)\/dl|vikingfile\.com\/d\/)\S*/i);
-                                    if (match && match[0]) {
-                                        window.GTStoreCapture.onCapturedUrl(match[0], '');
-                                    }
-                                }).catch(() => {});
-                            } catch(e) {}
-                            return response;
-                        };
-                    }
-
-                    if (!window._gtXhrPatched) {
-                        window._gtXhrPatched = true;
-                        const origOpen = XMLHttpRequest.prototype.open;
-                        const origSend = XMLHttpRequest.prototype.send;
-                        XMLHttpRequest.prototype.open = function(m, u) {
-                            this._url = u;
-                            return origOpen.apply(this, arguments);
-                        };
-                        XMLHttpRequest.prototype.send = function() {
-                            this.addEventListener('load', function() {
-                                try {
-                                    const text = this.responseText;
-                                    const match = text.match(/https?:\/\/\S+\.pkg\S*/i) ||
-                                                  text.match(/https?:\/\/\S*(?:download\.akirabox|akirabox\.(?:com|to|xyz)\/dl|vikingfile\.com\/d\/)\S*/i);
-                                    if (match && match[0]) {
-                                        window.GTStoreCapture.onCapturedUrl(match[0], '');
-                                    }
-                                } catch(e) {}
-                            });
-                            return origSend.apply(this, arguments);
-                        };
-                    }
-
-                    document.addEventListener('click', function(e) {
-                        const a = e.target.closest('a');
-                        if (a && a.href && isTargetDownload(a.href)) {
-                            try { window.GTStoreCapture.onCapturedUrl(a.href, a.getAttribute('download') || ''); } catch(err) {}
-                        }
-                    }, true);
-                } catch(e) {}
-            })();
-        """.trimIndent()
-        view.evaluateJavascript(js, null)
+        }, 3000)
     }
 
     Box(
@@ -446,58 +270,22 @@ fun PkgLinkCaptureScreen(
                     settings.loadWithOverviewMode = true
 
                     settings.javaScriptCanOpenWindowsAutomatically = false
-                    settings.setSupportMultipleWindows(true)
+                    settings.setSupportMultipleWindows(false)
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
                     val cookieManager = CookieManager.getInstance()
                     cookieManager.setAcceptCookie(true)
                     cookieManager.setAcceptThirdPartyCookies(this, true)
 
-                    addJavascriptInterface(
-                        BridgeInterface { capturedUrl, disposition ->
-                            post {
-                                handleCapturedUrl(
-                                    url = capturedUrl, 
-                                    contentDisposition = disposition,
-                                    userAgent = defaultUa
-                                )
-                            }
-                        },
-                        "GTStoreCapture"
-                    )
+                    diagnosticLogger.log("[SETTINGS] JavaScript=${settings.javaScriptEnabled}")
+                    diagnosticLogger.log("[SETTINGS] DOMStorage=${settings.domStorageEnabled}")
+                    diagnosticLogger.log("[SETTINGS] Database=${settings.databaseEnabled}")
+                    diagnosticLogger.log("[SETTINGS] WideViewport=${settings.useWideViewPort}")
+                    diagnosticLogger.log("[SETTINGS] OverviewMode=${settings.loadWithOverviewMode}")
+                    diagnosticLogger.log("[SETTINGS] MultipleWindows=false")
+                    diagnosticLogger.log("[SETTINGS] ThirdPartyCookies=true")
 
                     webChromeClient = object : WebChromeClient() {
-                        override fun onCreateWindow(
-                            view: WebView?,
-                            isDialog: Boolean,
-                            isUserGesture: Boolean,
-                            resultMsg: Message?
-                        ): Boolean {
-                            val tempWebView = WebView(view?.context ?: return false)
-                            tempWebView.webViewClient = object : WebViewClient() {
-                                override fun shouldOverrideUrlLoading(
-                                    wView: WebView,
-                                    request: WebResourceRequest
-                                ): Boolean {
-                                    val popupUrl = request.url.toString()
-                                    diagnosticLogger.log("[POPUP] $popupUrl")
-
-                                    if (isDownloadOrPkgUrl(popupUrl)) {
-                                        handleCapturedUrl(url = popupUrl, userAgent = defaultUa)
-                                    } else if (isDomainPermitted(popupUrl)) {
-                                        view?.loadUrl(popupUrl)
-                                    } else {
-                                        diagnosticLogger.log("[POPUP_BLOCKED] Propaganda bloqueada: $popupUrl")
-                                    }
-                                    return true
-                                }
-                            }
-                            val transport = resultMsg?.obj as? WebView.WebViewTransport
-                            transport?.webView = tempWebView
-                            resultMsg?.sendToTarget()
-                            return true
-                        }
-
                         override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage): Boolean {
                             val message = consoleMessage.message()
                             val source = consoleMessage.sourceId()
@@ -517,12 +305,6 @@ fun PkgLinkCaptureScreen(
                             try {
                                 val requestUrl = request.url.toString()
                                 diagnosticLogger.log("[REQ] ${request.method} $requestUrl | mainFrame=${request.isForMainFrame}")
-
-                                if (isDownloadOrPkgUrl(requestUrl)) {
-                                    view.post {
-                                        handleCapturedUrl(url = requestUrl, userAgent = defaultUa)
-                                    }
-                                }
                             } catch (_: Exception) {}
 
                             return super.shouldInterceptRequest(view, request)
@@ -540,10 +322,11 @@ fun PkgLinkCaptureScreen(
                                 return false
                             }
 
-                            if (isDownloadOrPkgUrl(urlString)) {
-                                diagnosticLogger.log("[PKG] URL de download detectada: $urlString")
+                            val cleanPath = urlString.substringBefore("?")
+                            if (cleanPath.endsWith(".pkg", ignoreCase = true)) {
+                                diagnosticLogger.log("[PKG] URL .pkg detectada: $urlString")
                                 currentDisplayUrl = urlString
-                                handleCapturedUrl(url = urlString, userAgent = defaultUa)
+                                handleCapturedUrl(urlString)
                                 return true
                             }
 
@@ -564,16 +347,22 @@ fun PkgLinkCaptureScreen(
                             super.onPageStarted(view, url, favicon)
                             diagnosticLogger.log("[PAGE_START] $url")
 
-                            injectCaptureScript(view)
-
-                            if (isDownloadOrPkgUrl(url)) {
-                                handleCapturedUrl(url = url, userAgent = defaultUa)
-                                view.stopLoading()
-                                return
-                            }
+                            view.evaluateJavascript(
+                                """
+                                (function() {
+                                    try {
+                                        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                                        window.chrome = window.chrome || { runtime: {} };
+                                    } catch(e) {}
+                                })();
+                                """.trimIndent(),
+                                null
+                            )
 
                             val isNotIntermediate = !url.contains("filekeeper.net", ignoreCase = true)
-                            if (isNotIntermediate && !isDomainPermitted(url)) {
+                            val isPkg = url.substringBefore("?").endsWith(".pkg", ignoreCase = true)
+
+                            if (isNotIntermediate && !isPkg && !isDomainPermitted(url)) {
                                 diagnosticLogger.log("[PAGE_BLOCK] Página não permitida: $url")
                                 view.stopLoading()
 
@@ -591,11 +380,10 @@ fun PkgLinkCaptureScreen(
                             currentDisplayUrl = url
                             canGoBack = view.canGoBack()
 
-                            if (!isDownloadOrPkgUrl(url) && isDomainPermitted(url)) {
+                            val isPkg = url.substringBefore("?").endsWith(".pkg", ignoreCase = true)
+                            if (!isPkg && isDomainPermitted(url)) {
                                 currentPageUrl = url
                             }
-
-                            injectCaptureScript(view)
 
                             view.evaluateJavascript(
                                 """
@@ -633,7 +421,7 @@ fun PkgLinkCaptureScreen(
                         }
                     }
 
-                    setDownloadListener { url, userAgentLocal, contentDisposition, mimeType, _ ->
+                    setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
                         diagnosticLogger.log("[DOWNLOAD] URL=$url")
                         diagnosticLogger.log("[DOWNLOAD] MIME=$mimeType")
                         diagnosticLogger.log("[DOWNLOAD] Content-Disposition=$contentDisposition")
@@ -643,8 +431,7 @@ fun PkgLinkCaptureScreen(
                         handleCapturedUrl(
                             url = url,
                             contentDisposition = contentDisposition,
-                            mimeType = mimeType,
-                            userAgent = defaultUa
+                            mimeType = mimeType
                         )
                     }
 
@@ -684,14 +471,13 @@ fun PkgLinkCaptureScreen(
                     Text(
                         text = when {
                             processing -> "PROCESSANDO..."
-                            captured -> "[OK] CAPTURADO (${capturedList.size})"
-                            returnPageUrl.isNotBlank() && originPageUrl.isNotBlank() -> "[OK] ORIGEM & RETORNO"
+                            captured -> "✓ CAPTURADO (${capturedList.size})"
+                            returnPageUrl.isNotBlank() && originPageUrl.isNotBlank() -> "✓ ORIGEM & RETORNO"
                             returnPageUrl.isNotBlank() -> "1/2 RETORNO OK"
-                            status.contains("Resolvendo") -> "RESOLVENDO ROTA..."
                             else -> "PRONTO"
                         },
                         color = when {
-                            processing || status.contains("Resolvendo") -> Color(0xFFFFC107)
+                            processing -> Color(0xFFFFC107)
                             captured || originPageUrl.isNotBlank() -> GreenLed
                             returnPageUrl.isNotBlank() -> Color(0xFF64B5F6)
                             else -> Color(0xFFAAAAAA)
