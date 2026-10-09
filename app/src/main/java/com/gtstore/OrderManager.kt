@@ -9,6 +9,7 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import java.io.ByteArrayOutputStream
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -100,13 +101,21 @@ object OrderManager {
     }
 
     /**
-     * Sincroniza a lista de jogos locais e as respetivas capas diretamente no nó /packages do Firebase.
+     * SOLUÇÃO DEFINITIVA DE SINCRONIZAÇÃO:
+     * Grava como MAPA chaveado pelo catalogIndex (ex: /packages/1, /packages/2),
+     * garantindo integridade de tipos (size: Long) e campos canônicos (url, cusa, digest).
      */
     fun syncCatalogToFirebase(items: List<CatalogItem>, catalogManager: CatalogManager) {
         try {
             val packagesRef = database.getReference("packages")
-            val catalogPayload = items.map { item ->
-                // Lê os bytes da imagem local e converte em thumbnail leve Base64
+
+            // Cria um mapa indexado por ID em vez de uma lista/array
+            val catalogMap = HashMap<String, Any>()
+
+            items.forEach { item ->
+                val key = item.catalogIndex.toString()
+
+                // Gera thumbnail leve em Base64
                 val iconBytes = catalogManager.getIcon(item)
                 val iconBase64 = if (iconBytes != null && iconBytes.isNotEmpty()) {
                     try {
@@ -116,7 +125,7 @@ object OrderManager {
                             val targetH = (bmp.height.toFloat() / bmp.width * targetW).toInt().coerceAtLeast(1)
                             val scaled = Bitmap.createScaledBitmap(bmp, targetW, targetH, true)
                             val stream = ByteArrayOutputStream()
-                            scaled.compress(Bitmap.CompressFormat.JPEG, 80, stream)
+                            scaled.compress(Bitmap.CompressFormat.JPEG, 75, stream)
                             "data:image/jpeg;base64," + Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
                         } else {
                             "data:image/png;base64," + Base64.encodeToString(iconBytes, Base64.NO_WRAP)
@@ -128,27 +137,45 @@ object OrderManager {
                     ""
                 }
 
-                mapOf(
-                    "id" to item.catalogIndex,
+                // Extrai CUSA de forma consistente
+                val cusaRegex = Regex("CUSA\\d{5}", RegexOption.IGNORE_CASE)
+                val extractedCusa = cusaRegex.find(item.contentId)?.value?.uppercase(Locale.ROOT)
+                    ?: cusaRegex.find(item.fileName)?.value?.uppercase(Locale.ROOT)
+                    ?: ""
+
+                // Garante que o digest tenha 64 caracteres
+                val validDigest = if (item.digest.isNotBlank() && item.digest.length == 64) {
+                    item.digest.uppercase(Locale.ROOT)
+                } else {
+                    "0".repeat(64)
+                }
+
+                val packageData = mapOf(
                     "catalogIndex" to item.catalogIndex,
+                    "id" to item.catalogIndex,
                     "index" to item.indexString,
-                    "title" to item.title,
+                    "title" to item.title.trim(),
+                    "contentId" to item.contentId.trim().uppercase(Locale.ROOT),
+                    "cusa" to extractedCusa,
+                    "category" to item.category.trim().lowercase(Locale.ROOT),
+                    "type" to item.type.trim().uppercase(Locale.ROOT),
+                    "version" to item.version.ifBlank { "01.00" },
+                    "size" to item.size, // Mantém Long em bytes
+                    "url" to item.url.trim(),
+                    "digest" to validDigest,
                     "fileName" to item.fileName,
-                    "file" to "${item.indexString}.pkg",
-                    "size" to item.size,
-                    "version" to item.version,
-                    "category" to item.category,
-                    "type" to item.type,
-                    "contentId" to item.contentId,
-                    "digest" to item.digest,
-                    "url" to item.url,
-                    "iconUrl" to iconBase64
+                    "sourceUrl" to item.sourceUrl,
+                    "iconUrl" to iconBase64,
+                    "price" to 10.0
                 )
+
+                catalogMap[key] = packageData
             }
 
-            packagesRef.setValue(catalogPayload)
+            // Grava o mapa completo: o Firebase cria /packages/1, /packages/2, etc.
+            packagesRef.setValue(catalogMap)
                 .addOnSuccessListener {
-                    Log.i(TAG, "Catálogo com capas sincronizado no Firebase (${items.size} itens).")
+                    Log.i(TAG, "Catálogo sincronizado no Firebase com sucesso (${items.size} itens sob chaves diretas).")
                 }
                 .addOnFailureListener { error ->
                     Log.e(TAG, "Erro ao enviar catálogo para o Firebase: ${error.message}")
