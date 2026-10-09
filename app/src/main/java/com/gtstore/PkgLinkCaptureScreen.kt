@@ -105,7 +105,6 @@ fun PkgLinkCaptureScreen(
         }
     }
 
-    // Identifica se a URL é o download real, endpoint do AkiraBox ou redirecionador do Vikingfile
     fun isDownloadOrPkgUrl(url: String): Boolean {
         val lower = url.trim().lowercase()
         if (lower.isBlank()) return false
@@ -209,7 +208,6 @@ fun PkgLinkCaptureScreen(
         status = "Aguardando download do PKG..."
     }
 
-    // Função que segue redirecionamentos 302 em background para achar o nó CDN (ex: Vikingfile)
     suspend fun resolveFinalUrl(originalUrl: String, defaultUa: String): String = withContext(Dispatchers.IO) {
         var currentUrl = originalUrl
         var redirects = 0
@@ -240,7 +238,7 @@ fun PkgLinkCaptureScreen(
                     
                     if (!location.isNullOrBlank()) {
                         currentUrl = if (location.startsWith("/")) {
-                            "${urlObj.protocol}://${urlObj.host}$location"
+                            "${urlObj.protocol}://${urlObj.host}${location}"
                         } else {
                             location
                         }
@@ -274,7 +272,6 @@ fun PkgLinkCaptureScreen(
         status = "Resolvendo link final da CDN..."
         
         coroutineScope.launch {
-            // Segue redirects em background
             val finalUrl = resolveFinalUrl(url, userAgent)
             
             withContext(Dispatchers.Main) {
@@ -289,7 +286,7 @@ fun PkgLinkCaptureScreen(
                 }
 
                 captured = true
-                status = "Capturado (${capturedList.size}):$finalFileName"
+                status = "Capturado (${capturedList.size}): $finalFileName"
 
                 AppLogger.log("[PkgLinkCaptureScreen] Link base: $url")
                 AppLogger.log("[PkgLinkCaptureScreen] Link resolvido (CDN): $finalUrl")
@@ -324,6 +321,7 @@ fun PkgLinkCaptureScreen(
     }
 
     fun injectCaptureScript(view: WebView) {
+        // Bloco JS modificado para nao conter nenhuma aspa dupla (") para evitar bugs do Kotlin AST
         val js = """
             (function() {
                 try {
@@ -334,4 +332,459 @@ fun PkgLinkCaptureScreen(
                         if (!u) return false;
                         const s = u.toLowerCase();
                         return s.includes('.pkg') || 
-                               s.includes('download.
+                               s.includes('download.akirabox') || 
+                               (s.includes('akirabox') && (s.includes('/dl/') || s.includes('/get/'))) ||
+                               s.includes('vikingfile.com/d/');
+                    }
+
+                    window.open = function(url) {
+                        if (url && isTargetDownload(url)) {
+                            try { window.GTStoreCapture.onCapturedUrl(url, ''); } catch(e) {}
+                        }
+                        return null; 
+                    };
+
+                    const sanitizeTargets = () => {
+                        document.querySelectorAll('a[target]').forEach(a => a.removeAttribute('target'));
+                    };
+                    sanitizeTargets();
+
+                    if (!window._gtFetchPatched) {
+                        window._gtFetchPatched = true;
+                        const origFetch = window.fetch;
+                        window.fetch = async function(...args) {
+                            const response = await origFetch.apply(this, args);
+                            try {
+                                const clone = response.clone();
+                                clone.text().then(text => {
+                                    const match = text.match(/https?:\/\/\S+\.pkg\S*/i) ||
+                                                  text.match(/https?:\/\/\S*(?:download\.akirabox|akirabox\.(?:com|to|xyz)\/dl|vikingfile\.com\/d\/)\S*/i);
+                                    if (match && match[0]) {
+                                        window.GTStoreCapture.onCapturedUrl(match[0], '');
+                                    }
+                                }).catch(() => {});
+                            } catch(e) {}
+                            return response;
+                        };
+                    }
+
+                    if (!window._gtXhrPatched) {
+                        window._gtXhrPatched = true;
+                        const origOpen = XMLHttpRequest.prototype.open;
+                        const origSend = XMLHttpRequest.prototype.send;
+                        XMLHttpRequest.prototype.open = function(m, u) {
+                            this._url = u;
+                            return origOpen.apply(this, arguments);
+                        };
+                        XMLHttpRequest.prototype.send = function() {
+                            this.addEventListener('load', function() {
+                                try {
+                                    const text = this.responseText;
+                                    const match = text.match(/https?:\/\/\S+\.pkg\S*/i) ||
+                                                  text.match(/https?:\/\/\S*(?:download\.akirabox|akirabox\.(?:com|to|xyz)\/dl|vikingfile\.com\/d\/)\S*/i);
+                                    if (match && match[0]) {
+                                        window.GTStoreCapture.onCapturedUrl(match[0], '');
+                                    }
+                                } catch(e) {}
+                            });
+                            return origSend.apply(this, arguments);
+                        };
+                    }
+
+                    document.addEventListener('click', function(e) {
+                        const a = e.target.closest('a');
+                        if (a && a.href && isTargetDownload(a.href)) {
+                            try { window.GTStoreCapture.onCapturedUrl(a.href, a.getAttribute('download') || ''); } catch(err) {}
+                        }
+                    }, true);
+                } catch(e) {}
+            })();
+        """.trimIndent()
+        view.evaluateJavascript(js, null)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context ->
+                val diagnosticLogger = MochaDiagnosticLogger(context)
+
+                WebView(context).apply {
+                    browser = this
+
+                    val defaultUa = settings.userAgentString
+
+                    diagnosticLogger.start(
+                        sourceUrl = sourceUrl,
+                        userAgent = defaultUa
+                    )
+
+                    diagnosticLogger.log("[WEBVIEW] Criando WebView")
+                    diagnosticLogger.log("[WEBVIEW] User-Agent: $defaultUa")
+
+                    isVerticalScrollBarEnabled = true
+                    isHorizontalScrollBarEnabled = false
+
+                    settings.userAgentString = defaultUa
+                        .replace("; wv", "")
+                        .replace("Version/4.0 ", "")
+
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.databaseEnabled = true
+                    settings.loadsImagesAutomatically = true
+
+                    settings.cacheMode = WebSettings.LOAD_DEFAULT
+                    settings.allowContentAccess = true
+                    settings.allowFileAccess = true
+
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+
+                    settings.javaScriptCanOpenWindowsAutomatically = false
+                    settings.setSupportMultipleWindows(true)
+                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+
+                    val cookieManager = CookieManager.getInstance()
+                    cookieManager.setAcceptCookie(true)
+                    cookieManager.setAcceptThirdPartyCookies(this, true)
+
+                    addJavascriptInterface(
+                        BridgeInterface { capturedUrl, disposition ->
+                            post {
+                                handleCapturedUrl(
+                                    url = capturedUrl, 
+                                    contentDisposition = disposition,
+                                    userAgent = defaultUa
+                                )
+                            }
+                        },
+                        "GTStoreCapture"
+                    )
+
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onCreateWindow(
+                            view: WebView?,
+                            isDialog: Boolean,
+                            isUserGesture: Boolean,
+                            resultMsg: Message?
+                        ): Boolean {
+                            val tempWebView = WebView(view?.context ?: return false)
+                            tempWebView.webViewClient = object : WebViewClient() {
+                                override fun shouldOverrideUrlLoading(
+                                    wView: WebView,
+                                    request: WebResourceRequest
+                                ): Boolean {
+                                    val popupUrl = request.url.toString()
+                                    diagnosticLogger.log("[POPUP] $popupUrl")
+
+                                    if (isDownloadOrPkgUrl(popupUrl)) {
+                                        handleCapturedUrl(url = popupUrl, userAgent = defaultUa)
+                                    } else if (isDomainPermitted(popupUrl)) {
+                                        view?.loadUrl(popupUrl)
+                                    } else {
+                                        diagnosticLogger.log("[POPUP_BLOCKED] Propaganda bloqueada: $popupUrl")
+                                    }
+                                    return true
+                                }
+                            }
+                            val transport = resultMsg?.obj as? WebView.WebViewTransport
+                            transport?.webView = tempWebView
+                            resultMsg?.sendToTarget()
+                            return true
+                        }
+
+                        override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage): Boolean {
+                            val message = consoleMessage.message()
+                            val source = consoleMessage.sourceId()
+                            val line = consoleMessage.lineNumber()
+                            val level = consoleMessage.messageLevel().toString()
+
+                            diagnosticLogger.log("[JS][$level] $message | $source:$line")
+                            return true
+                        }
+                    }
+
+                    webViewClient = object : WebViewClient() {
+                        override fun shouldInterceptRequest(
+                            view: WebView,
+                            request: WebResourceRequest
+                        ): WebResourceResponse? {
+                            try {
+                                val requestUrl = request.url.toString()
+                                diagnosticLogger.log("[REQ] ${request.method} $requestUrl | mainFrame=${request.isForMainFrame}")
+
+                                if (isDownloadOrPkgUrl(requestUrl)) {
+                                    view.post {
+                                        handleCapturedUrl(url = requestUrl, userAgent = defaultUa)
+                                    }
+                                }
+                            } catch (_: Exception) {}
+
+                            return super.shouldInterceptRequest(view, request)
+                        }
+
+                        override fun shouldOverrideUrlLoading(
+                            view: WebView,
+                            request: WebResourceRequest
+                        ): Boolean {
+                            val urlString = request.url.toString()
+                            diagnosticLogger.log("[NAV] $urlString")
+
+                            if (urlString.contains("filekeeper.net", ignoreCase = true)) {
+                                currentDisplayUrl = urlString
+                                return false
+                            }
+
+                            if (isDownloadOrPkgUrl(urlString)) {
+                                diagnosticLogger.log("[PKG] URL de download detectada: $urlString")
+                                currentDisplayUrl = urlString
+                                handleCapturedUrl(url = urlString, userAgent = defaultUa)
+                                return true
+                            }
+
+                            if (!isDomainPermitted(urlString)) {
+                                diagnosticLogger.log("[NAV_BLOCK] Navegação bloqueada: $urlString")
+                                return true
+                            }
+
+                            currentDisplayUrl = urlString
+                            return false
+                        }
+
+                        override fun onPageStarted(
+                            view: WebView,
+                            url: String,
+                            favicon: android.graphics.Bitmap?
+                        ) {
+                            super.onPageStarted(view, url, favicon)
+                            diagnosticLogger.log("[PAGE_START] $url")
+
+                            injectCaptureScript(view)
+
+                            if (isDownloadOrPkgUrl(url)) {
+                                handleCapturedUrl(url = url, userAgent = defaultUa)
+                                view.stopLoading()
+                                return
+                            }
+
+                            val isNotIntermediate = !url.contains("filekeeper.net", ignoreCase = true)
+                            if (isNotIntermediate && !isDomainPermitted(url)) {
+                                diagnosticLogger.log("[PAGE_BLOCK] Página não permitida: $url")
+                                view.stopLoading()
+
+                                if (currentPageUrl.isNotBlank() && view.url != currentPageUrl) {
+                                    diagnosticLogger.log("[PAGE_RETURN] Voltando para: $currentPageUrl")
+                                    view.loadUrl(currentPageUrl)
+                                }
+                            }
+                        }
+
+                        override fun onPageFinished(view: WebView, url: String) {
+                            super.onPageFinished(view, url)
+                            diagnosticLogger.log("[PAGE_FINISHED] $url")
+
+                            currentDisplayUrl = url
+                            canGoBack = view.canGoBack()
+
+                            if (!isDownloadOrPkgUrl(url) && isDomainPermitted(url)) {
+                                currentPageUrl = url
+                            }
+
+                            injectCaptureScript(view)
+
+                            view.evaluateJavascript(
+                                """
+                                (function() {
+                                    try {
+                                        window.dispatchEvent(new Event('resize'));
+                                        window.dispatchEvent(new Event('scroll'));
+                                    } catch(e) {}
+                                })();
+                                """.trimIndent(),
+                                null
+                            )
+
+                            if (!captured && !processing) {
+                                status = "Página carregada."
+                            }
+                        }
+
+                        override fun onReceivedError(
+                            view: WebView,
+                            request: WebResourceRequest,
+                            error: WebResourceError
+                        ) {
+                            super.onReceivedError(view, request, error)
+                            diagnosticLogger.log("[ERROR] ${request.url} | code=${error.errorCode} | description=${error.description}")
+                        }
+
+                        override fun onReceivedHttpError(
+                            view: WebView,
+                            request: WebResourceRequest,
+                            errorResponse: WebResourceResponse
+                        ) {
+                            super.onReceivedHttpError(view, request, errorResponse)
+                            diagnosticLogger.log("[HTTP] ${request.url} | status=${errorResponse.statusCode} | reason=${errorResponse.reasonPhrase}")
+                        }
+                    }
+
+                    setDownloadListener { url, userAgentLocal, contentDisposition, mimeType, _ ->
+                        diagnosticLogger.log("[DOWNLOAD] URL=$url")
+                        diagnosticLogger.log("[DOWNLOAD] MIME=$mimeType")
+                        diagnosticLogger.log("[DOWNLOAD] Content-Disposition=$contentDisposition")
+
+                        AppLogger.log("[PkgLinkCaptureScreen] DownloadListener disparado: $url")
+
+                        handleCapturedUrl(
+                            url = url,
+                            contentDisposition = contentDisposition,
+                            mimeType = mimeType,
+                            userAgent = defaultUa
+                        )
+                    }
+
+                    diagnosticLogger.log("[LOAD] Carregando URL inicial: $sourceUrl")
+                    loadUrl(sourceUrl)
+                }
+            },
+            update = { view ->
+                browser = view
+                canGoBack = view.canGoBack()
+            }
+        )
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .align(Alignment.TopCenter),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xDD121212)),
+            border = BorderStroke(1.dp, Color(0x66FFFFFF))
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "CAPTURA GTSTORE",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = when {
+                            processing -> "PROCESSANDO..."
+                            captured -> "[OK] CAPTURADO (${capturedList.size})"
+                            returnPageUrl.isNotBlank() && originPageUrl.isNotBlank() -> "[OK] ORIGEM & RETORNO"
+                            returnPageUrl.isNotBlank() -> "1/2 RETORNO OK"
+                            status.contains("Resolvendo") -> "RESOLVENDO ROTA..."
+                            else -> "PRONTO"
+                        },
+                        color = when {
+                            processing || status.contains("Resolvendo") -> Color(0xFFFFC107)
+                            captured || originPageUrl.isNotBlank() -> GreenLed
+                            returnPageUrl.isNotBlank() -> Color(0xFF64B5F6)
+                            else -> Color(0xFFAAAAAA)
+                        },
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (currentDisplayUrl.isNotBlank()) {
+                    Text(
+                        text = currentDisplayUrl,
+                        color = Color(0xFF90CAF9),
+                        fontSize = 10.sp,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .align(Alignment.BottomCenter),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = {
+                    when {
+                        returnPageUrl.isBlank() -> saveReturnPage()
+                        originPageUrl.isBlank() -> saveOriginPage()
+                    }
+                },
+                enabled = !processing && originPageUrl.isBlank(),
+                modifier = Modifier
+                    .weight(1.3f)
+                    .height(44.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = when {
+                        returnPageUrl.isBlank() -> Color(0xEE0070CC)
+                        originPageUrl.isBlank() -> Color(0xEE35C759)
+                        else -> Color(0xAA222222)
+                    },
+                    contentColor = Color.White
+                )
+            ) {
+                Text(
+                    text = when {
+                        returnPageUrl.isBlank() -> "1. SALVAR RETORNO"
+                        originPageUrl.isBlank() -> "2. SALVAR ORIGEM"
+                        else -> "PÁGINAS SALVAS"
+                    },
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Button(
+                onClick = {
+                    val view = browser
+                    if (view != null && view.canGoBack()) {
+                        view.goBack()
+                    }
+                },
+                enabled = canGoBack && !processing,
+                modifier = Modifier
+                    .weight(0.85f)
+                    .height(44.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xDD2A2A2A),
+                    contentColor = Color.White
+                )
+            ) {
+                Text(text = "VOLTAR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Button(
+                onClick = onCancel,
+                enabled = !processing,
+                modifier = Modifier
+                    .weight(0.85f)
+                    .height(44.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xDD2A2A2A),
+                    contentColor = Color(0xFFFF6B6B)
+                )
+            ) {
+                Text(text = "SAIR", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
