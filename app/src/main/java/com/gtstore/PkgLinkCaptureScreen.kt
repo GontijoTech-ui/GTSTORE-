@@ -273,6 +273,14 @@ fun PkgLinkCaptureScreen(
                     settings.setSupportMultipleWindows(false)
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
+                    // FORÇAR TEMA ESCURO (DARK MODE ALGORÍTMICO)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        settings.isAlgorithmicDarkeningAllowed = true
+                    } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        @Suppress("DEPRECATION")
+                        settings.forceDark = WebSettings.FORCE_DARK_ON
+                    }
+
                     val cookieManager = CookieManager.getInstance()
                     cookieManager.setAcceptCookie(true)
                     cookieManager.setAcceptThirdPartyCookies(this, true)
