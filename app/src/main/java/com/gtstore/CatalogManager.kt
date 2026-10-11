@@ -262,10 +262,15 @@ class CatalogManager(
             val rawItems = prefs.getString(KEY_ITEMS, "[]") ?: "[]"
             val nextIdx = prefs.getInt(KEY_NEXT_INDEX, 1)
 
+            // LER EXCEÇÕES DE DOMÍNIO
+            val settingsPrefs = context.getSharedPreferences("GTSTORE_SETTINGS", Context.MODE_PRIVATE)
+            val domainExceptions = settingsPrefs.getString("domain_exceptions", "") ?: ""
+
             val backupObject = JSONObject().apply {
                 put("version", 1)
                 put("next_index", nextIdx)
                 put("items", JSONArray(rawItems))
+                put("domain_exceptions", domainExceptions)
             }
 
             val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "logs")
@@ -309,6 +314,14 @@ class CatalogManager(
                 val backupObject = JSONObject(content)
                 nextIdx = backupObject.optInt("next_index", 1)
                 itemsArray = backupObject.optJSONArray("items") ?: JSONArray()
+                
+                // RESTAURAR EXCEÇÕES DE DOMÍNIO
+                if (backupObject.has("domain_exceptions")) {
+                    val domainExceptions = backupObject.optString("domain_exceptions", "")
+                    val settingsPrefs = context.getSharedPreferences("GTSTORE_SETTINGS", Context.MODE_PRIVATE)
+                    settingsPrefs.edit().putString("domain_exceptions", domainExceptions).apply()
+                    AppLogger.log("[CatalogManager] Exceções de domínio restauradas com sucesso.")
+                }
             } else if (content.startsWith("[")) {
                 itemsArray = JSONArray(content)
                 nextIdx = itemsArray.length() + 1
@@ -333,7 +346,7 @@ class CatalogManager(
     }
 
     // ========================================================
-    // BACKUP E RESTAURAÇÃO COMPLETO EM ZIP (JSON + ÍCONES)
+    // BACKUP E RESTAURAÇÃO COMPLETO EM ZIP (JSON + ÍCONES + SETTINGS)
     // ========================================================
 
     fun exportCatalogZipBackup(): String {
@@ -346,10 +359,16 @@ class CatalogManager(
 
             val rawItems = prefs.getString(KEY_ITEMS, "[]") ?: "[]"
             val nextIdx = prefs.getInt(KEY_NEXT_INDEX, 1)
+            
+            // LER EXCEÇÕES DE DOMÍNIO
+            val settingsPrefs = context.getSharedPreferences("GTSTORE_SETTINGS", Context.MODE_PRIVATE)
+            val domainExceptions = settingsPrefs.getString("domain_exceptions", "") ?: ""
+
             val backupObject = JSONObject().apply {
                 put("version", 1)
                 put("next_index", nextIdx)
                 put("items", JSONArray(rawItems))
+                put("domain_exceptions", domainExceptions)
             }
 
             val iconsDir = File(context.filesDir, ICON_DIR)
@@ -436,6 +455,14 @@ class CatalogManager(
             val backupObject = JSONObject(jsonString)
             val nextIdx = backupObject.optInt("next_index", 1)
             val itemsArray = backupObject.optJSONArray("items") ?: JSONArray()
+            
+            // RESTAURAR EXCEÇÕES DE DOMÍNIO DO ZIP
+            if (backupObject.has("domain_exceptions")) {
+                val domainExceptions = backupObject.optString("domain_exceptions", "")
+                val settingsPrefs = context.getSharedPreferences("GTSTORE_SETTINGS", Context.MODE_PRIVATE)
+                settingsPrefs.edit().putString("domain_exceptions", domainExceptions).apply()
+                AppLogger.log("[CatalogManager] Exceções de domínio restauradas do ZIP com sucesso.")
+            }
 
             prefs.edit()
                 .putString(KEY_ITEMS, itemsArray.toString())
@@ -446,7 +473,7 @@ class CatalogManager(
             getAll()
 
             AppLogger.log("[CatalogManager] ZIP Restaurado: ${itemsArray.length()} itens e $totalIconsRestored capas.")
-            "Sucesso! ${itemsArray.length()} jogos e $totalIconsRestored capas restaurados do ZIP."
+            "Sucesso! ${itemsArray.length()} jogos, $totalIconsRestored capas e configurações restaurados."
         } catch (e: Exception) {
             AppLogger.log("[CatalogManager] Erro ao importar ZIP: ${e.message}")
             "Erro ao restaurar ZIP: ${e.message}"
