@@ -454,6 +454,42 @@ class CatalogManager(
     }
 
     // ========================================================
+    // EXCLUSÃO
+    // ========================================================
+
+    @Synchronized
+    fun deleteItem(catalogIndex: Int): Boolean {
+        try {
+            val items = loadItemsInternal()
+            val targetItem = items.firstOrNull { it.catalogIndex == catalogIndex }
+            
+            if (targetItem == null) {
+                AppLogger.log("[CatalogManager] Erro ao excluir: Item com índice $catalogIndex não encontrado.")
+                return false
+            }
+
+            val updatedItems = items.filter { it.catalogIndex != catalogIndex }
+            saveItems(updatedItems)
+            
+            AppLogger.log("[CatalogManager] Item '${targetItem.title}' (Índice: $catalogIndex) removido do catálogo local.")
+
+            if (targetItem.iconFile.isNotBlank()) {
+                iconCache.remove(targetItem.iconFile)
+                val iconFile = File(context.filesDir, "$ICON_DIR/${targetItem.iconFile}")
+                if (iconFile.exists()) {
+                    iconFile.delete()
+                    AppLogger.log("[CatalogManager] Capa do item removida: ${targetItem.iconFile}")
+                }
+            }
+            
+            return true
+        } catch (e: Exception) {
+            AppLogger.log("[CatalogManager] Exceção ao tentar excluir item $catalogIndex: ${e.message}")
+            return false
+        }
+    }
+
+    // ========================================================
     // CONSULTAS COM CACHE
     // ========================================================
 
