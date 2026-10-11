@@ -273,7 +273,7 @@ fun PkgLinkCaptureScreen(
                     settings.setSupportMultipleWindows(false)
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
-                    // FORÇAR TEMA ESCURO (DARK MODE ALGORÍTMICO)
+                    // FORÇAR TEMA ESCURO (DARK MODE ALGORÍTMICO) - MANTIDO
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                         settings.isAlgorithmicDarkeningAllowed = true
                     } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
@@ -355,17 +355,8 @@ fun PkgLinkCaptureScreen(
                             super.onPageStarted(view, url, favicon)
                             diagnosticLogger.log("[PAGE_START] $url")
 
-                            view.evaluateJavascript(
-                                """
-                                (function() {
-                                    try {
-                                        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                                        window.chrome = window.chrome || { runtime: {} };
-                                    } catch(e) {}
-                                })();
-                                """.trimIndent(),
-                                null
-                            )
+                            // === A INJEÇÃO DE JS FOI REMOVIDA DAQUI ===
+                            // A Cloudflare não vai mais detectar a manipulação do 'webdriver'
 
                             val isNotIntermediate = !url.contains("filekeeper.net", ignoreCase = true)
                             val isPkg = url.substringBefore("?").endsWith(".pkg", ignoreCase = true)
