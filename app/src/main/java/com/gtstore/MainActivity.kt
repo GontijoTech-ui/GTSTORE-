@@ -36,15 +36,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -685,8 +690,11 @@ fun CatalogManagerItemCard(
     item: CatalogItem,
     catalogManager: CatalogManager,
     enabled: Boolean,
-    onUpdate: () -> Unit
+    onUpdate: () -> Unit,
+    onDelete: () -> Unit
 ) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
     val iconBitmap = remember(item.iconFile) {
         val bytes = catalogManager.getIcon(item)
         if (bytes != null && bytes.isNotEmpty()) {
@@ -694,6 +702,29 @@ fun CatalogManagerItemCard(
         } else {
             null
         }
+    }
+
+    // Modal de Confirmação
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Excluir Jogo?", color = TextWhite) },
+            text = { Text("Tem certeza que deseja remover '${item.title}' do catálogo?", color = TextMuted) },
+            containerColor = CardBlack,
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    onDelete() // Confirma a exclusão
+                }) {
+                    Text("EXCLUIR", color = RedAccent, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancelar", color = TextMuted)
+                }
+            }
+        )
     }
 
     Card(
@@ -764,19 +795,37 @@ fun CatalogManagerItemCard(
                     )
                 }
 
-                Button(
-                    onClick = onUpdate,
-                    enabled = enabled,
-                    modifier = Modifier.height(40.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
-                    shape = RoundedCornerShape(7.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                // Coluna dos Botões (Lixeira em cima, Atualizar embaixo)
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalAlignment = Alignment.End
                 ) {
-                    Text(
-                        text = "ATUALIZAR",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    IconButton(
+                        onClick = { showDeleteConfirm = true },
+                        enabled = enabled,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Excluir",
+                            tint = Color(0xFF888888)
+                        )
+                    }
+
+                    Button(
+                        onClick = onUpdate,
+                        enabled = enabled,
+                        modifier = Modifier.height(34.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = RedAccent),
+                        shape = RoundedCornerShape(7.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                    ) {
+                        Text(
+                            text = "ATUALIZAR",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
@@ -1033,11 +1082,38 @@ fun RegisteredCatalogScreen(
                             return@CatalogManagerItemCard
                         }
                         captureSourceUrl = item.sourceUrl
+                    },
+                    onDelete = {
+                        updating = true
+                        scope.launch {
+                            val success = withContext(Dispatchers.IO) {
+                                // 1. Deleta do banco de dados local
+                                val deletedLocal = catalogManager.deleteItem(item.catalogIndex)
+                                
+                                // 2. Sincroniza a remoção com a nuvem (Firebase)
+                                if (deletedLocal) {
+                                    OrderManager.syncCatalogToFirebase(catalogManager.getAll(), catalogManager)
+                                }
+                                deletedLocal
+                            }
+                            
+                            // 3. Atualiza a tela recarregando a lista
+                            allItems = withContext(Dispatchers.IO) { catalogManager.getAll() }
+                            updating = false
+                            
+                            withContext(Dispatchers.Main) {
+                                if (success) {
+                                    Toast.makeText(context, "${item.title} excluído!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    message = "Erro ao excluir."
+                                }
+                            }
+                        }
                     }
                 )
             }
         }
-    }
+    } // Fim da LazyColumn
 }
 
 @Composable
@@ -1525,7 +1601,6 @@ fun AdminScreen(
                 items = pendingOrders,
                 key = { it.id }
             ) { order ->
-                // CARD DO PEDIDO COMPACTO E MODERNO
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = CardBlack),
@@ -1536,7 +1611,6 @@ fun AdminScreen(
                         modifier = Modifier.padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Linha superior: ID do Pedido + Etiqueta do IP PS4
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1556,7 +1630,6 @@ fun AdminScreen(
                                 )
                             }
 
-                            // Badge estilizado com o IP do console
                             Surface(
                                 color = Color(0xFF0F172A),
                                 shape = RoundedCornerShape(6.dp),
@@ -1572,7 +1645,6 @@ fun AdminScreen(
                             }
                         }
 
-                        // Lista condensada de jogos
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1595,7 +1667,6 @@ fun AdminScreen(
                             }
                         }
 
-                        // Barra de botões de ação: sem cortes no texto e altura otimizada
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
